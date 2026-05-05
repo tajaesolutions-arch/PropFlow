@@ -208,6 +208,42 @@ begin
 end; $$;
 create trigger on_auth_user_created after insert on auth.users for each row execute function public.handle_new_user_profile();
 
+
+create or replace function public.assign_invited_properties()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  invite record;
+  property_id uuid;
+  assignment text;
+begin
+  select wi.* into invite
+  from public.workspace_invites wi
+  join public.profiles p on p.email = wi.email
+  where wi.workspace_id = new.workspace_id
+    and p.id = new.user_id
+    and wi.status = 'pending'
+    and (wi.expires_at is null or wi.expires_at > now())
+  order by wi.created_at desc
+  limit 1;
+
+  if invite.id is null or invite.assigned_property_ids is null then
+    return new;
+  end if;
+
+  foreach property_id in array invite.assigned_property_ids loop
+    foreach assignment in array new.roles loop
+      if assignment in ('property_owner','cleaner','maintenance','host','accountant') then
+        insert into public.property_assignments (workspace_id, property_id, user_id, assignment_role, created_by)
+        values (new.workspace_id, property_id, new.user_id, assignment, invite.invited_by)
+        on conflict (property_id, user_id, assignment_role) do nothing;
+      end if;
+    end loop;
+  end loop;
+
+  return new;
+end; $$;
+create trigger workspace_member_assign_invited_properties after insert on public.workspace_members for each row execute function public.assign_invited_properties();
+
 create or replace function public.is_propflow_admin()
 returns boolean language sql security definer set search_path = public as $$
   select exists (select 1 from public.profiles where id = auth.uid() and is_propflow_admin = true and status = 'active');
@@ -232,9 +268,54 @@ returns boolean language sql security definer set search_path = public as $$
   );
 $$;
 
+create or replace function public.can_view_profile(target_profile_id uuid)
+returns boolean language sql security definer set search_path = public as $$
+  select target_profile_id = auth.uid()
+  or public.is_propflow_admin()
+  or exists (
+    select 1
+    from public.workspace_members viewer
+    join public.workspace_members target on target.workspace_id = viewer.workspace_id
+    join public.profiles viewer_profile on viewer_profile.id = viewer.user_id
+    join public.workspaces workspace on workspace.id = viewer.workspace_id
+    where viewer.user_id = auth.uid()
+      and target.user_id = target_profile_id
+      and viewer.status = 'active'
+      and target.status = 'active'
+      and viewer_profile.status = 'active'
+      and workspace.status = 'active'
+  );
+$$;
+
+create or replace function public.can_accept_workspace_member(target_workspace_id uuid, target_user_id uuid, target_roles text[], target_status text)
+returns boolean language sql security definer set search_path = public as $$
+  select target_user_id = auth.uid()
+    and target_status = 'active'
+    and not target_roles && array['propflow_admin']
+    and (
+      (
+        target_roles @> array['workspace_owner']
+        and array['workspace_owner'] @> target_roles
+        and exists (select 1 from public.workspaces workspace where workspace.id = target_workspace_id and workspace.created_by = auth.uid())
+        and not exists (select 1 from public.workspace_members existing where existing.workspace_id = target_workspace_id)
+      )
+      or exists (
+        select 1 from public.workspace_invites invite
+        where invite.workspace_id = target_workspace_id
+          and lower(invite.email) = lower((select auth.email()))
+          and invite.status = 'pending'
+          and (invite.expires_at is null or invite.expires_at > now())
+          and invite.roles @> target_roles
+          and target_roles @> invite.roles
+          and not invite.roles && array['propflow_admin']
+      )
+    );
+$$;
+
 create or replace function public.can_access_property(target_workspace_id uuid, target_property_id uuid)
 returns boolean language sql security definer set search_path = public as $$
   select public.has_workspace_role(target_workspace_id, array['workspace_owner','property_manager','host','accountant'])
+  or exists (select 1 from public.properties p where p.workspace_id = target_workspace_id and p.id = target_property_id and p.assigned_owner_id = auth.uid())
   or exists (select 1 from public.property_assignments pa where pa.workspace_id = target_workspace_id and pa.property_id = target_property_id and pa.user_id = auth.uid())
   or exists (select 1 from public.cleaning_tasks ct where ct.workspace_id = target_workspace_id and ct.property_id = target_property_id and ct.assigned_cleaner_id = auth.uid())
   or exists (select 1 from public.maintenance_work_orders mw where mw.workspace_id = target_workspace_id and mw.property_id = target_property_id and mw.assigned_maintenance_id = auth.uid());
@@ -252,7 +333,7 @@ alter table public.file_uploads enable row level security;
 alter table public.activity_logs enable row level security;
 alter table public.notifications enable row level security;
 
-create policy profiles_select_own_or_admin on public.profiles for select using (id = auth.uid() or public.is_propflow_admin());
+create policy profiles_select_authorized on public.profiles for select using (public.can_view_profile(id));
 create policy profiles_update_own on public.profiles for update using (id = auth.uid()) with check (id = auth.uid() and is_propflow_admin = false);
 create policy profiles_insert_own on public.profiles for insert with check (id = auth.uid() and is_propflow_admin = false);
 
@@ -261,8 +342,8 @@ create policy workspaces_insert_authenticated on public.workspaces for insert wi
 create policy workspaces_update_owner_manager on public.workspaces for update using (public.has_workspace_role(id, array['workspace_owner'])) with check (public.has_workspace_role(id, array['workspace_owner']));
 
 create policy workspace_members_select_member on public.workspace_members for select using (public.is_active_workspace_member(workspace_id) or user_id = auth.uid());
-create policy workspace_members_insert_owner_or_self_invite on public.workspace_members for insert with check (public.has_workspace_role(workspace_id, array['workspace_owner']) or user_id = auth.uid());
-create policy workspace_members_update_owner on public.workspace_members for update using (public.has_workspace_role(workspace_id, array['workspace_owner'])) with check (public.has_workspace_role(workspace_id, array['workspace_owner']));
+create policy workspace_members_insert_owner_or_valid_invite on public.workspace_members for insert with check (public.has_workspace_role(workspace_id, array['workspace_owner']) or public.can_accept_workspace_member(workspace_id, user_id, roles, status));
+create policy workspace_members_update_owner on public.workspace_members for update using (public.has_workspace_role(workspace_id, array['workspace_owner'])) with check (public.has_workspace_role(workspace_id, array['workspace_owner']) and not roles && array['propflow_admin']);
 
 create policy workspace_invites_select_owner_or_email on public.workspace_invites for select using (public.has_workspace_role(workspace_id, array['workspace_owner']) or lower(email) = lower((select auth.email())));
 create policy workspace_invites_insert_owner on public.workspace_invites for insert with check (public.has_workspace_role(workspace_id, array['workspace_owner']) and not roles && array['propflow_admin']);
@@ -272,7 +353,7 @@ create policy properties_select_authorized on public.properties for select using
 create policy properties_insert_manager on public.properties for insert with check (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager']));
 create policy properties_update_manager on public.properties for update using (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager'])) with check (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager']));
 
-create policy property_assignments_member_access on public.property_assignments for select using (public.is_active_workspace_member(workspace_id));
+create policy property_assignments_select_authorized on public.property_assignments for select using (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager','host','accountant']) or user_id = auth.uid());
 create policy property_assignments_manage on public.property_assignments for all using (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager'])) with check (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager']));
 
 create policy cleaning_select_authorized on public.cleaning_tasks for select using (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager','host']) or assigned_cleaner_id = auth.uid());
@@ -280,7 +361,7 @@ create policy cleaning_insert_manager on public.cleaning_tasks for insert with c
 create policy cleaning_update_authorized on public.cleaning_tasks for update using (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager','host']) or assigned_cleaner_id = auth.uid()) with check (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager','host']) or assigned_cleaner_id = auth.uid());
 
 create policy maintenance_select_authorized on public.maintenance_work_orders for select using (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager','host']) or assigned_maintenance_id = auth.uid() or reported_by_user_id = auth.uid() or public.can_access_property(workspace_id, property_id));
-create policy maintenance_insert_authorized on public.maintenance_work_orders for insert with check (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager','host']) or public.can_access_property(workspace_id, property_id));
+create policy maintenance_insert_authorized on public.maintenance_work_orders for insert with check (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager','host']) or (reported_by_user_id = auth.uid() and public.can_access_property(workspace_id, property_id)));
 create policy maintenance_update_authorized on public.maintenance_work_orders for update using (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager','host']) or assigned_maintenance_id = auth.uid()) with check (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager','host']) or assigned_maintenance_id = auth.uid());
 
 create policy file_uploads_select_authorized on public.file_uploads for select using (public.is_active_workspace_member(workspace_id));

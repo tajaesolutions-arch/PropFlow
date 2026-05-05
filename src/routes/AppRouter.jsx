@@ -28,6 +28,14 @@ import { AccountantDashboardPage } from '../pages/AccountantDashboardPage.jsx';
 import { ComingSoonPage } from '../pages/ComingSoonPage.jsx';
 
 const publicRoutes = { '/': LandingPage, '/pricing': PricingPage, '/login': LoginPage, '/signup': SignupPage };
+const dashboardAccess = {
+  '/dashboard': [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
+  '/owner-dashboard': [roles.OWNER],
+  '/cleaner-dashboard': [roles.CLEANER],
+  '/maintenance-dashboard': [roles.MAINTENANCE],
+  '/accountant-dashboard': [roles.ACCOUNTANT],
+};
+
 const protectedRoutes = {
   '/workspace-setup': JoinWorkspacePage,
   '/join': JoinWorkspacePage,
@@ -84,6 +92,7 @@ export function AppRouter() {
   if (!currentWorkspace && !currentUser.roles?.includes(roles.ADMIN) && path !== '/workspace-setup' && path !== '/join' && path !== '/account') { navigate('/workspace-setup'); return null; }
   if (currentWorkspace && (path === '/workspace-setup' || path === '/join')) { navigate(getPostLoginPath(currentUser)); return null; }
   if (path === '/admin' && !currentUser.roles?.includes(roles.ADMIN)) return <SuspendedPage variant="denied" />;
+  if (dashboardAccess[path] && !hasAnyRole(currentUser, dashboardAccess[path])) { navigate(getPostLoginPath(currentUser)); return null; }
   if (path.startsWith('/properties/')) return <RoleGuard allowed={[roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.OWNER, roles.ACCOUNTANT, roles.CLEANER, roles.MAINTENANCE]}><PropertyDetailPage propertyId={path.split('/').pop()} /></RoleGuard>;
   const Page = protectedRoutes[path] || DashboardPage;
   return <Page />;
