@@ -2,16 +2,22 @@
 
 PropFlow is a property management SaaS foundation for property owners, Airbnb hosts, landlords, property managers, realtors, cleaning companies, maintenance crews, villa operators, guesthouse operators, hotel/small resort operators, and real estate companies.
 
-## Current project status
+## Current post-merge status
 
-Phase 1 moves PropFlow from local sample-data behavior to a database-first Supabase MVP foundation:
+This branch is a stabilization pass after Phase 1 was merged. The app remains a database-first Supabase MVP foundation and is ready for continued feature development once a real Supabase project is connected.
 
-- Supabase Auth is the real auth flow for signup, login, logout, and session persistence.
-- Workspace membership, roles, workspace switching, and suspended-account handling are loaded from Supabase.
-- Users without workspace membership are routed to `/workspace-setup` to create or join a workspace.
-- Demo login buttons have been removed from the production login UI.
-- Customer-facing operational pages no longer depend on seeded fake customer data.
-- Empty accounts show clean empty states instead of fake properties, bookings, revenue, guests, reports, cleaning tasks, or maintenance jobs.
+Validated/fixed in this pass:
+
+- `npm install` completes with the checked-in lockfile.
+- `npm run build` completes successfully with Vite.
+- Public landing and pricing routes render without Supabase environment variables.
+- Login, signup, workspace setup, and settings surfaces show clear Supabase configuration messages when `VITE_SUPABASE_URL` or `VITE_SUPABASE_ANON_KEY` is missing.
+- Demo login remains removed from the production auth UI.
+- Role dashboard routing is guarded so users are redirected to their expected dashboard if they manually visit another role dashboard.
+- Workspace creation sanitizes optional numeric fields and records the creator.
+- Workspace invite creation strips non-customer roles defensively and stores empty expiration dates as `null`.
+- Upload actions fail cleanly when no file/workspace/Supabase Storage bucket is available.
+- RLS was tightened for workspace membership self-insert, profile visibility, property assignments, maintenance insert reporting, and assigned property access.
 
 ## Phase 1 scope
 
@@ -56,13 +62,22 @@ Not implemented in this phase:
 - Recharts dependency retained for existing chart components
 - Standard CSS using the PropFlow design tokens
 
-## Install
+## Exact local setup
+
+Install dependencies:
 
 ```bash
 npm install
 ```
 
-## Run locally
+Create `.env.local` only when connecting to Supabase:
+
+```bash
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+```
+
+Run locally:
 
 ```bash
 npm run dev
@@ -70,26 +85,33 @@ npm run dev
 
 Open the local Vite URL shown in your terminal.
 
-## Build
+Build locally:
 
 ```bash
 npm run build
 ```
 
-## Environment variables
+## Vercel deployment readiness
 
-Create `.env.local` when connecting a Supabase project:
+Set these exact Vercel environment variables for Preview and Production deployments:
 
 ```bash
 VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
 ```
 
-If these variables are missing, the app does not crash. Login, signup, and settings display a clean Supabase setup message instead of showing demo login controls.
+No server-only Supabase service role key is required by this front-end build. Do **not** expose a Supabase service role key in Vite variables.
+
+Expected behavior without Vercel env vars:
+
+- `/` and `/pricing` should still render.
+- `/login` and `/signup` should render but display a setup/configuration message.
+- Protected routes redirect to `/login` because no real Supabase Auth session can exist.
+- Database-backed actions return clear configuration errors instead of crashing the app.
 
 ## Required Supabase migrations
 
-Run this migration on a new Supabase project:
+Run the migration on a new Supabase project:
 
 ```bash
 supabase/migrations/202605050001_propflow_schema.sql
@@ -111,11 +133,12 @@ The migration creates:
 - private Storage bucket `propflow-private`
 - RLS helper functions and table/storage policies
 
-## Apply migrations
+## Exact Supabase migration instructions
 
-With the Supabase CLI linked to your project:
+With the Supabase CLI linked to your hosted project:
 
 ```bash
+supabase link --project-ref your-project-ref
 supabase db push
 ```
 
@@ -125,6 +148,8 @@ For local Supabase development:
 supabase start
 supabase db reset
 ```
+
+If you do not use the Supabase CLI, paste `supabase/migrations/202605050001_propflow_schema.sql` into the Supabase SQL editor for a clean project and run it once.
 
 `supabase/seed/seed_demo.sql` is now only a placeholder. Create real test accounts through Supabase Auth and create workspace data through the UI.
 
@@ -154,13 +179,44 @@ MVP active roles:
 
 Customers cannot invite or assign `propflow_admin`. That role is platform-level only and must be controlled by trusted backend/admin operations.
 
-Property write access is limited to `workspace_owner` and `property_manager`. Cleaning and maintenance creation is limited to `workspace_owner`, `property_manager`, and `host`, with assigned lower-role access represented in RLS helper policies.
+Property write access is limited to `workspace_owner` and `property_manager`. Cleaning and maintenance creation is limited to `workspace_owner`, `property_manager`, and `host`. Assigned lower-role users can access only the operational records/properties exposed by RLS through property assignments, assigned cleaning tasks, assigned maintenance work orders, or reported issues.
+
+## Manual test checklist
+
+Use a real Supabase project for these checks:
+
+- [ ] `/` renders logged out.
+- [ ] `/pricing` renders logged out.
+- [ ] `/login` renders and no demo login is present.
+- [ ] `/signup` creates a Supabase Auth user or shows email-confirmation messaging.
+- [ ] New authenticated user without membership is routed to `/workspace-setup`.
+- [ ] User can create a workspace and becomes `workspace_owner`.
+- [ ] Owner lands on `/dashboard`.
+- [ ] Owner can open `/settings` and create an invite.
+- [ ] Invite role dropdown does not include `propflow_admin`.
+- [ ] Invite link copy works when no email provider is configured.
+- [ ] Invite acceptance requires matching authenticated email and valid pending token/code.
+- [ ] Owner/Property Manager can create a property.
+- [ ] Host can view operational workspace data but cannot create/edit/archive property profiles.
+- [ ] Archived properties are hidden by default and can be shown with the archived filter.
+- [ ] Property detail page loads for authorized users.
+- [ ] Property archive and restore work; permanent delete is not exposed as the main action.
+- [ ] Cleaning page displays an empty state with no data.
+- [ ] Owner/Property Manager/Host can create a cleaning task with no booking record.
+- [ ] Cleaning statuses can be updated: `scheduled`, `in_progress`, `completed`, `needs_inspection`, `guest_ready`.
+- [ ] Maintenance page displays an empty state with no data.
+- [ ] Owner/Property Manager/Host can create a maintenance work order.
+- [ ] Urgent maintenance work orders are visually separated in the urgent panel.
+- [ ] Upload controls do not crash when the private bucket is missing; they show a Supabase error.
+- [ ] Private Storage upload succeeds after the `propflow-private` bucket and policies are applied.
+- [ ] Logout clears session and protected routes redirect to `/login`.
+- [ ] Suspended profile or membership routes to `/suspended` and cannot read workspace data.
 
 ## Storage behavior
 
 Operational uploads use the private `propflow-private` bucket. Paths are scoped by `workspace_id`, and upload metadata is recorded in `file_uploads`. The app does not expose permanent public URLs; signed/authenticated download flows can be layered on this foundation.
 
-Supported MVP categories include property photos/documents, leases, contracts, receipts, invoices, cleaning before/after photos, maintenance photos/videos, and repair completion photos.
+Supported MVP categories include property photos/documents, leases, contracts, receipts, invoices, cleaning before/after photos, maintenance photos, and repair completion photos.
 
 ## Known limitations
 
@@ -171,13 +227,15 @@ Supported MVP categories include property photos/documents, leases, contracts, r
 - Notifications table exists, but automation is not implemented.
 - Smart Tools / AI Tools is a coming-soon placeholder.
 - Email invite sending is provider-ready only; if Resend or another provider is not configured, the UI still creates an invite and lets admins copy the link.
+- Assignment-management UI is still limited. The migration can create invite-based property assignments, but a full owner/cleaner/maintenance assignment management screen should be built next.
 - Automated tests are not yet included.
+- Migration SQL was reviewed statically in this environment; Supabase CLI/psql were not installed here, so run `supabase db reset` or `supabase db push` against a real project before production launch.
 
-## Recommended next phase
+## Recommended next development phase
 
 1. Add a serverless/email provider path for workspace invite emails.
-2. Add bookings and checkout-triggered cleaning task generation.
-3. Add signed download UI for private files.
-4. Add owner/property assignment management UI.
+2. Add owner/property/team assignment management UI.
+3. Add bookings and checkout-triggered cleaning task generation.
+4. Add signed download UI for private files.
 5. Add notification jobs and operational reminders.
 6. Add finance/reporting models before Stripe billing and exports.

@@ -5,6 +5,7 @@ import { isSupabaseConfigured, supabase } from './supabase.js';
 
 const AppContext = createContext(null);
 const emptyData = { properties: [], cleaningTasks: [], maintenanceWorkOrders: [], bookings: [], notifications: [], ownerReports: [], fileUploads: [], invites: [], members: [] };
+const customerAssignableRoles = new Set([roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT, roles.OWNER, roles.CLEANER, roles.MAINTENANCE]);
 const storageKey = 'propflow.currentWorkspaceId';
 
 function normalizeWorkspace(row) {
@@ -28,6 +29,15 @@ function normalizeMaintenance(row, properties = []) {
 
 function inviteToken() {
   return crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function requireSupabase() {
+  if (!supabase) throw new Error('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY before using database-backed actions.');
+  return supabase;
+}
+
+function cleanNumber(value) {
+  return value === '' || value === undefined ? null : Number(value);
 }
 
 export function AppProvider({ children }) {
@@ -107,12 +117,14 @@ export function AppProvider({ children }) {
   }, []);
 
   const signIn = async (email, password) => {
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    const client = requireSupabase();
+    const { error: signInError } = await client.auth.signInWithPassword({ email, password });
     if (signInError) throw signInError;
   };
 
   const signUp = async ({ email, password, fullName }) => {
-    const { error: signUpError } = await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName } } });
+    const client = requireSupabase();
+    const { error: signUpError } = await client.auth.signUp({ email, password, options: { data: { full_name: fullName } } });
     if (signUpError) throw signUpError;
   };
 
@@ -131,35 +143,41 @@ export function AppProvider({ children }) {
   };
 
   const createWorkspace = async (payload) => {
+    const client = requireSupabase();
     const code = payload.company_code || payload.name?.toUpperCase().replace(/[^A-Z0-9]+/g, '-').slice(0, 12) || inviteToken().slice(0, 8);
-    const { data: workspace, error: workspaceError } = await supabase.from('workspaces').insert({ ...payload, company_code: code }).select('*').single();
+    const workspacePayload = { ...payload, property_count_estimate: cleanNumber(payload.property_count_estimate), company_code: code, created_by: session.user.id };
+    const { data: workspace, error: workspaceError } = await client.from('workspaces').insert(workspacePayload).select('*').single();
     if (workspaceError) throw workspaceError;
-    const { error: memberError } = await supabase.from('workspace_members').insert({ workspace_id: workspace.id, user_id: session.user.id, roles: [roles.OWNER_ADMIN], status: 'active' });
+    const { error: memberError } = await client.from('workspace_members').insert({ workspace_id: workspace.id, user_id: session.user.id, roles: [roles.OWNER_ADMIN], status: 'active' });
     if (memberError) throw memberError;
-    await supabase.from('activity_logs').insert({ workspace_id: workspace.id, actor_user_id: session.user.id, action: 'workspace.created', metadata: { name: workspace.name } });
+    await client.from('activity_logs').insert({ workspace_id: workspace.id, actor_user_id: session.user.id, action: 'workspace.created', metadata: { name: workspace.name } });
     await loadAccount(session);
     return normalizeWorkspace(workspace);
   };
 
   const acceptInvite = async (codeOrToken) => {
+    const client = requireSupabase();
     const email = session?.user?.email?.toLowerCase();
     const now = new Date().toISOString();
-    const { data: invites, error: inviteError } = await supabase.from('workspace_invites').select('*').or(`token.eq.${codeOrToken},workspace_code.eq.${codeOrToken}`).eq('email', email).eq('status', 'pending');
+    const { data: invites, error: inviteError } = await client.from('workspace_invites').select('*').or(`token.eq.${codeOrToken},workspace_code.eq.${codeOrToken}`).eq('email', email).eq('status', 'pending');
     if (inviteError) throw inviteError;
     const invite = (invites || []).find((item) => !item.expires_at || item.expires_at > now);
     if (!invite) throw new Error('No valid invite was found for your email. Check the code, invite link, expiration date, or ask an admin for a new invite.');
-    await supabase.from('workspace_members').upsert({ workspace_id: invite.workspace_id, user_id: session.user.id, roles: invite.roles, status: 'active' }, { onConflict: 'workspace_id,user_id' });
-    await supabase.from('workspace_invites').update({ status: 'accepted', accepted_at: now, accepted_by: session.user.id }).eq('id', invite.id);
-    await supabase.from('activity_logs').insert({ workspace_id: invite.workspace_id, actor_user_id: session.user.id, action: 'invite.accepted', metadata: { invite_id: invite.id } });
+    await client.from('workspace_members').upsert({ workspace_id: invite.workspace_id, user_id: session.user.id, roles: invite.roles, status: 'active' }, { onConflict: 'workspace_id,user_id' });
+    await client.from('workspace_invites').update({ status: 'accepted', accepted_at: now, accepted_by: session.user.id }).eq('id', invite.id);
+    await client.from('activity_logs').insert({ workspace_id: invite.workspace_id, actor_user_id: session.user.id, action: 'invite.accepted', metadata: { invite_id: invite.id } });
     await loadAccount(session);
   };
 
   const createInvite = async ({ email, roles: inviteRoles, expires_at, message, assigned_property_ids }) => {
+    const client = requireSupabase();
+    const safeRoles = (inviteRoles || []).filter((role) => customerAssignableRoles.has(role));
+    if (!safeRoles.length) throw new Error('Choose at least one customer-assignable workspace role.');
     const token = inviteToken();
-    const record = { workspace_id: currentWorkspace.id, email: email.toLowerCase(), roles: inviteRoles, token, workspace_code: currentWorkspace.code, expires_at, message, assigned_property_ids, invited_by: session.user.id, status: 'pending' };
-    const { data: invite, error: inviteError } = await supabase.from('workspace_invites').insert(record).select('*').single();
+    const record = { workspace_id: currentWorkspace.id, email: email.toLowerCase(), roles: safeRoles, token, workspace_code: currentWorkspace.code, expires_at: expires_at || null, message, assigned_property_ids: assigned_property_ids || [], invited_by: session.user.id, status: 'pending' };
+    const { data: invite, error: inviteError } = await client.from('workspace_invites').insert(record).select('*').single();
     if (inviteError) throw inviteError;
-    await supabase.from('activity_logs').insert({ workspace_id: currentWorkspace.id, actor_user_id: session.user.id, action: 'user.invited', metadata: { email, roles: inviteRoles } });
+    await client.from('activity_logs').insert({ workspace_id: currentWorkspace.id, actor_user_id: session.user.id, action: 'user.invited', metadata: { email, roles: safeRoles } });
     await refreshWorkspaceData();
     return { ...invite, link: `${window.location.origin}/workspace-setup?invite=${token}` };
   };
@@ -209,10 +227,14 @@ export function AppProvider({ children }) {
   };
 
   const uploadFile = async ({ file, category, property_id, cleaning_task_id, maintenance_work_order_id }) => {
-    const path = `${currentWorkspace.id}/${property_id || 'workspace'}/${category}/${Date.now()}-${file.name}`;
-    const { error: uploadError } = await supabase.storage.from('propflow-private').upload(path, file);
+    const client = requireSupabase();
+    if (!file) throw new Error('Choose a file before uploading.');
+    if (!currentWorkspace?.id) throw new Error('Select a workspace before uploading files.');
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, '-');
+    const path = `${currentWorkspace.id}/${property_id || 'workspace'}/${category}/${Date.now()}-${safeName}`;
+    const { error: uploadError } = await client.storage.from('propflow-private').upload(path, file);
     if (uploadError) throw uploadError;
-    const { error: metadataError } = await supabase.from('file_uploads').insert({ workspace_id: currentWorkspace.id, property_id, cleaning_task_id, maintenance_work_order_id, uploaded_by: session.user.id, bucket: 'propflow-private', path, file_name: file.name, file_type: file.type, file_size: file.size, category });
+    const { error: metadataError } = await client.from('file_uploads').insert({ workspace_id: currentWorkspace.id, property_id, cleaning_task_id, maintenance_work_order_id, uploaded_by: session.user.id, bucket: 'propflow-private', path, file_name: file.name, file_type: file.type, file_size: file.size, category });
     if (metadataError) throw metadataError;
     await refreshWorkspaceData();
   };
