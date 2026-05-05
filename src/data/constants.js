@@ -5,29 +5,73 @@ export const roles = {
   OWNER_ADMIN: 'workspace_owner',
   PROPERTY_MANAGER: 'property_manager',
   HOST: 'host',
-  OWNER: 'owner',
+  ACCOUNTANT: 'accountant',
+  OWNER: 'property_owner',
   CLEANER: 'cleaner',
-  MAINTENANCE: 'maintenance_crew',
+  MAINTENANCE: 'maintenance',
 };
+
+export const rolePriority = [
+  roles.ADMIN,
+  roles.OWNER_ADMIN,
+  roles.PROPERTY_MANAGER,
+  roles.HOST,
+  roles.ACCOUNTANT,
+  roles.OWNER,
+  roles.MAINTENANCE,
+  roles.CLEANER,
+  'guest',
+];
 
 export const roleLabels = {
   propflow_admin: 'PropFlow Admin',
   workspace_owner: 'Workspace Owner / Company Admin',
   property_manager: 'Property Manager',
   host: 'Host',
-  owner: 'Owner',
+  accountant: 'Accountant / Bookkeeper',
+  property_owner: 'Property Owner',
   cleaner: 'Cleaner',
-  maintenance_crew: 'Maintenance Crew',
+  maintenance: 'Maintenance Crew',
+  guest: 'Guest',
 };
+
+export const inviteRoleOptions = [
+  roles.OWNER_ADMIN,
+  roles.PROPERTY_MANAGER,
+  roles.HOST,
+  roles.ACCOUNTANT,
+  roles.OWNER,
+  roles.CLEANER,
+  roles.MAINTENANCE,
+];
 
 export const roleRedirects = {
   propflow_admin: '/admin',
   workspace_owner: '/dashboard',
   property_manager: '/dashboard',
   host: '/dashboard',
-  owner: '/owner-dashboard',
+  accountant: '/accountant-dashboard',
+  property_owner: '/owner-dashboard',
   cleaner: '/cleaner-dashboard',
-  maintenance_crew: '/maintenance-dashboard',
+  maintenance: '/maintenance-dashboard',
 };
 
 export const dashboardRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
+export const propertyEditorRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER];
+export const taskManagerRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
+
+export const propertyTypes = [
+  'short_term_rental',
+  'long_term_rental',
+  'villa',
+  'apartment',
+  'house',
+  'condo',
+  'guesthouse',
+  'hotel_small_resort',
+  'commercial_property',
+  'model_unit',
+];
+
+export const rentalTypes = ['short_term', 'long_term', 'both'];
+export const propertyStatuses = ['active', 'vacant', 'occupied', 'maintenance_issue', 'archived'];

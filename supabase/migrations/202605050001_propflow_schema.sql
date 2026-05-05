@@ -1,12 +1,6 @@
--- PropFlow MVP schema. All tenant-owned records include workspace_id and simple RLS policies prevent cross-workspace access.
+-- PropFlow Phase 1 database-first SaaS foundation.
+-- All customer-owned records include workspace_id and RLS denies suspended users.
 create extension if not exists "pgcrypto";
-
-create type account_status as enum ('active', 'suspended');
-create type rental_type as enum ('short-term', 'long-term', 'both');
-create type booking_status as enum ('upcoming', 'checked_in', 'checked_out', 'cancelled', 'completed');
-create type cleaning_status as enum ('not_started', 'in_progress', 'ready_for_inspection', 'guest_ready', 'blocked_issue_found');
-create type maintenance_priority as enum ('low', 'medium', 'high', 'urgent', 'critical');
-create type maintenance_status as enum ('open', 'assigned', 'in_progress', 'waiting_on_parts', 'completed', 'cancelled');
 
 create or replace function public.set_updated_at()
 returns trigger language plpgsql as $$
@@ -14,22 +8,10 @@ begin new.updated_at = now(); return new; end; $$;
 
 create table public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
-  full_name text not null,
+  full_name text not null default '',
   email text unique,
   is_propflow_admin boolean not null default false,
-  status account_status not null default 'active',
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create table public.plans (
-  id uuid primary key default gen_random_uuid(),
-  name text not null unique,
-  billing_period text not null default 'monthly',
-  price_cents integer,
-  property_limit integer,
-  user_limit integer,
-  is_enterprise boolean not null default false,
+  status text not null default 'active' check (status in ('active','suspended')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -37,9 +19,16 @@ create table public.plans (
 create table public.workspaces (
   id uuid primary key default gen_random_uuid(),
   name text not null,
-  country text,
+  business_type text,
+  country text not null default 'United States',
   default_currency text not null default 'USD' check (default_currency in ('USD','JMD','CAD','GBP','EUR')),
-  status account_status not null default 'active',
+  business_email text,
+  phone text,
+  website text,
+  property_count_estimate integer,
+  plan_placeholder text,
+  company_code text not null unique default upper(substr(replace(gen_random_uuid()::text,'-',''),1,10)),
+  status text not null default 'active' check (status in ('active','suspended')),
   created_by uuid references public.profiles(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -50,11 +39,12 @@ create table public.workspace_members (
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
   user_id uuid not null references public.profiles(id) on delete cascade,
   roles text[] not null default '{}',
-  status account_status not null default 'active',
+  status text not null default 'active' check (status in ('active','suspended','revoked')),
   invited_by uuid references public.profiles(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (workspace_id, user_id)
+  unique (workspace_id, user_id),
+  check (not roles && array['propflow_admin'])
 );
 
 create table public.workspace_invites (
@@ -62,186 +52,258 @@ create table public.workspace_invites (
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
   email text not null,
   roles text[] not null default '{}',
+  assigned_property_ids uuid[] not null default '{}',
   token text not null unique,
-  status text not null default 'pending',
+  workspace_code text not null,
+  message text,
+  status text not null default 'pending' check (status in ('pending','accepted','expired','revoked')),
   expires_at timestamptz,
-  created_by uuid references public.profiles(id),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create table public.workspace_join_codes (
-  id uuid primary key default gen_random_uuid(),
-  workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  code text not null unique,
-  default_roles text[] not null default '{host}',
-  is_active boolean not null default true,
-  expires_at timestamptz,
-  created_by uuid references public.profiles(id),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create table public.subscriptions (
-  id uuid primary key default gen_random_uuid(),
-  workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  plan_id uuid references public.plans(id),
-  status text not null default 'trialing',
-  plan_name text not null,
-  billing_period text not null default 'monthly',
-  property_limit integer,
-  user_limit integer,
-  trial_starts_at timestamptz,
-  trial_ends_at timestamptz,
-  stripe_customer_id text,
-  stripe_subscription_id text,
+  invited_by uuid references public.profiles(id),
+  accepted_by uuid references public.profiles(id),
+  accepted_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique(workspace_id)
-);
-
-create table public.property_owners (
-  id uuid primary key default gen_random_uuid(), workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  name text not null, email text, phone text, payout_preference text, notes text,
-  created_by uuid references public.profiles(id), created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+  check (not roles && array['propflow_admin'])
 );
 
 create table public.properties (
-  id uuid primary key default gen_random_uuid(), workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  name text not null, address text, city text, country text, property_type text, rental_type rental_type not null default 'short-term',
-  bedrooms numeric, bathrooms numeric, max_guests integer, owner_id uuid references public.property_owners(id),
-  assigned_cleaner_id uuid references public.profiles(id), assigned_maintenance_user_id uuid references public.profiles(id),
-  nightly_rate numeric(12,2), monthly_rate numeric(12,2), currency text not null default 'USD', status text not null default 'active', photo_urls text[] default '{}', notes text,
-  created_by uuid references public.profiles(id), created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  name text not null,
+  address text not null,
+  city text,
+  state text,
+  country text not null,
+  property_type text not null check (property_type in ('short_term_rental','long_term_rental','villa','apartment','house','condo','guesthouse','hotel_small_resort','commercial_property','model_unit')),
+  rental_type text not null check (rental_type in ('short_term','long_term','both')),
+  currency text not null default 'USD' check (currency in ('USD','JMD','CAD','GBP','EUR')),
+  nightly_rate numeric(12,2),
+  monthly_rent numeric(12,2),
+  status text not null default 'active' check (status in ('active','vacant','occupied','maintenance_issue','archived')),
+  assigned_owner_id uuid references public.profiles(id),
+  bedrooms numeric,
+  bathrooms numeric,
+  square_feet numeric,
+  notes text,
+  archived_at timestamptz,
+  created_by uuid references public.profiles(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
-create table public.guests (
-  id uuid primary key default gen_random_uuid(), workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  full_name text not null, email text, phone text, source text, notes text,
-  created_by uuid references public.profiles(id), created_at timestamptz not null default now(), updated_at timestamptz not null default now()
-);
-
-create table public.bookings (
-  id uuid primary key default gen_random_uuid(), workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  property_id uuid not null references public.properties(id) on delete cascade, guest_id uuid references public.guests(id), guest_name text not null,
-  check_in date not null, check_out date not null, booking_source text, total_amount numeric(12,2) not null default 0, cleaning_fee numeric(12,2) default 0, platform_fee numeric(12,2) default 0,
-  status booking_status not null default 'upcoming', payment_status text not null default 'unpaid', notes text,
-  created_by uuid references public.profiles(id), created_at timestamptz not null default now(), updated_at timestamptz not null default now()
-);
-
-create table public.expenses (
-  id uuid primary key default gen_random_uuid(), workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  property_id uuid references public.properties(id) on delete cascade, category text not null, amount numeric(12,2) not null, currency text not null default 'USD', expense_date date not null, vendor text, notes text,
-  created_by uuid references public.profiles(id), created_at timestamptz not null default now(), updated_at timestamptz not null default now()
-);
-
-create table public.revenue_records (
-  id uuid primary key default gen_random_uuid(), workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  property_id uuid references public.properties(id) on delete cascade, booking_id uuid references public.bookings(id) on delete set null, source text not null, amount numeric(12,2) not null, currency text not null default 'USD', revenue_date date not null,
-  created_by uuid references public.profiles(id), created_at timestamptz not null default now(), updated_at timestamptz not null default now()
-);
-
-create table public.cleaning_checklists (
-  id uuid primary key default gen_random_uuid(), workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  property_id uuid references public.properties(id) on delete cascade, name text not null, is_default boolean not null default false,
-  created_by uuid references public.profiles(id), created_at timestamptz not null default now(), updated_at timestamptz not null default now()
-);
-
-create table public.cleaning_checklist_items (
-  id uuid primary key default gen_random_uuid(), workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  checklist_id uuid not null references public.cleaning_checklists(id) on delete cascade, label text not null, sort_order integer not null default 0, is_required boolean not null default true,
-  created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+create table public.property_assignments (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  property_id uuid not null references public.properties(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  assignment_role text not null check (assignment_role in ('property_owner','cleaner','maintenance','host','accountant')),
+  created_by uuid references public.profiles(id),
+  created_at timestamptz not null default now(),
+  unique (property_id, user_id, assignment_role)
 );
 
 create table public.cleaning_tasks (
-  id uuid primary key default gen_random_uuid(), workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  property_id uuid not null references public.properties(id) on delete cascade, booking_id uuid references public.bookings(id) on delete set null, assigned_user_id uuid references public.profiles(id), checklist_id uuid references public.cleaning_checklists(id),
-  due_at timestamptz, status cleaning_status not null default 'not_started', issue_report text, checklist_state jsonb not null default '{}'::jsonb,
-  created_by uuid references public.profiles(id), created_at timestamptz not null default now(), updated_at timestamptz not null default now()
-);
-
-create table public.cleaning_task_photos (
-  id uuid primary key default gen_random_uuid(), workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  cleaning_task_id uuid not null references public.cleaning_tasks(id) on delete cascade, photo_url text not null, photo_type text check (photo_type in ('before','after','issue')), uploaded_by uuid references public.profiles(id), created_at timestamptz not null default now()
-);
-
-create table public.vendors (
-  id uuid primary key default gen_random_uuid(), workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  name text not null, contact_name text, email text, phone text, service_type text, status text not null default 'active', created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  property_id uuid not null references public.properties(id) on delete cascade,
+  booking_id uuid,
+  assigned_cleaner_id uuid references public.profiles(id),
+  scheduled_for timestamptz not null,
+  status text not null default 'scheduled' check (status in ('scheduled','in_progress','completed','missed','needs_inspection','guest_ready')),
+  checklist_items jsonb not null default '[]'::jsonb,
+  cleaner_notes text,
+  supplies_used text,
+  low_supplies_reported boolean not null default false,
+  issue_reported boolean not null default false,
+  started_at timestamptz,
+  completed_at timestamptz,
+  created_by uuid references public.profiles(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 create table public.maintenance_work_orders (
-  id uuid primary key default gen_random_uuid(), workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  property_id uuid not null references public.properties(id) on delete cascade, title text not null, description text, priority maintenance_priority not null default 'medium', status maintenance_status not null default 'open', assigned_user_id uuid references public.profiles(id), vendor_id uuid references public.vendors(id), parts_needed text, estimated_cost numeric(12,2), actual_cost numeric(12,2), due_date date, completed_at timestamptz,
-  created_by uuid references public.profiles(id), created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  property_id uuid not null references public.properties(id) on delete cascade,
+  reported_by_user_id uuid references public.profiles(id),
+  assigned_maintenance_id uuid references public.profiles(id),
+  title text not null,
+  description text not null,
+  priority text not null default 'medium' check (priority in ('low','medium','high','urgent')),
+  status text not null default 'reported' check (status in ('reported','assigned','in_progress','waiting_parts','completed','cancelled')),
+  estimated_cost numeric(12,2),
+  actual_cost numeric(12,2),
+  parts_needed text,
+  due_date date,
+  notes text,
+  created_by uuid references public.profiles(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  completed_at timestamptz
 );
 
-create table public.maintenance_photos (
-  id uuid primary key default gen_random_uuid(), workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  work_order_id uuid not null references public.maintenance_work_orders(id) on delete cascade, photo_url text not null, uploaded_by uuid references public.profiles(id), created_at timestamptz not null default now()
+create table public.file_uploads (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  property_id uuid references public.properties(id) on delete cascade,
+  cleaning_task_id uuid references public.cleaning_tasks(id) on delete cascade,
+  maintenance_work_order_id uuid references public.maintenance_work_orders(id) on delete cascade,
+  uploaded_by uuid references public.profiles(id),
+  bucket text not null default 'propflow-private',
+  path text not null,
+  file_name text not null,
+  file_type text,
+  file_size bigint,
+  category text not null check (category in ('property_photo','property_document','lease','contract','receipt','invoice','cleaning_photo','maintenance_photo','repair_completion_photo')),
+  created_at timestamptz not null default now()
 );
 
-create table public.owner_reports (
-  id uuid primary key default gen_random_uuid(), workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  owner_id uuid not null references public.property_owners(id) on delete cascade, property_id uuid references public.properties(id) on delete set null, report_type text not null, period_start date not null, period_end date not null, status text not null default 'draft', pdf_url text, csv_url text, monthly_email_enabled boolean not null default true, emailed_at timestamptz,
-  created_by uuid references public.profiles(id), created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+create table public.activity_logs (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  actor_user_id uuid references public.profiles(id),
+  action text not null,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
 );
 
 create table public.notifications (
-  id uuid primary key default gen_random_uuid(), workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  recipient_user_id uuid references public.profiles(id), type text not null, message text not null, status text not null default 'unread', metadata jsonb not null default '{}'::jsonb, created_at timestamptz not null default now()
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  recipient_user_id uuid references public.profiles(id),
+  type text not null,
+  message text not null,
+  status text not null default 'unread' check (status in ('unread','read','archived')),
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
 );
 
-create table public.activity_log (
-  id uuid primary key default gen_random_uuid(), workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  actor_user_id uuid references public.profiles(id), action text not null, entity_type text, entity_id uuid, metadata jsonb not null default '{}'::jsonb, created_at timestamptz not null default now()
-);
+create index workspace_members_user_idx on public.workspace_members (user_id);
+create index workspace_members_roles_idx on public.workspace_members using gin (roles);
+create index properties_workspace_status_idx on public.properties (workspace_id, status);
+create index property_assignments_user_idx on public.property_assignments (workspace_id, user_id, assignment_role);
+create index cleaning_tasks_workspace_idx on public.cleaning_tasks (workspace_id, scheduled_for, status);
+create index cleaning_tasks_assignment_idx on public.cleaning_tasks (workspace_id, assigned_cleaner_id);
+create index maintenance_workspace_idx on public.maintenance_work_orders (workspace_id, status, priority);
+create index maintenance_assignment_idx on public.maintenance_work_orders (workspace_id, assigned_maintenance_id);
+create index file_uploads_workspace_idx on public.file_uploads (workspace_id, category);
+create index activity_logs_workspace_idx on public.activity_logs (workspace_id, created_at desc);
 
--- Indexes for tenant scoping, filters, assignment, dates, and statuses.
-create index on public.workspace_members (workspace_id, user_id); create index on public.workspace_members (user_id); create index on public.workspace_members using gin (roles);
-create index on public.properties (workspace_id); create index on public.properties (workspace_id, owner_id); create index on public.properties (workspace_id, assigned_cleaner_id); create index on public.properties (workspace_id, assigned_maintenance_user_id); create index on public.properties (workspace_id, status); create index on public.properties (workspace_id, city);
-create index on public.bookings (workspace_id, property_id); create index on public.bookings (workspace_id, check_in); create index on public.bookings (workspace_id, status); create index on public.bookings (workspace_id, booking_source);
-create index on public.cleaning_tasks (workspace_id, property_id); create index on public.cleaning_tasks (workspace_id, assigned_user_id); create index on public.cleaning_tasks (workspace_id, due_at); create index on public.cleaning_tasks (workspace_id, status);
-create index on public.maintenance_work_orders (workspace_id, property_id); create index on public.maintenance_work_orders (workspace_id, assigned_user_id); create index on public.maintenance_work_orders (workspace_id, vendor_id); create index on public.maintenance_work_orders (workspace_id, priority); create index on public.maintenance_work_orders (workspace_id, status); create index on public.maintenance_work_orders (workspace_id, due_date);
-create index on public.expenses (workspace_id, property_id); create index on public.expenses (workspace_id, expense_date); create index on public.revenue_records (workspace_id, property_id); create index on public.revenue_records (workspace_id, revenue_date);
-create index on public.owner_reports (workspace_id, owner_id); create index on public.notifications (workspace_id, recipient_user_id, status); create index on public.activity_log (workspace_id, created_at desc);
+create trigger profiles_updated_at before update on public.profiles for each row execute function public.set_updated_at();
+create trigger workspaces_updated_at before update on public.workspaces for each row execute function public.set_updated_at();
+create trigger workspace_members_updated_at before update on public.workspace_members for each row execute function public.set_updated_at();
+create trigger workspace_invites_updated_at before update on public.workspace_invites for each row execute function public.set_updated_at();
+create trigger properties_updated_at before update on public.properties for each row execute function public.set_updated_at();
+create trigger cleaning_tasks_updated_at before update on public.cleaning_tasks for each row execute function public.set_updated_at();
+create trigger maintenance_work_orders_updated_at before update on public.maintenance_work_orders for each row execute function public.set_updated_at();
 
--- RLS helpers and policies.
-create or replace function public.is_workspace_member(target_workspace_id uuid)
-returns boolean language sql security definer set search_path = public as $$
-  select exists (select 1 from public.workspace_members wm join public.profiles p on p.id = wm.user_id where wm.workspace_id = target_workspace_id and wm.user_id = auth.uid() and wm.status = 'active' and p.status = 'active')
-  or exists (select 1 from public.profiles p where p.id = auth.uid() and p.is_propflow_admin = true and p.status = 'active');
-$$;
+create or replace function public.handle_new_user_profile()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.profiles (id, email, full_name)
+  values (new.id, new.email, coalesce(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1)))
+  on conflict (id) do update set email = excluded.email;
+  return new;
+end; $$;
+create trigger on_auth_user_created after insert on auth.users for each row execute function public.handle_new_user_profile();
 
 create or replace function public.is_propflow_admin()
-returns boolean language sql security definer set search_path = public as $$ select exists (select 1 from public.profiles where id = auth.uid() and is_propflow_admin = true and status = 'active'); $$;
+returns boolean language sql security definer set search_path = public as $$
+  select exists (select 1 from public.profiles where id = auth.uid() and is_propflow_admin = true and status = 'active');
+$$;
+
+create or replace function public.is_active_workspace_member(target_workspace_id uuid)
+returns boolean language sql security definer set search_path = public as $$
+  select exists (
+    select 1 from public.workspace_members wm
+    join public.profiles p on p.id = wm.user_id
+    join public.workspaces w on w.id = wm.workspace_id
+    where wm.workspace_id = target_workspace_id and wm.user_id = auth.uid()
+      and wm.status = 'active' and p.status = 'active' and w.status = 'active'
+  ) or public.is_propflow_admin();
+$$;
+
+create or replace function public.has_workspace_role(target_workspace_id uuid, allowed_roles text[])
+returns boolean language sql security definer set search_path = public as $$
+  select public.is_propflow_admin() or exists (
+    select 1 from public.workspace_members wm join public.profiles p on p.id = wm.user_id
+    where wm.workspace_id = target_workspace_id and wm.user_id = auth.uid() and wm.status = 'active' and p.status = 'active' and wm.roles && allowed_roles
+  );
+$$;
+
+create or replace function public.can_access_property(target_workspace_id uuid, target_property_id uuid)
+returns boolean language sql security definer set search_path = public as $$
+  select public.has_workspace_role(target_workspace_id, array['workspace_owner','property_manager','host','accountant'])
+  or exists (select 1 from public.property_assignments pa where pa.workspace_id = target_workspace_id and pa.property_id = target_property_id and pa.user_id = auth.uid())
+  or exists (select 1 from public.cleaning_tasks ct where ct.workspace_id = target_workspace_id and ct.property_id = target_property_id and ct.assigned_cleaner_id = auth.uid())
+  or exists (select 1 from public.maintenance_work_orders mw where mw.workspace_id = target_workspace_id and mw.property_id = target_property_id and mw.assigned_maintenance_id = auth.uid());
+$$;
 
 alter table public.profiles enable row level security;
-create policy "profiles own or admin" on public.profiles for select using (id = auth.uid() or public.is_propflow_admin());
-create policy "profiles update own" on public.profiles for update using (id = auth.uid()) with check (id = auth.uid());
+alter table public.workspaces enable row level security;
+alter table public.workspace_members enable row level security;
+alter table public.workspace_invites enable row level security;
+alter table public.properties enable row level security;
+alter table public.property_assignments enable row level security;
+alter table public.cleaning_tasks enable row level security;
+alter table public.maintenance_work_orders enable row level security;
+alter table public.file_uploads enable row level security;
+alter table public.activity_logs enable row level security;
+alter table public.notifications enable row level security;
 
--- Apply a simple workspace policy to every workspace-scoped table.
-alter table public.workspaces enable row level security; create policy "workspace members can read workspace" on public.workspaces for select using (public.is_workspace_member(id));
+create policy profiles_select_own_or_admin on public.profiles for select using (id = auth.uid() or public.is_propflow_admin());
+create policy profiles_update_own on public.profiles for update using (id = auth.uid()) with check (id = auth.uid() and is_propflow_admin = false);
+create policy profiles_insert_own on public.profiles for insert with check (id = auth.uid() and is_propflow_admin = false);
 
--- The loop below is intentionally explicit in generated SQL environments; Supabase applies it at migration time.
-do $$ declare tbl text; begin
-  foreach tbl in array array['workspace_members','workspace_invites','workspace_join_codes','subscriptions','property_owners','properties','guests','bookings','expenses','revenue_records','cleaning_checklists','cleaning_checklist_items','cleaning_tasks','cleaning_task_photos','vendors','maintenance_work_orders','maintenance_photos','owner_reports','notifications','activity_log'] loop
-    execute format('alter table public.%I enable row level security', tbl);
-    execute format('create policy %L on public.%I for select using (public.is_workspace_member(workspace_id))', tbl || ' workspace select', tbl);
-    execute format('create policy %L on public.%I for insert with check (public.is_workspace_member(workspace_id))', tbl || ' workspace insert', tbl);
-    execute format('create policy %L on public.%I for update using (public.is_workspace_member(workspace_id)) with check (public.is_workspace_member(workspace_id))', tbl || ' workspace update', tbl);
-    execute format('create policy %L on public.%I for delete using (public.is_workspace_member(workspace_id))', tbl || ' workspace delete', tbl);
-  end loop;
-end $$;
+create policy workspaces_select_member on public.workspaces for select using (public.is_active_workspace_member(id));
+create policy workspaces_insert_authenticated on public.workspaces for insert with check (auth.uid() is not null and status = 'active');
+create policy workspaces_update_owner_manager on public.workspaces for update using (public.has_workspace_role(id, array['workspace_owner'])) with check (public.has_workspace_role(id, array['workspace_owner']));
 
--- Plans are globally readable; writes should be performed by PropFlow admins.
-alter table public.plans enable row level security;
-create policy "plans readable" on public.plans for select using (true);
-create policy "plans admin write" on public.plans for all using (public.is_propflow_admin()) with check (public.is_propflow_admin());
+create policy workspace_members_select_member on public.workspace_members for select using (public.is_active_workspace_member(workspace_id) or user_id = auth.uid());
+create policy workspace_members_insert_owner_or_self_invite on public.workspace_members for insert with check (public.has_workspace_role(workspace_id, array['workspace_owner']) or user_id = auth.uid());
+create policy workspace_members_update_owner on public.workspace_members for update using (public.has_workspace_role(workspace_id, array['workspace_owner'])) with check (public.has_workspace_role(workspace_id, array['workspace_owner']));
 
--- Updated-at triggers.
-do $$ declare tbl text; begin
-  foreach tbl in array array['profiles','plans','workspaces','workspace_members','workspace_invites','workspace_join_codes','subscriptions','property_owners','properties','guests','bookings','expenses','revenue_records','cleaning_checklists','cleaning_checklist_items','cleaning_tasks','vendors','maintenance_work_orders','owner_reports'] loop
-    execute format('create trigger set_%I_updated_at before update on public.%I for each row execute function public.set_updated_at()', tbl, tbl);
-  end loop;
-end $$;
+create policy workspace_invites_select_owner_or_email on public.workspace_invites for select using (public.has_workspace_role(workspace_id, array['workspace_owner']) or lower(email) = lower((select auth.email())));
+create policy workspace_invites_insert_owner on public.workspace_invites for insert with check (public.has_workspace_role(workspace_id, array['workspace_owner']) and not roles && array['propflow_admin']);
+create policy workspace_invites_update_owner_or_accepting_user on public.workspace_invites for update using (public.has_workspace_role(workspace_id, array['workspace_owner']) or lower(email) = lower((select auth.email()))) with check (not roles && array['propflow_admin']);
+
+create policy properties_select_authorized on public.properties for select using (public.can_access_property(workspace_id, id));
+create policy properties_insert_manager on public.properties for insert with check (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager']));
+create policy properties_update_manager on public.properties for update using (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager'])) with check (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager']));
+
+create policy property_assignments_member_access on public.property_assignments for select using (public.is_active_workspace_member(workspace_id));
+create policy property_assignments_manage on public.property_assignments for all using (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager'])) with check (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager']));
+
+create policy cleaning_select_authorized on public.cleaning_tasks for select using (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager','host']) or assigned_cleaner_id = auth.uid());
+create policy cleaning_insert_manager on public.cleaning_tasks for insert with check (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager','host']));
+create policy cleaning_update_authorized on public.cleaning_tasks for update using (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager','host']) or assigned_cleaner_id = auth.uid()) with check (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager','host']) or assigned_cleaner_id = auth.uid());
+
+create policy maintenance_select_authorized on public.maintenance_work_orders for select using (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager','host']) or assigned_maintenance_id = auth.uid() or reported_by_user_id = auth.uid() or public.can_access_property(workspace_id, property_id));
+create policy maintenance_insert_authorized on public.maintenance_work_orders for insert with check (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager','host']) or public.can_access_property(workspace_id, property_id));
+create policy maintenance_update_authorized on public.maintenance_work_orders for update using (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager','host']) or assigned_maintenance_id = auth.uid()) with check (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager','host']) or assigned_maintenance_id = auth.uid());
+
+create policy file_uploads_select_authorized on public.file_uploads for select using (public.is_active_workspace_member(workspace_id));
+create policy file_uploads_insert_authorized on public.file_uploads for insert with check (public.is_active_workspace_member(workspace_id) and uploaded_by = auth.uid());
+
+create policy activity_logs_select_member on public.activity_logs for select using (public.is_active_workspace_member(workspace_id));
+create policy activity_logs_insert_member on public.activity_logs for insert with check (public.is_active_workspace_member(workspace_id) and actor_user_id = auth.uid());
+
+create policy notifications_select_recipient_or_manager on public.notifications for select using (recipient_user_id = auth.uid() or public.has_workspace_role(workspace_id, array['workspace_owner','property_manager']));
+create policy notifications_manage_manager on public.notifications for all using (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager'])) with check (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager']));
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('propflow-private', 'propflow-private', false, 52428800, null)
+on conflict (id) do update set public = false;
+
+create policy storage_private_select on storage.objects for select using (
+  bucket_id = 'propflow-private' and public.is_active_workspace_member((storage.foldername(name))[1]::uuid)
+);
+create policy storage_private_insert on storage.objects for insert with check (
+  bucket_id = 'propflow-private' and public.is_active_workspace_member((storage.foldername(name))[1]::uuid)
+);
+create policy storage_private_update on storage.objects for update using (
+  bucket_id = 'propflow-private' and public.is_active_workspace_member((storage.foldername(name))[1]::uuid)
+) with check (
+  bucket_id = 'propflow-private' and public.is_active_workspace_member((storage.foldername(name))[1]::uuid)
+);
