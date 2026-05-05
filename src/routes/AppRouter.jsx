@@ -1,5 +1,5 @@
 import React from 'react';
-import { getPostLoginPath } from '../lib/auth.js';
+import { getPostLoginPath, hasAnyRole } from '../lib/auth.js';
 import { useApp } from '../lib/AppContext.jsx';
 import { roles } from '../data/constants.js';
 import { LandingPage } from '../pages/LandingPage.jsx';
@@ -24,12 +24,12 @@ import { AdminDashboardPage } from '../pages/AdminDashboardPage.jsx';
 import { OwnerDashboardPage } from '../pages/OwnerDashboardPage.jsx';
 import { CleanerDashboardPage } from '../pages/CleanerDashboardPage.jsx';
 import { MaintenanceDashboardPage } from '../pages/MaintenanceDashboardPage.jsx';
+import { AccountantDashboardPage } from '../pages/AccountantDashboardPage.jsx';
+import { ComingSoonPage } from '../pages/ComingSoonPage.jsx';
 
-const routes = {
-  '/': LandingPage,
-  '/pricing': PricingPage,
-  '/login': LoginPage,
-  '/signup': SignupPage,
+const publicRoutes = { '/': LandingPage, '/pricing': PricingPage, '/login': LoginPage, '/signup': SignupPage };
+const protectedRoutes = {
+  '/workspace-setup': JoinWorkspacePage,
   '/join': JoinWorkspacePage,
   '/suspended': SuspendedPage,
   '/dashboard': DashboardPage,
@@ -47,6 +47,12 @@ const routes = {
   '/owner-dashboard': OwnerDashboardPage,
   '/cleaner-dashboard': CleanerDashboardPage,
   '/maintenance-dashboard': MaintenanceDashboardPage,
+  '/accountant-dashboard': AccountantDashboardPage,
+  '/inventory': () => <ComingSoonPage title="Supplies / Inventory" />,
+  '/team': SettingsPage,
+  '/smart-tools': () => <ComingSoonPage title="Smart Tools / AI Tools" />,
+  '/billing': () => <ComingSoonPage title="Billing / Subscription" />,
+  '/help': () => <ComingSoonPage title="Help / Support" />,
 };
 
 export function navigate(path) {
@@ -54,29 +60,39 @@ export function navigate(path) {
   window.dispatchEvent(new PopStateEvent('popstate'));
 }
 
+function LoadingScreen() { return <div className="auth-page"><div className="auth-card"><h1>Loading PropFlow…</h1><p>Checking Supabase Auth session and workspace membership.</p></div></div>; }
+
+function isPublicPath(path) { return Boolean(publicRoutes[path]); }
+
 export function AppRouter() {
   const [, forceRender] = React.useReducer((x) => x + 1, 0);
-  const { currentUser } = useApp();
-  React.useEffect(() => {
-    window.addEventListener('popstate', forceRender);
-    return () => window.removeEventListener('popstate', forceRender);
-  }, []);
+  const { authLoading, currentUser, currentWorkspace } = useApp();
+  React.useEffect(() => { window.addEventListener('popstate', forceRender); return () => window.removeEventListener('popstate', forceRender); }, []);
 
   const path = window.location.pathname;
-  if (path === '/login/redirect') {
-    navigate(getPostLoginPath(currentUser));
-    return null;
+  if (authLoading) return <LoadingScreen />;
+  if (path === '/login/redirect') { navigate(getPostLoginPath(currentUser)); return null; }
+
+  if (isPublicPath(path)) {
+    if (currentUser && (path === '/login' || path === '/signup')) { navigate(getPostLoginPath(currentUser)); return null; }
+    const Page = publicRoutes[path];
+    return <Page />;
   }
-  if (path.startsWith('/properties/')) return <PropertyDetailPage propertyId={path.split('/').pop()} />;
-  const Page = routes[path] || LandingPage;
+
+  if (!currentUser) { navigate('/login'); return null; }
+  if (currentUser.status === 'suspended' && path !== '/suspended' && path !== '/account') { navigate('/suspended'); return null; }
+  if (!currentWorkspace && !currentUser.roles?.includes(roles.ADMIN) && path !== '/workspace-setup' && path !== '/join' && path !== '/account') { navigate('/workspace-setup'); return null; }
+  if (currentWorkspace && (path === '/workspace-setup' || path === '/join')) { navigate(getPostLoginPath(currentUser)); return null; }
+  if (path === '/admin' && !currentUser.roles?.includes(roles.ADMIN)) return <SuspendedPage variant="denied" />;
+  if (path.startsWith('/properties/')) return <RoleGuard allowed={[roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.OWNER, roles.ACCOUNTANT, roles.CLEANER, roles.MAINTENANCE]}><PropertyDetailPage propertyId={path.split('/').pop()} /></RoleGuard>;
+  const Page = protectedRoutes[path] || DashboardPage;
   return <Page />;
 }
 
 export function RoleGuard({ allowed, children }) {
   const { currentUser } = useApp();
-  const hasRole = currentUser?.roles?.some((role) => allowed.includes(role));
   if (currentUser?.status === 'suspended') return <SuspendedPage />;
-  if (!hasRole) return <SuspendedPage variant="denied" />;
+  if (!hasAnyRole(currentUser, allowed)) return <SuspendedPage variant="denied" />;
   return children;
 }
 
@@ -86,4 +102,5 @@ export const routeAccess = {
   owner: [roles.OWNER, roles.OWNER_ADMIN],
   cleaner: [roles.CLEANER],
   maintenance: [roles.MAINTENANCE],
+  accountant: [roles.ACCOUNTANT],
 };

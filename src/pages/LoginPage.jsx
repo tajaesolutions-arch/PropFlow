@@ -1,9 +1,19 @@
 import React from 'react';
 import { ShieldCheck } from 'lucide-react';
-import { demoUsers } from '../data/sampleData.js';
-import { roleLabels } from '../data/constants.js';
-import { findDemoUser, getPostLoginPath } from '../lib/auth.js';
-import { isSupabaseConfigured } from '../lib/supabase.js';
 import { useApp } from '../lib/AppContext.jsx';
 import { navigate } from '../routes/AppRouter.jsx';
-export function LoginPage() { const { setCurrentUser } = useApp(); const login = (id) => { const user = findDemoUser(id); setCurrentUser(user); navigate(getPostLoginPath(user)); }; return <div className="auth-page"><div className="auth-card"><ShieldCheck size={34}/><h1>Login to PropFlow</h1><p>Real Supabase auth is ready when environment variables are configured. Demo mode stays available without secrets.</p>{!isSupabaseConfigured && <div className="helper">Supabase not configured: using safe demo login mode.</div>}<label>Email<input placeholder="you@company.com" /></label><label>Password<input type="password" placeholder="••••••••" /></label><button className="primary" onClick={() => login('u-owner-admin')}>Login as workspace owner</button><div className="demo-list">{demoUsers.map((user) => <button key={user.id} onClick={() => login(user.id)}><span>{user.name}</span><small>{user.status === 'suspended' ? 'Suspended account' : user.roles.map((role) => roleLabels[role]).join(', ')}</small></button>)}</div><p><button onClick={() => navigate('/signup')}>Create account</button> · <button onClick={() => navigate('/join')}>Join workspace</button></p></div></div>; }
+
+export function LoginPage() {
+  const { signIn, isSupabaseConfigured } = useApp();
+  const [email, setEmail] = React.useState('');
+  const [password, setPassword] = React.useState('');
+  const [message, setMessage] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const submit = async (event) => {
+    event.preventDefault();
+    if (!isSupabaseConfigured) { setMessage('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to use real authentication.'); return; }
+    setBusy(true); setMessage('');
+    try { await signIn(email, password); navigate('/login/redirect'); } catch (error) { setMessage(error.message); } finally { setBusy(false); }
+  };
+  return <div className="auth-page"><form className="auth-card" onSubmit={submit}><ShieldCheck size={34}/><h1>Login to PropFlow</h1><p>Use your Supabase Auth account. Your workspace, roles, and access are loaded from the database after login.</p>{!isSupabaseConfigured && <div className="helper">Supabase is not configured. Demo login has been removed from production UI.</div>}<label>Email<input value={email} onChange={(e)=>setEmail(e.target.value)} placeholder="you@company.com" type="email" required /></label><label>Password<input value={password} onChange={(e)=>setPassword(e.target.value)} type="password" placeholder="••••••••" required /></label>{message && <div className="helper error-helper">{message}</div>}<button className="primary" disabled={busy}>{busy ? 'Signing in…' : 'Login'}</button><p><button type="button" className="link" onClick={() => navigate('/signup')}>Create account</button> · <button type="button" className="link" onClick={() => navigate('/workspace-setup')}>I have an invite or code</button></p></form></div>;
+}

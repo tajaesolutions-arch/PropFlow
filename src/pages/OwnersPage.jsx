@@ -1,5 +1,4 @@
 import React from 'react';
 import { AppLayout } from '../components/layout/AppLayout.jsx';
-import { DataTable } from '../components/DataTable.jsx';
-import { propertyOwners } from '../data/sampleData.js';
-export function OwnersPage(){ return <AppLayout title="Owners"><section className="card"><h3>Property owners</h3><DataTable rows={propertyOwners} columns={[{key:'name',label:'Owner'},{key:'email',label:'Email'},{key:'phone',label:'Phone'},{key:'payoutPreference',label:'Payout preference'}]} /></section></AppLayout>}
+import { EmptyState } from '../components/EmptyState.jsx';
+export function OwnersPage(){ return <AppLayout title="Owners"><EmptyState title="Owner records are coming soon." description="Property-owner assignment is represented in the Phase 1 schema, but full owner CRM and payout workflows are deferred." /></AppLayout>}
