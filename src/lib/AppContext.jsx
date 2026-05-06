@@ -4,7 +4,7 @@ import { resolvePrimaryRole } from './auth.js';
 import { isSupabaseConfigured, supabase } from './supabase.js';
 
 const AppContext = createContext(null);
-const emptyData = { properties: [], cleaningTasks: [], maintenanceWorkOrders: [], bookings: [], notifications: [], ownerReports: [], fileUploads: [], invites: [], members: [] };
+const emptyData = { properties: [], cleaningTasks: [], maintenanceWorkOrders: [], bookings: [], leases: [], contacts: [], notifications: [], ownerReports: [], fileUploads: [], invites: [], members: [] };
 const customerAssignableRoles = new Set([roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT, roles.OWNER, roles.CLEANER, roles.MAINTENANCE]);
 const storageKey = 'propflow.currentWorkspaceId';
 
@@ -29,6 +29,16 @@ function normalizeCleaning(row, properties = []) {
 function normalizeMaintenance(row, properties = []) {
   const property = properties.find((item) => item.id === row.property_id);
   return { ...row, property: property?.name || 'Unassigned property', propertyId: row.property_id, assignedMaintenanceId: row.assigned_maintenance_id, estimatedCost: row.estimated_cost, actualCost: row.actual_cost, partsNeeded: row.parts_needed, due: row.due_date };
+}
+
+function normalizeBooking(row, properties = []) {
+  const property = properties.find((item) => item.id === row.property_id);
+  return { ...row, property: property?.name || 'Unassigned property', propertyId: row.property_id, contactId: row.contact_id, guestName: row.guest_name, guestEmail: row.guest_email, guestPhone: row.guest_phone, checkIn: row.check_in, checkOut: row.check_out, guestCount: row.guest_count, paymentStatus: row.payment_status, totalAmount: row.total_amount, cleaningFee: row.cleaning_fee, taxesFees: row.taxes_fees, ownerPayout: row.owner_payout, autoCreateCleaning: row.auto_create_cleaning, cancelledAt: row.cancelled_at };
+}
+
+function normalizeLease(row, properties = []) {
+  const property = properties.find((item) => item.id === row.property_id);
+  return { ...row, property: property?.name || 'Unassigned property', propertyId: row.property_id, contactId: row.contact_id, tenantName: row.tenant_name, tenantEmail: row.tenant_email, tenantPhone: row.tenant_phone, leaseStart: row.lease_start, leaseEnd: row.lease_end, monthlyRent: row.monthly_rent, securityDeposit: row.security_deposit, rentPaymentStatus: row.rent_payment_status, leaseStatus: row.lease_status, leaseDocumentFileId: row.lease_document_file_id, terminatedAt: row.terminated_at };
 }
 
 function inviteToken() {
@@ -58,10 +68,13 @@ export function AppProvider({ children }) {
 
   const refreshWorkspaceData = async (workspace = currentWorkspace) => {
     if (!supabase || !workspace?.id) { setData(emptyData); return; }
-    const [propertiesRes, cleaningRes, maintenanceRes, invitesRes, membersRes, filesRes] = await Promise.all([
+    const [propertiesRes, cleaningRes, maintenanceRes, bookingsRes, leasesRes, contactsRes, invitesRes, membersRes, filesRes] = await Promise.all([
       supabase.from('properties').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false }),
       supabase.from('cleaning_tasks').select('*').eq('workspace_id', workspace.id).order('scheduled_for', { ascending: true }),
       supabase.from('maintenance_work_orders').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false }),
+      supabase.from('bookings').select('*').eq('workspace_id', workspace.id).order('check_in', { ascending: true }),
+      supabase.from('leases').select('*').eq('workspace_id', workspace.id).order('lease_start', { ascending: true }),
+      supabase.from('contacts').select('*').eq('workspace_id', workspace.id).order('updated_at', { ascending: false }),
       supabase.from('workspace_invites').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false }),
       supabase.from('workspace_members').select('*, profiles(full_name, email)').eq('workspace_id', workspace.id).order('created_at', { ascending: true }),
       supabase.from('file_uploads').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false }),
@@ -72,6 +85,9 @@ export function AppProvider({ children }) {
       properties: props,
       cleaningTasks: (cleaningRes.data || []).map((row) => normalizeCleaning(row, props)),
       maintenanceWorkOrders: (maintenanceRes.data || []).map((row) => normalizeMaintenance(row, props)),
+      bookings: (bookingsRes.data || []).map((row) => normalizeBooking(row, props)),
+      leases: (leasesRes.data || []).map((row) => normalizeLease(row, props)),
+      contacts: contactsRes.data || [],
       invites: invitesRes.data || [],
       members: membersRes.data || [],
       fileUploads: filesRes.data || [],
@@ -331,6 +347,91 @@ export function AppProvider({ children }) {
     await refreshWorkspaceData();
   };
 
+
+  const friendlyBookingError = (error) => {
+    const message = error?.message || 'The booking or lease could not be saved.';
+    if (message.toLowerCase().includes('overlap') || message.toLowerCase().includes('active lease') || error?.code === '23P01') return new Error(message);
+    return error;
+  };
+
+  const defaultCurrencyForProperty = (propertyId) => data.properties.find((property) => property.id === propertyId)?.currency || currentWorkspace?.defaultCurrency || 'USD';
+
+  const createOrUpdateContact = async ({ full_name, email, phone, contact_type, notes }) => {
+    const client = requireSupabase();
+    const { data: contact, error: contactError } = await client.rpc('create_or_update_contact', { p_workspace_id: currentWorkspace.id, p_full_name: full_name, p_email: email || null, p_phone: phone || null, p_contact_type: contact_type, p_notes: notes || null });
+    if (contactError) throw contactError;
+    return contact;
+  };
+
+  const loadBookings = () => refreshWorkspaceData();
+  const loadLeases = () => refreshWorkspaceData();
+
+  const createBooking = async (payload) => {
+    const client = requireSupabase();
+    try {
+      const contact = await createOrUpdateContact({ full_name: payload.guest_name, email: payload.guest_email, phone: payload.guest_phone, contact_type: 'guest', notes: payload.notes });
+      const record = { ...payload, contact_id: contact?.id || null, currency: payload.currency || defaultCurrencyForProperty(payload.property_id), workspace_id: currentWorkspace.id, created_by: session.user.id };
+      const { data: row, error: bookingError } = await client.from('bookings').insert(record).select('*').single();
+      if (bookingError) throw bookingError;
+      await client.from('activity_logs').insert({ workspace_id: currentWorkspace.id, actor_user_id: session.user.id, action: 'booking.created', metadata: { booking_id: row.id, property_id: row.property_id } });
+      await refreshWorkspaceData();
+      return normalizeBooking(row, data.properties);
+    } catch (error) {
+      throw friendlyBookingError(error);
+    }
+  };
+
+  const updateBooking = async (id, payload) => {
+    const client = requireSupabase();
+    try {
+      const patch = { ...payload };
+      if (payload.guest_name || payload.guest_email || payload.guest_phone) {
+        const contact = await createOrUpdateContact({ full_name: payload.guest_name, email: payload.guest_email, phone: payload.guest_phone, contact_type: 'guest', notes: payload.notes });
+        patch.contact_id = contact?.id || null;
+      }
+      const { error: bookingError } = await client.from('bookings').update(patch).eq('id', id).eq('workspace_id', currentWorkspace.id);
+      if (bookingError) throw bookingError;
+      await refreshWorkspaceData();
+    } catch (error) {
+      throw friendlyBookingError(error);
+    }
+  };
+
+  const cancelBooking = async (id) => updateBooking(id, { status: 'cancelled', cancelled_at: new Date().toISOString() });
+
+  const createLease = async (payload) => {
+    const client = requireSupabase();
+    try {
+      const contact = await createOrUpdateContact({ full_name: payload.tenant_name, email: payload.tenant_email, phone: payload.tenant_phone, contact_type: 'tenant', notes: payload.notes });
+      const record = { ...payload, contact_id: contact?.id || null, currency: payload.currency || defaultCurrencyForProperty(payload.property_id), workspace_id: currentWorkspace.id, created_by: session.user.id };
+      const { data: row, error: leaseError } = await client.from('leases').insert(record).select('*').single();
+      if (leaseError) throw leaseError;
+      await client.from('activity_logs').insert({ workspace_id: currentWorkspace.id, actor_user_id: session.user.id, action: 'lease.created', metadata: { lease_id: row.id, property_id: row.property_id } });
+      await refreshWorkspaceData();
+      return normalizeLease(row, data.properties);
+    } catch (error) {
+      throw friendlyBookingError(error);
+    }
+  };
+
+  const updateLease = async (id, payload) => {
+    const client = requireSupabase();
+    try {
+      const patch = { ...payload };
+      if (payload.tenant_name || payload.tenant_email || payload.tenant_phone) {
+        const contact = await createOrUpdateContact({ full_name: payload.tenant_name, email: payload.tenant_email, phone: payload.tenant_phone, contact_type: 'tenant', notes: payload.notes });
+        patch.contact_id = contact?.id || null;
+      }
+      const { error: leaseError } = await client.from('leases').update(patch).eq('id', id).eq('workspace_id', currentWorkspace.id);
+      if (leaseError) throw leaseError;
+      await refreshWorkspaceData();
+    } catch (error) {
+      throw friendlyBookingError(error);
+    }
+  };
+
+  const terminateLease = async (id, lease_status = 'terminated') => updateLease(id, { lease_status, terminated_at: new Date().toISOString() });
+
   const uploadFile = async ({ file, category, property_id, cleaning_task_id, maintenance_work_order_id }) => {
     const client = requireSupabase();
     if (!file) throw new Error('Choose a file before uploading.');
@@ -344,7 +445,7 @@ export function AppProvider({ children }) {
     await refreshWorkspaceData();
   };
 
-  const value = useMemo(() => ({ session, authLoading, currentUser, currentWorkspace, workspaces, memberships, data, error, isSupabaseConfigured, signIn, signUp, signOut, loadAccount, setCurrentWorkspace, createWorkspace, acceptInvite, createInvite, createProperty, updateProperty, archiveProperty, restoreProperty, createCleaningTask, updateCleaningTask, createMaintenanceWorkOrder, updateMaintenanceWorkOrder, uploadFile }), [session, authLoading, currentUser, currentWorkspace, workspaces, memberships, data, error]);
+  const value = useMemo(() => ({ session, authLoading, currentUser, currentWorkspace, workspaces, memberships, data, error, isSupabaseConfigured, signIn, signUp, signOut, loadAccount, setCurrentWorkspace, createWorkspace, acceptInvite, createInvite, createProperty, updateProperty, archiveProperty, restoreProperty, createCleaningTask, updateCleaningTask, createMaintenanceWorkOrder, updateMaintenanceWorkOrder, createOrUpdateContact, loadBookings, loadLeases, createBooking, updateBooking, cancelBooking, createLease, updateLease, terminateLease, uploadFile }), [session, authLoading, currentUser, currentWorkspace, workspaces, memberships, data, error]);
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
 
