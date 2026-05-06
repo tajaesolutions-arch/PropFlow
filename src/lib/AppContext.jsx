@@ -81,90 +81,167 @@ export function AppProvider({ children }) {
   const [error, setError] = useState('');
 
   const refreshWorkspaceData = async (workspace = currentWorkspace) => {
-    if (!supabase || !workspace?.id) { setData(emptyData); return; }
+    if (!supabase || !workspace?.id) { setData(emptyData); return { ok: true, warnings: [] }; }
+
+    const makeWorkspaceQuery = (label, key, query, normalize = (rows) => rows || [], core = false) => ({ label, key, query, normalize, core });
     const workspaceQueries = [
-      ['properties', supabase.from('properties').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false })],
-      ['cleaning tasks', supabase.from('cleaning_tasks').select('*').eq('workspace_id', workspace.id).order('scheduled_for', { ascending: true })],
-      ['maintenance work orders', supabase.from('maintenance_work_orders').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false })],
-      ['bookings', supabase.from('bookings').select('*').eq('workspace_id', workspace.id).order('check_in', { ascending: true })],
-      ['leases', supabase.from('leases').select('*').eq('workspace_id', workspace.id).order('lease_start', { ascending: true })],
-      ['contacts', supabase.from('contacts').select('*').eq('workspace_id', workspace.id).order('updated_at', { ascending: false })],
-      ['workspace invites', supabase.from('workspace_invites').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false })],
-      ['workspace members', supabase.from('workspace_members').select('*, profiles(full_name, email)').eq('workspace_id', workspace.id).order('created_at', { ascending: true })],
-      ['file uploads', supabase.from('file_uploads').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false })],
+      makeWorkspaceQuery('properties', 'properties', supabase.from('properties').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false }), (rows) => (rows || []).map(normalizeProperty), true),
+      makeWorkspaceQuery('workspace members', 'members', supabase.from('workspace_members').select('*, profiles(full_name, email)').eq('workspace_id', workspace.id).order('created_at', { ascending: true }), (rows) => rows || [], true),
+      makeWorkspaceQuery('bookings', 'bookings', supabase.from('bookings').select('*').eq('workspace_id', workspace.id).order('check_in', { ascending: true }), (rows, props) => (rows || []).map((row) => normalizeBooking(row, props))),
+      makeWorkspaceQuery('leases', 'leases', supabase.from('leases').select('*').eq('workspace_id', workspace.id).order('lease_start', { ascending: true }), (rows, props) => (rows || []).map((row) => normalizeLease(row, props))),
+      makeWorkspaceQuery('contacts', 'contacts', supabase.from('contacts').select('*').eq('workspace_id', workspace.id).order('updated_at', { ascending: false })),
+      makeWorkspaceQuery('cleaning tasks', 'cleaningTasks', supabase.from('cleaning_tasks').select('*').eq('workspace_id', workspace.id).order('scheduled_for', { ascending: true }), (rows, props) => (rows || []).map((row) => normalizeCleaning(row, props))),
+      makeWorkspaceQuery('maintenance work orders', 'maintenanceWorkOrders', supabase.from('maintenance_work_orders').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false }), (rows, props) => (rows || []).map((row) => normalizeMaintenance(row, props))),
+      makeWorkspaceQuery('workspace invites', 'invites', supabase.from('workspace_invites').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false })),
+      makeWorkspaceQuery('file uploads', 'fileUploads', supabase.from('file_uploads').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false })),
     ];
-    const [propertiesRes, cleaningRes, maintenanceRes, bookingsRes, leasesRes, contactsRes, invitesRes, membersRes, filesRes] = await Promise.all(workspaceQueries.map(([, query]) => query));
-    const failedQuery = workspaceQueries.find(([label], index) => [propertiesRes, cleaningRes, maintenanceRes, bookingsRes, leasesRes, contactsRes, invitesRes, membersRes, filesRes][index].error);
-    if (failedQuery) {
-      const failedIndex = workspaceQueries.indexOf(failedQuery);
-      const failedResponse = [propertiesRes, cleaningRes, maintenanceRes, bookingsRes, leasesRes, contactsRes, invitesRes, membersRes, filesRes][failedIndex];
-      throw new Error(`Could not load ${failedQuery[0]}: ${formatSupabaseError(failedResponse.error)}`);
-    }
-    const props = (propertiesRes.data || []).map(normalizeProperty);
-    setData({
-      ...emptyData,
-      properties: props,
-      cleaningTasks: (cleaningRes.data || []).map((row) => normalizeCleaning(row, props)),
-      maintenanceWorkOrders: (maintenanceRes.data || []).map((row) => normalizeMaintenance(row, props)),
-      bookings: (bookingsRes.data || []).map((row) => normalizeBooking(row, props)),
-      leases: (leasesRes.data || []).map((row) => normalizeLease(row, props)),
-      contacts: contactsRes.data || [],
-      invites: invitesRes.data || [],
-      members: membersRes.data || [],
-      fileUploads: filesRes.data || [],
+
+    const settledResponses = await Promise.allSettled(workspaceQueries.map(({ query }) => query));
+    const nextData = { ...emptyData };
+    const warnings = [];
+    const coreErrors = [];
+    const responseByKey = {};
+
+    workspaceQueries.forEach((workspaceQuery, index) => {
+      const settled = settledResponses[index];
+      const rejectedError = settled.status === 'rejected' ? settled.reason : null;
+      const response = settled.status === 'fulfilled' ? settled.value : { data: [], error: rejectedError };
+      responseByKey[workspaceQuery.key] = response;
+
+      if (response.error) {
+        const message = `${workspaceQuery.label}: ${formatSupabaseError(response.error)}`;
+        if (workspaceQuery.core) coreErrors.push(message);
+        else warnings.push(message);
+        console.error(`[PropFlow] Could not load ${workspaceQuery.label}`, response.error);
+      }
     });
+
+    const props = responseByKey.properties?.error ? [] : workspaceQueries.find(({ key }) => key === 'properties').normalize(responseByKey.properties?.data || []);
+    nextData.properties = props;
+
+    workspaceQueries.forEach((workspaceQuery) => {
+      if (workspaceQuery.key === 'properties') return;
+      const response = responseByKey[workspaceQuery.key];
+      nextData[workspaceQuery.key] = response?.error ? [] : workspaceQuery.normalize(response?.data || [], props);
+    });
+
+    setData(nextData);
+
+    if (coreErrors.length || warnings.length) {
+      const message = coreErrors.length
+        ? `We loaded your account, but core workspace data could not be loaded. Please refresh or contact support. (${coreErrors.join('; ')})`
+        : `We loaded your account, but some workspace data could not be loaded. Please refresh or contact support. (${warnings.join('; ')})`;
+      setError(message);
+      return { ok: false, error: message, coreErrors, warnings };
+    }
+
+    setError('');
+    return { ok: true, warnings: [] };
   };
 
   const loadAccount = async (activeSession = session) => {
-    if (!supabase || !activeSession?.user) { setAuthLoading(false); return; }
+    if (!supabase || !activeSession?.user) { setAuthLoading(false); return null; }
     setAuthLoading(true);
     setError('');
-    const user = activeSession.user;
-    const profilePayload = { id: user.id, email: user.email, full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'PropFlow user' };
-    await supabase.from('profiles').upsert(profilePayload, { onConflict: 'id' });
-    const [profileRes, memberRes] = await Promise.all([
-      supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
-      supabase.from('workspace_members').select('*, workspaces(*)').eq('user_id', user.id).order('created_at', { ascending: true }),
-    ]);
-    const activeMemberships = (memberRes.data || []).filter((m) => m.status !== 'revoked');
-    const normalizedWorkspaces = activeMemberships.map((m) => normalizeWorkspace(m.workspaces)).filter(Boolean);
-    const preferredId = localStorage.getItem(storageKey);
-    const selectedMembership = activeMemberships.find((m) => m.workspace_id === preferredId) || activeMemberships[0];
-    const profile = profileRes.data || profilePayload;
-    const selectedWorkspace = normalizeWorkspace(selectedMembership?.workspaces);
-    const userRoles = profile.is_propflow_admin ? [roles.ADMIN] : (selectedMembership?.roles || []);
-    setSession(activeSession);
-    setMemberships(activeMemberships);
-    setWorkspaces(normalizedWorkspaces);
-    setCurrentWorkspaceState(selectedWorkspace || null);
-    setCurrentUser({
-      id: user.id,
-      email: user.email,
-      name: profile.full_name || profile.email,
-      status: profile.status || selectedMembership?.status || 'active',
-      roles: userRoles,
-      primaryRole: resolvePrimaryRole(userRoles),
-      workspaceId: selectedWorkspace?.id,
-      isPropFlowAdmin: Boolean(profile.is_propflow_admin),
-    });
-    await refreshWorkspaceData(selectedWorkspace);
-    setAuthLoading(false);
-    return { currentUser: {
-      id: user.id,
-      email: user.email,
-      name: profile.full_name || profile.email,
-      status: profile.status || selectedMembership?.status || 'active',
-      roles: userRoles,
-      primaryRole: resolvePrimaryRole(userRoles),
-      workspaceId: selectedWorkspace?.id,
-      isPropFlowAdmin: Boolean(profile.is_propflow_admin),
-    }, memberships: activeMemberships, workspaces: normalizedWorkspaces, currentWorkspace: selectedWorkspace || null };
+
+    let accountState = null;
+
+    try {
+      const user = activeSession.user;
+      const profilePayload = { id: user.id, email: user.email, full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'PropFlow user' };
+      const { error: upsertError } = await supabase.from('profiles').upsert(profilePayload, { onConflict: 'id' });
+      if (upsertError) console.error('[PropFlow] Could not upsert profile during account load', upsertError);
+
+      const [profileResult, memberResult] = await Promise.allSettled([
+        supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
+        supabase.from('workspace_members').select('*, workspaces(*)').eq('user_id', user.id).order('created_at', { ascending: true }),
+      ]);
+
+      const profileRes = profileResult.status === 'fulfilled' ? profileResult.value : { data: null, error: profileResult.reason };
+      const memberRes = memberResult.status === 'fulfilled' ? memberResult.value : { data: [], error: memberResult.reason };
+      const accountErrors = [];
+
+      if (profileRes.error) {
+        console.error('[PropFlow] Could not load profile during account load', profileRes.error);
+        accountErrors.push(`profile: ${formatSupabaseError(profileRes.error)}`);
+      }
+
+      if (memberRes.error) {
+        console.error('[PropFlow] Could not load workspace memberships during account load', memberRes.error);
+        accountErrors.push(`workspace membership: ${formatSupabaseError(memberRes.error)}`);
+      }
+
+      const activeMemberships = memberRes.error ? [] : (memberRes.data || []).filter((m) => m.status !== 'revoked');
+      const normalizedWorkspaces = activeMemberships.map((m) => normalizeWorkspace(m.workspaces)).filter(Boolean);
+      const preferredId = localStorage.getItem(storageKey);
+      const selectedMembership = activeMemberships.find((m) => m.workspace_id === preferredId) || activeMemberships[0];
+      const profile = profileRes.data || profilePayload;
+      const selectedWorkspace = normalizeWorkspace(selectedMembership?.workspaces);
+      const userRoles = profile.is_propflow_admin ? [roles.ADMIN] : (selectedMembership?.roles || []);
+      const nextUser = {
+        id: user.id,
+        email: user.email,
+        name: profile.full_name || profile.email,
+        status: profile.status || selectedMembership?.status || 'active',
+        roles: userRoles,
+        primaryRole: resolvePrimaryRole(userRoles),
+        workspaceId: selectedWorkspace?.id,
+        isPropFlowAdmin: Boolean(profile.is_propflow_admin),
+      };
+
+      setSession(activeSession);
+      setMemberships(activeMemberships);
+      setWorkspaces(normalizedWorkspaces);
+      setCurrentWorkspaceState(selectedWorkspace || null);
+      setCurrentUser(nextUser);
+
+      if (selectedWorkspace) {
+        await refreshWorkspaceData(selectedWorkspace);
+      } else {
+        setData(emptyData);
+      }
+
+      if (accountErrors.length) {
+        setError(`We loaded your account, but some workspace data could not be loaded. Please refresh or contact support. (${accountErrors.join('; ')})`);
+      }
+
+      accountState = { currentUser: nextUser, memberships: activeMemberships, workspaces: normalizedWorkspaces, currentWorkspace: selectedWorkspace || null };
+      return accountState;
+    } catch (loadError) {
+      console.error('[PropFlow] Account load failed', loadError);
+      setError(`We could not finish loading your workspace. Please refresh or contact support. (${formatSupabaseError(loadError)})`);
+      if (activeSession?.user) {
+        const user = activeSession.user;
+        setSession(activeSession);
+        setCurrentUser((existingUser) => existingUser || {
+          id: user.id,
+          email: user.email,
+          name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'PropFlow user',
+          status: 'active',
+          roles: [],
+          primaryRole: resolvePrimaryRole([]),
+          workspaceId: undefined,
+          isPropFlowAdmin: false,
+        });
+      }
+      return accountState;
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
   useEffect(() => {
     if (!supabase) { setAuthLoading(false); return undefined; }
     let mounted = true;
-    supabase.auth.getSession().then(({ data: authData }) => mounted && loadAccount(authData.session));
+    supabase.auth.getSession()
+      .then(({ data: authData }) => mounted && loadAccount(authData.session))
+      .catch((sessionError) => {
+        console.error('[PropFlow] Supabase session lookup failed', sessionError);
+        if (mounted) {
+          setError(`We could not check your sign-in session. Please refresh or sign in again. (${formatSupabaseError(sessionError)})`);
+          setAuthLoading(false);
+        }
+      });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => { if (mounted) loadAccount(nextSession); });
     return () => { mounted = false; listener.subscription.unsubscribe(); };
   }, []);
