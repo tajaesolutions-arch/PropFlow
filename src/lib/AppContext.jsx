@@ -41,6 +41,11 @@ function normalizeLease(row, properties = []) {
   return { ...row, property: property?.name || 'Unassigned property', propertyId: row.property_id, contactId: row.contact_id, tenantName: row.tenant_name, tenantEmail: row.tenant_email, tenantPhone: row.tenant_phone, leaseStart: row.lease_start, leaseEnd: row.lease_end, monthlyRent: row.monthly_rent, securityDeposit: row.security_deposit, rentPaymentStatus: row.rent_payment_status, leaseStatus: row.lease_status, leaseDocumentFileId: row.lease_document_file_id, terminatedAt: row.terminated_at };
 }
 
+function normalizeMember(row) {
+  const profile = row.profiles || row.profile || null;
+  return { ...row, profile, profiles: profile };
+}
+
 function inviteToken() {
   return crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -86,7 +91,7 @@ export function AppProvider({ children }) {
     const makeWorkspaceQuery = (label, key, query, normalize = (rows) => rows || [], core = false) => ({ label, key, query, normalize, core });
     const workspaceQueries = [
       makeWorkspaceQuery('properties', 'properties', supabase.from('properties').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false }), (rows) => (rows || []).map(normalizeProperty), true),
-      makeWorkspaceQuery('workspace members', 'members', supabase.from('workspace_members').select('*, profiles(full_name, email)').eq('workspace_id', workspace.id).order('created_at', { ascending: true }), (rows) => rows || [], true),
+      makeWorkspaceQuery('workspace members', 'members', supabase.from('workspace_members').select('*, profiles:profiles!workspace_members_user_id_fkey(full_name, email)').eq('workspace_id', workspace.id).order('created_at', { ascending: true }), (rows) => (rows || []).map(normalizeMember)),
       makeWorkspaceQuery('bookings', 'bookings', supabase.from('bookings').select('*').eq('workspace_id', workspace.id).order('check_in', { ascending: true }), (rows, props) => (rows || []).map((row) => normalizeBooking(row, props))),
       makeWorkspaceQuery('leases', 'leases', supabase.from('leases').select('*').eq('workspace_id', workspace.id).order('lease_start', { ascending: true }), (rows, props) => (rows || []).map((row) => normalizeLease(row, props))),
       makeWorkspaceQuery('contacts', 'contacts', supabase.from('contacts').select('*').eq('workspace_id', workspace.id).order('updated_at', { ascending: false })),
