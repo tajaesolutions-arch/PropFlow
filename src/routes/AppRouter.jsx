@@ -19,6 +19,7 @@ import { OwnersPage } from '../pages/OwnersPage.jsx';
 import { GuestsPage } from '../pages/GuestsPage.jsx';
 import { ReportsPage } from '../pages/ReportsPage.jsx';
 import { NotificationsPage } from '../pages/NotificationsPage.jsx';
+import { InventoryPage } from '../pages/InventoryPage.jsx';
 import { SettingsPage } from '../pages/SettingsPage.jsx';
 import { AccountSettingsPage } from '../pages/AccountSettingsPage.jsx';
 import { AdminDashboardPage } from '../pages/AdminDashboardPage.jsx';
@@ -58,7 +59,7 @@ const protectedRoutes = {
   '/cleaner-dashboard': CleanerDashboardPage,
   '/maintenance-dashboard': MaintenanceDashboardPage,
   '/accountant-dashboard': AccountantDashboardPage,
-  '/inventory': () => <ComingSoonPage title="Supplies / Inventory" />,
+  '/inventory': InventoryPage,
   '/team': SettingsPage,
   '/smart-tools': () => <ComingSoonPage title="Smart Tools / AI Tools" />,
   '/billing': () => <ComingSoonPage title="Billing / Subscription" />,
