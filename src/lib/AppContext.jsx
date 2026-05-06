@@ -502,19 +502,29 @@ export function AppProvider({ children }) {
     const client = requireSupabase();
     try {
       requireWorkspaceSession(currentWorkspace, session);
-      const contact = await createOrUpdateContact({ full_name: payload.guest_name, email: payload.guest_email, phone: payload.guest_phone, contact_type: 'guest', notes: payload.notes });
+      const warnings = [];
+      let contact = null;
+
+      try {
+        contact = await createOrUpdateContact({ full_name: payload.guest_name, email: payload.guest_email, phone: payload.guest_phone, contact_type: 'guest', notes: payload.notes });
+      } catch (contactError) {
+        console.error('[PropFlow] Booking contact sync failed', contactError);
+        warnings.push(`Booking saved, but contact/cleaning task could not be created. Contact sync failed: ${formatSupabaseError(contactError)}`);
+      }
+
       const record = bookingRecordFromPayload(payload, contact?.id);
       const { data: row, error: bookingError } = await client.from('bookings').insert(record).select('*').single();
       if (bookingError) throw bookingError;
 
       const { error: activityError } = await client.from('activity_logs').insert({ workspace_id: currentWorkspace.id, actor_user_id: session.user.id, action: 'booking.created', metadata: { booking_id: row.id, property_id: row.property_id } });
-      const warnings = [];
       if (activityError) warnings.push(`Activity log was not recorded: ${formatSupabaseError(activityError)}`);
 
       if (record.auto_create_cleaning && row.status !== 'cancelled') {
         const { data: cleaningTask, error: cleaningError } = await client.from('cleaning_tasks').select('id').eq('workspace_id', currentWorkspace.id).eq('booking_id', row.id).maybeSingle();
-        if (cleaningError) warnings.push(`Booking saved, but cleaning task could not be created. ${formatSupabaseError(cleaningError)}`);
-        if (!cleaningError && !cleaningTask) warnings.push('Booking saved, but cleaning task could not be created. Please create one manually or check the booking cleaning automation trigger.');
+        if (cleaningError) {
+          warnings.push(`Booking saved, but contact/cleaning task could not be created. Cleaning task verification failed: ${formatSupabaseError(cleaningError)}`);
+        }
+        if (!cleaningError && !cleaningTask) warnings.push('Booking saved, but contact/cleaning task could not be created. Please create one manually or check the booking cleaning automation trigger.');
       }
 
       try {
