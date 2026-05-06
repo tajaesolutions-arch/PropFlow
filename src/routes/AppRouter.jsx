@@ -12,6 +12,7 @@ import { DashboardPage } from '../pages/DashboardPage.jsx';
 import { PropertiesPage } from '../pages/PropertiesPage.jsx';
 import { PropertyDetailPage } from '../pages/PropertyDetailPage.jsx';
 import { BookingsPage } from '../pages/BookingsPage.jsx';
+import { CalendarPage } from '../pages/CalendarPage.jsx';
 import { CleaningPage } from '../pages/CleaningPage.jsx';
 import { MaintenancePage } from '../pages/MaintenancePage.jsx';
 import { OwnersPage } from '../pages/OwnersPage.jsx';
@@ -43,6 +44,7 @@ const protectedRoutes = {
   '/dashboard': DashboardPage,
   '/properties': PropertiesPage,
   '/bookings': BookingsPage,
+  '/calendar': CalendarPage,
   '/cleaning': CleaningPage,
   '/maintenance': MaintenancePage,
   '/owners': OwnersPage,

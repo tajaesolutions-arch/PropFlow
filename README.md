@@ -253,3 +253,124 @@ Supported MVP categories include property photos/documents, leases, contracts, r
 4. Add signed download UI for private files.
 5. Add notification jobs and operational reminders.
 6. Add finance/reporting models before Stripe billing and exports.
+
+## Bookings + Calendar foundation phase
+
+This phase adds a database-first foundation for PropFlow reservations, leases, guest/tenant CRM, checkout cleaning automation, and an operations calendar. It intentionally does **not** add Stripe payment collection, public direct booking pages, Airbnb/Booking.com/Vrbo API integrations, Twilio/WhatsApp/SMS, or real AI tools.
+
+### New migration
+
+Apply this migration after the Phase 1 migrations and workspace RPC migration:
+
+```text
+supabase/migrations/202605060002_bookings_calendar_foundation.sql
+```
+
+The migration is written to be safe for existing projects where practical: it uses `CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, trigger replacement, policy replacement, and non-destructive indexes. For hosted Supabase projects, run the migrations in this order:
+
+```bash
+supabase/migrations/202605050001_propflow_schema.sql
+supabase/migrations/202605060001_create_workspace_with_owner_rpc.sql
+supabase/migrations/202605060002_bookings_calendar_foundation.sql
+```
+
+Or with the Supabase CLI:
+
+```bash
+supabase link --project-ref your-project-ref
+supabase db push
+```
+
+### Tables added
+
+- `contacts`: workspace-scoped CRM records for guests, tenants, owners, vendors, cleaners, maintenance contacts, and other contacts. Contacts are matched by `workspace_id + lower(email)` when an email exists.
+- `bookings`: workspace-scoped short-term reservation records with guest details, property, stay dates, source/platform, status, payment status, per-record currency, financial fields, cancellation timestamp, and checkout cleaning preference.
+- `leases`: workspace-scoped long-term rental records with tenant details, property, lease dates, rent/deposit amounts, rent status, lease status, per-record currency, optional future document file reference, and termination timestamp.
+
+### RLS and permissions
+
+RLS is enabled on `contacts`, `bookings`, and `leases`.
+
+- Active workspace members only see rows scoped to their workspace and permitted role/property access.
+- `workspace_owner`, `property_manager`, and `host` can create and edit bookings and leases.
+- `property_owner` can view booking and lease data for assigned/accessible properties.
+- `accountant` can view workspace booking/lease financial records.
+- Cleaner and maintenance visibility is limited through assigned cleaning tasks and maintenance/property access policies.
+- Suspended profile/workspace/member checks continue to flow through the existing helper functions.
+- `propflow_admin` remains platform-only and is not customer-assignable.
+
+### Double-booking rules
+
+Database triggers block unsafe overlaps before insert/update:
+
+- A property cannot have overlapping pending/confirmed/checked-in short-term bookings.
+- A property cannot have overlapping active/ending-soon long-term leases.
+- A short-term booking cannot overlap an active/ending-soon lease for the same property.
+- An active/ending-soon lease cannot overlap pending/confirmed/checked-in bookings for the same property.
+
+The frontend also returns friendly conflict messages surfaced from these database checks.
+
+### Cleaning automation rule
+
+When a short-term booking is created or updated with `auto_create_cleaning = true`, the database creates or updates one linked `cleaning_tasks` row after checkout. The task is linked by `cleaning_tasks.booking_id`, uses the same `workspace_id` and `property_id`, defaults to `scheduled`, and leaves `assigned_cleaner_id` blank unless future default cleaner logic is added. When a booking is cancelled, related future cleaning tasks are marked `cancelled`.
+
+### Bookings UI scope
+
+`/bookings` is now a combined workspace page with tabs for:
+
+- Short-Term Bookings
+- Long-Term Leases
+
+The page supports create, edit, view, cancel/terminate flows; auto contact create/update; property/date/status/payment/source/currency filters; name search; cancelled hidden by default; and summary metrics for booking operations and lease operations.
+
+### Calendar scope
+
+`/calendar` displays Supabase-backed operational events:
+
+- Short-term booking stay blocks
+- Check-in events
+- Check-out events
+- Checkout cleaning tasks
+- Maintenance work orders by due date
+- Long-term lease period blocks and start/end markers
+
+Calendar views included now:
+
+- Month
+- Week
+- Day
+- List / agenda
+
+The property timeline and drag-and-drop rescheduling are intentionally prepared as future extension points, not built in this phase.
+
+### Known limitations
+
+- No public direct booking engine yet.
+- No channel-manager/API sync with Airbnb, Booking.com, Vrbo, iCal, or CSV imports yet; source values are placeholders only.
+- No payment collection, payout automation, live currency conversion, or invoice ledger yet.
+- Lease document upload is a placeholder field for a future private upload flow.
+- Property status is derived in operational views; there is no background scheduler for persistent daily status transitions yet.
+- Calendar drag-and-drop editing/rescheduling is not enabled yet.
+
+### Next recommended phase
+
+Build the revenue and guest operations layer next: direct booking request intake, quote/invoice records, payment ledger readiness, iCal import/export, property timeline view, cleaner assignment rules, and richer owner/accountant reporting.
+
+### Bookings + Calendar manual test checklist
+
+Use a migrated Supabase project with at least one real workspace and property:
+
+- [ ] Existing workspace setup still redirects authenticated workspace-less users to `/workspace-setup` and creates workspaces through `create_workspace_with_owner`.
+- [ ] Existing Properties page can create and list properties.
+- [ ] Existing Cleaning page can create and update cleaning tasks.
+- [ ] Existing Maintenance page can create and update work orders.
+- [ ] Create a short-term booking on `/bookings`.
+- [ ] Confirm a `contacts` row is created or updated with `contact_type = guest` and linked to `bookings.contact_id`.
+- [ ] Confirm a linked checkout `cleaning_tasks` row is auto-created when `auto_create_cleaning` is enabled.
+- [ ] Attempt an overlapping booking for the same property and confirm the database conflict is blocked with a clear UI error.
+- [ ] Create a long-term lease on `/bookings`.
+- [ ] Confirm a `contacts` row is created or updated with `contact_type = tenant` and linked to `leases.contact_id`.
+- [ ] Attempt overlapping leases and booking/lease conflicts for the same property and confirm they are blocked.
+- [ ] Confirm booking and lease search/filter controls work.
+- [ ] Confirm `/calendar` displays bookings, leases, cleaning tasks, and maintenance work orders.
+- [ ] Confirm cancelled bookings/leases are hidden by default and appear when **Show cancelled** is enabled.
