@@ -454,9 +454,9 @@ export function AppProvider({ children }) {
   const friendlyBookingError = (error) => {
     const message = formatSupabaseError(error, 'The booking or lease could not be saved.');
     const lower = message.toLowerCase();
-    if (lower.includes('overlap') || lower.includes('already has') || lower.includes('active lease') || error?.code === '23P01') return new Error(message);
+    if (lower.includes('overlap') || lower.includes('already has') || lower.includes('active lease') || error?.code === '23P01') return new Error(`Overlapping booking/lease conflict: ${message}`);
     if (error?.code === '42501' || lower.includes('row-level security') || lower.includes('permission')) return new Error(`Permission denied while saving: ${message}`);
-    if (error?.code === '23502' || lower.includes('null value')) return new Error(`Missing required booking field: ${message}`);
+    if (error?.code === '23502' || lower.includes('null value')) return new Error(`Missing required booking or lease field: ${message}`);
     if (error?.code === '23503' || lower.includes('foreign key')) return new Error(`The selected workspace, property, contact, or user could not be linked: ${message}`);
     if (error instanceof Error) return new Error(message);
     return new Error(message);
@@ -513,8 +513,8 @@ export function AppProvider({ children }) {
 
       if (record.auto_create_cleaning && row.status !== 'cancelled') {
         const { data: cleaningTask, error: cleaningError } = await client.from('cleaning_tasks').select('id').eq('workspace_id', currentWorkspace.id).eq('booking_id', row.id).maybeSingle();
-        if (cleaningError) warnings.push(`Booking was created, but cleaning task verification failed: ${formatSupabaseError(cleaningError)}`);
-        if (!cleaningError && !cleaningTask) warnings.push('Booking was created, but no checkout cleaning task was found. Please create one manually or check the booking cleaning automation trigger.');
+        if (cleaningError) warnings.push(`Booking saved, but cleaning task could not be created. ${formatSupabaseError(cleaningError)}`);
+        if (!cleaningError && !cleaningTask) warnings.push('Booking saved, but cleaning task could not be created. Please create one manually or check the booking cleaning automation trigger.');
       }
 
       try {
@@ -557,9 +557,17 @@ export function AppProvider({ children }) {
       const record = { ...payload, contact_id: contact?.id || null, currency: payload.currency || defaultCurrencyForProperty(payload.property_id), workspace_id: currentWorkspace.id, created_by: session.user.id };
       const { data: row, error: leaseError } = await client.from('leases').insert(record).select('*').single();
       if (leaseError) throw leaseError;
-      await client.from('activity_logs').insert({ workspace_id: currentWorkspace.id, actor_user_id: session.user.id, action: 'lease.created', metadata: { lease_id: row.id, property_id: row.property_id } });
-      await refreshWorkspaceData();
-      return normalizeLease(row, data.properties);
+      const warnings = [];
+      const { error: activityError } = await client.from('activity_logs').insert({ workspace_id: currentWorkspace.id, actor_user_id: session.user.id, action: 'lease.created', metadata: { lease_id: row.id, property_id: row.property_id } });
+      if (activityError) warnings.push(`Activity log was not recorded: ${formatSupabaseError(activityError)}`);
+      try {
+        await refreshWorkspaceData();
+      } catch (refreshError) {
+        const normalizedLease = normalizeLease(row, data.properties);
+        setData((current) => ({ ...current, leases: current.leases.some((lease) => lease.id === row.id) ? current.leases : [...current.leases, normalizedLease] }));
+        warnings.push(`Lease was created, but the leases table could not refresh automatically: ${formatSupabaseError(refreshError)}`);
+      }
+      return { lease: normalizeLease(row, data.properties), warning: warnings.join(' ') };
     } catch (error) {
       throw friendlyBookingError(error);
     }
