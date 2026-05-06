@@ -109,15 +109,17 @@ Expected behavior without Vercel env vars:
 - Protected routes redirect to `/login` because no real Supabase Auth session can exist.
 - Database-backed actions return clear configuration errors instead of crashing the app.
 
-## Required Supabase migrations
+## Required Supabase migration
 
-Run the migration on a new Supabase project:
+The current Phase 1 schema migration is:
 
-```bash
+```text
 supabase/migrations/202605050001_propflow_schema.sql
 ```
 
-The migration creates:
+Apply this migration before running the app against a Supabase project. If you see `Could not find the table 'public.workspaces' in the schema cache`, the migration has not been applied to that project, was applied to a different project, or Supabase needs its API schema cache refreshed after the SQL runs.
+
+The migration creates or repairs these app-required objects without dropping customer data:
 
 - `profiles`
 - `workspaces`
@@ -135,21 +137,30 @@ The migration creates:
 
 ## Exact Supabase migration instructions
 
-With the Supabase CLI linked to your hosted project:
+### Option A: Supabase SQL Editor
+
+Use this path when the hosted app is already connected to a Supabase project or when you need to fix a project that is missing `public.workspaces`.
+
+1. Open the Supabase Dashboard for the exact project used by `VITE_SUPABASE_URL`.
+2. Go to **SQL Editor** → **New query**.
+3. Copy the full contents of `supabase/migrations/202605050001_propflow_schema.sql`.
+4. Paste the full SQL into the editor and click **Run**. The file is idempotent and uses `CREATE TABLE IF NOT EXISTS`, non-destructive `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, and policy/trigger replacement so it can be run again if needed.
+5. In **Table Editor**, confirm the `public.workspaces` table exists along with the other Phase 1 tables listed above.
+6. If the app still reports a schema-cache error immediately after running the SQL, wait briefly and reload the app; Supabase PostgREST schema cache refresh can lag right after DDL.
+
+### Option B: Supabase CLI for a hosted project
 
 ```bash
 supabase link --project-ref your-project-ref
 supabase db push
 ```
 
-For local Supabase development:
+### Option C: Local Supabase development
 
 ```bash
 supabase start
 supabase db reset
 ```
-
-If you do not use the Supabase CLI, paste `supabase/migrations/202605050001_propflow_schema.sql` into the Supabase SQL editor for a clean project and run it once.
 
 `supabase/seed/seed_demo.sql` is now only a placeholder. Create real test accounts through Supabase Auth and create workspace data through the UI.
 
