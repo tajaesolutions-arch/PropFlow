@@ -1,17 +1,50 @@
-import { rolePriority, roleRedirects } from '../data/constants.js';
+import { rolePriority, roleRedirects, roles as appRoles } from '../data/constants.js';
 
 export function resolvePrimaryRole(userOrRoles) {
-  const roles = Array.isArray(userOrRoles) ? userOrRoles : userOrRoles?.roles;
-  if (!roles?.length) return null;
-  return [...roles].sort((a, b) => rolePriority.indexOf(a) - rolePriority.indexOf(b))[0];
+  const userRoles = Array.isArray(userOrRoles) ? userOrRoles : userOrRoles?.roles;
+
+  if (!Array.isArray(userRoles) || userRoles.length === 0) {
+    return null;
+  }
+
+  const knownRoles = userRoles.filter((role) => rolePriority.includes(role));
+
+  if (knownRoles.length === 0) {
+    return userRoles[0] || null;
+  }
+
+  return [...knownRoles].sort((a, b) => {
+    const priorityA = rolePriority.indexOf(a);
+    const priorityB = rolePriority.indexOf(b);
+
+    return priorityA - priorityB;
+  })[0];
 }
 
 export function getPostLoginPath(user) {
-  if (user?.status === 'suspended') return '/suspended';
-  if (!user?.workspaceId && !user?.roles?.includes('propflow_admin')) return '/workspace-setup';
-  return roleRedirects[resolvePrimaryRole(user)] || '/dashboard';
+  if (!user) {
+    return '/login';
+  }
+
+  if (user.status === 'suspended') {
+    return '/suspended';
+  }
+
+  const isPropFlowAdmin = user.roles?.includes(appRoles.ADMIN);
+
+  if (!user.workspaceId && !isPropFlowAdmin) {
+    return '/workspace-setup';
+  }
+
+  const primaryRole = resolvePrimaryRole(user);
+
+  return roleRedirects[primaryRole] || '/dashboard';
 }
 
-export function hasAnyRole(user, allowed) {
-  return Boolean(user?.roles?.some((role) => allowed.includes(role)));
+export function hasAnyRole(user, allowed = []) {
+  if (!user || !Array.isArray(user.roles) || !Array.isArray(allowed)) {
+    return false;
+  }
+
+  return user.roles.some((role) => allowed.includes(role));
 }
