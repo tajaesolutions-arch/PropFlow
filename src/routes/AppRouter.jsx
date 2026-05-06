@@ -19,6 +19,7 @@ import { OwnersPage } from '../pages/OwnersPage.jsx';
 import { GuestsPage } from '../pages/GuestsPage.jsx';
 import { ReportsPage } from '../pages/ReportsPage.jsx';
 import { NotificationsPage } from '../pages/NotificationsPage.jsx';
+import { NotificationSettingsPage } from '../pages/NotificationSettingsPage.jsx';
 import { InventoryPage } from '../pages/InventoryPage.jsx';
 import { SettingsPage } from '../pages/SettingsPage.jsx';
 import { AccountSettingsPage } from '../pages/AccountSettingsPage.jsx';
@@ -53,6 +54,7 @@ const protectedRoutes = {
   '/guests': GuestsPage,
   '/reports': ReportsPage,
   '/notifications': NotificationsPage,
+  '/notification-settings': NotificationSettingsPage,
   '/settings': SettingsPage,
   '/account': AccountSettingsPage,
   '/admin': AdminDashboardPage,
