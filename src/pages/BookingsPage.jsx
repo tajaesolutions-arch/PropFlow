@@ -36,7 +36,10 @@ function derivedPropertyStatus(property, bookings, leases, cleaningTasks) { cons
 function dateOnly(value) { return value ? String(value).slice(0, 10) : ''; }
 function normalizeText(value) { return String(value || '').trim(); }
 function hasDateOrderError(start, end) { return Boolean(start && end && end <= start); }
-function formatSubmitError(error, fallback) { return error?.message || fallback; }
+function formatSubmitError(error, fallback) {
+  const message = error?.message || fallback;
+  return /Cannot read properties|undefined|null/i.test(message) ? fallback : message;
+}
 function bookingDraftKey(workspaceId) { return workspaceId ? `propflow.bookingDraft.${workspaceId}` : ''; }
 function readBookingDraft(workspaceId) {
   const key = bookingDraftKey(workspaceId);
@@ -102,7 +105,7 @@ function WarningMessage({ warning }) {
   return <div className="modal-warning" role="status">{warning}</div>;
 }
 
-function BookingForm({ initial, draftForm, properties, workspace, onSubmit, onCancel, submitting, submitError, submitWarning, onDirtyChange, onDraftChange }) {
+function BookingForm({ initial, draftForm, properties, workspace, session, onSubmit, onCancel, submitting, submitError, submitWarning, onDirtyChange, onDraftChange }) {
   const isEditing = Boolean(initial);
   const [form, setForm] = React.useState(() => (isEditing ? toBookingForm(initial) : { ...toBookingForm(initial), ...(draftForm || {}) }));
   const [validationErrors, setValidationErrors] = React.useState([]);
@@ -117,7 +120,10 @@ function BookingForm({ initial, draftForm, properties, workspace, onSubmit, onCa
 
   const validate = () => {
     const errors = [];
-    if (!form.property_id) errors.push('Missing property. Select a property before saving.');
+    if (!workspace?.id) errors.push('No workspace selected. Select or create a workspace before saving bookings.');
+    if (!session?.user?.id) errors.push('Your session expired. Sign in again before saving bookings.');
+    if (!properties.length) errors.push('Add a property before creating a booking.');
+    if (properties.length && !form.property_id) errors.push('Missing property. Select a property before saving.');
     if (!normalizeText(form.guest_name)) errors.push('Missing guest name. Enter the guest name.');
     if (!form.check_in) errors.push('Missing check-in date.');
     if (!form.check_out) errors.push('Missing check-out date.');
@@ -140,7 +146,8 @@ function BookingForm({ initial, draftForm, properties, workspace, onSubmit, onCa
   return <ModalShell title={initial ? 'Edit booking' : 'Add short-term booking'} description="Creates or updates the guest contact and schedules checkout cleaning when enabled." onClose={onCancel} submitting={submitting}>
     <form className="modal-form" onSubmit={handleSubmit} noValidate>
       <div className="modal-body">
-        <ErrorList errors={[...validationErrors, ...(submitError ? [submitError] : [])]} />
+        <ErrorList errors={validationErrors} />
+        {submitError && <div className="modal-error" role="alert">{submitError}</div>}
         <WarningMessage warning={submitWarning} />
         <div className="form-grid">
           <label>Guest name<input required value={form.guest_name} onChange={set('guest_name')} /></label>
@@ -179,7 +186,6 @@ function LeaseForm({ initial, properties, workspace, onSubmit, onCancel, submitt
 
   React.useEffect(() => { if (form.property_id && !form.currency) setForm((value) => ({ ...value, currency: propertyCurrency(properties, workspace, form.property_id) })); }, [form.property_id, form.currency, properties, workspace]);
   React.useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
-  React.useEffect(() => { if (!isEditing) onDraftChange(form); }, [form, isEditing, onDraftChange]);
   React.useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
 
   const validate = () => {
@@ -233,7 +239,7 @@ function LeaseForm({ initial, properties, workspace, onSubmit, onCancel, submitt
 }
 
 export function BookingsPage() {
-  const { data, currentWorkspace, currentUser, createBooking, updateBooking, cancelBooking, createLease, updateLease, terminateLease } = useApp();
+  const { data, currentWorkspace, currentUser, session, createBooking, updateBooking, cancelBooking, createLease, updateLease, terminateLease } = useApp();
   const [tab, setTab] = React.useState('bookings');
   const [editing, setEditing] = React.useState(null);
   const [bookingDraftForm, setBookingDraftForm] = React.useState(null);
@@ -323,7 +329,12 @@ export function BookingsPage() {
     setModalError('');
     setModalWarning('');
     try {
-      const result = editing?.type === 'booking' ? await updateBooking(editing.row.id, payload) : await createBooking(payload);
+      if (!currentWorkspace?.id) throw new Error('No workspace selected. Select or create a workspace before saving bookings.');
+      if (!session?.user?.id) throw new Error('Your session expired. Sign in again before saving bookings.');
+      if (!activeProperties.length) throw new Error('Add a property before creating a booking.');
+      if (!payload.property_id) throw new Error('Missing property. Select a property before saving.');
+      const isExistingBooking = editing?.type === 'booking' && editing.row?.id;
+      const result = isExistingBooking ? await updateBooking(editing.row.id, payload) : await createBooking(payload);
       if (!editing?.row) {
         clearBookingDraft(currentWorkspace?.id);
         setBookingDraftForm(null);
@@ -367,7 +378,7 @@ export function BookingsPage() {
     </section>
     {tab === 'bookings' ? <div className="stat-grid dense"><StatCard label="Total bookings" value={bookingMetrics.total} icon={CalendarPlus} /><StatCard label="Upcoming check-ins" value={bookingMetrics.checkins} icon={Clock} /><StatCard label="Projected revenue" value={money(bookingMetrics.revenue, currentWorkspace?.defaultCurrency)} icon={DollarSign} /><StatCard label="Occupancy today" value={bookingMetrics.occupancy} icon={CheckCircle2} /></div> : <div className="stat-grid dense"><StatCard label="Active leases" value={leaseMetrics.active} icon={CheckCircle2} /><StatCard label="Expiring in 60 days" value={leaseMetrics.expiring} icon={Clock} /><StatCard label="Overdue rent" value={leaseMetrics.overdue} icon={XCircle} /><StatCard label="Renewals due soon" value={leaseMetrics.renewals} icon={CalendarPlus} /></div>}
     <section className="card"><div className="filter-bar booking-filter"><label><Search size={14} /> <input placeholder="Search guest, tenant, property" value={filters.query} onChange={setFilter('query')} /></label><select value={filters.property} onChange={setFilter('property')}><option value="all">All properties</option>{data.properties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select><input type="date" value={filters.start} onChange={setFilter('start')} /><input type="date" value={filters.end} onChange={setFilter('end')} /><select value={filters.status} onChange={setFilter('status')}><option value="all">All statuses</option>{(tab === 'bookings' ? bookingStatuses : leaseStatuses).map((status) => <option key={status}>{status}</option>)}</select><select value={filters.payment} onChange={setFilter('payment')}><option value="all">All payment statuses</option>{(tab === 'bookings' ? paymentStatuses : rentStatuses).map((status) => <option key={status}>{status}</option>)}</select>{tab === 'bookings' && <select value={filters.source} onChange={setFilter('source')}><option value="all">All sources</option>{bookingSources.map((source) => <option key={source}>{source}</option>)}</select>}<select value={filters.currency} onChange={setFilter('currency')}><option value="all">All currencies</option>{currencies.map((currency) => <option key={currency}>{currency}</option>)}</select><label className="inline-check"><input type="checkbox" checked={filters.showCancelled} onChange={setFilter('showCancelled')} /> Show cancelled</label></div></section>
-    {editing?.type === 'booking' && <BookingForm initial={editing.row} draftForm={bookingDraftForm} properties={activeProperties} workspace={currentWorkspace} onSubmit={saveBooking} onCancel={closeEditing} submitting={submitting} submitError={modalError} submitWarning={modalWarning} onDirtyChange={setModalDirty} onDraftChange={handleBookingDraftChange} />}
+    {editing?.type === 'booking' && <BookingForm initial={editing.row} draftForm={bookingDraftForm} properties={activeProperties} workspace={currentWorkspace} session={session} onSubmit={saveBooking} onCancel={closeEditing} submitting={submitting} submitError={modalError} submitWarning={modalWarning} onDirtyChange={setModalDirty} onDraftChange={handleBookingDraftChange} />}
     {editing?.type === 'lease' && <LeaseForm initial={editing.row} properties={activeProperties} workspace={currentWorkspace} onSubmit={saveLease} onCancel={closeEditing} submitting={submitting} submitError={modalError} submitWarning={modalWarning} onDirtyChange={setModalDirty} />}
     {detail && <section className="card detail-panel"><div className="card-header"><div><h3>{detail.type === 'booking' ? detail.row.guest_name : detail.row.tenant_name}</h3><p>{detail.row.property} · {detail.type === 'booking' ? `${detail.row.check_in} → ${detail.row.check_out}` : `${detail.row.lease_start} → ${detail.row.lease_end || 'Open ended'}`}</p></div><button onClick={() => setDetail(null)}>Close</button></div><pre>{JSON.stringify(detail.row, null, 2)}</pre></section>}
     {tab === 'bookings' ? (filteredBookings.length || data.bookings.length ? <section className="card"><DataTable rows={filteredBookings} columns={[{ key: 'guest_name', label: 'Guest' }, { key: 'property', label: 'Property', render: (row) => <span>{row.property}<br /><small>Derived: {propertyStatus(row.property_id)}</small></span> }, { key: 'dates', label: 'Stay', render: (row) => <span>{row.check_in}<br /><small>to {row.check_out}</small></span> }, { key: 'source', label: 'Source' }, { key: 'status', label: 'Status', render: (row) => <StatusBadge>{row.status}</StatusBadge> }, { key: 'payment_status', label: 'Payment', render: (row) => <StatusBadge>{row.payment_status}</StatusBadge> }, { key: 'total_amount', label: 'Total', render: (row) => money(row.total_amount, row.currency) }, { key: 'cleaning', label: 'Cleaning', render: (row) => row.auto_create_cleaning ? 'Auto' : 'Off' }, { key: 'actions', label: 'Actions', render: (row) => <div className="action-row"><button onClick={() => setDetail({ type: 'booking', row })}><Eye size={14} /> View</button>{canEdit && <button onClick={() => startEditing({ type: 'booking', row })}><Edit3 size={14} /> Edit</button>}{canEdit && row.status !== 'cancelled' && <button className="danger" onClick={() => cancelBooking(row.id)}><XCircle size={14} /> Cancel</button>}</div> }]} /></section> : <EmptyState title="No bookings yet." description="Add a booking to start scheduling stays and checkout cleaning tasks." action={<div className="action-row">{canEdit && <button className="primary" onClick={() => startEditing({ type: 'booking' })}>Add booking</button>}{!data.properties.length && <button onClick={() => navigate('/properties')}>Add property</button>}</div>} />) : (filteredLeases.length || data.leases.length ? <section className="card"><DataTable rows={filteredLeases} columns={[{ key: 'tenant_name', label: 'Tenant' }, { key: 'property', label: 'Property', render: (row) => <span>{row.property}<br /><small>Derived: {propertyStatus(row.property_id)}</small></span> }, { key: 'dates', label: 'Lease period', render: (row) => <span>{row.lease_start}<br /><small>to {row.lease_end}</small></span> }, { key: 'lease_status', label: 'Status', render: (row) => <StatusBadge>{row.lease_status}</StatusBadge> }, { key: 'rent_payment_status', label: 'Rent', render: (row) => <StatusBadge>{row.rent_payment_status}</StatusBadge> }, { key: 'monthly_rent', label: 'Monthly rent', render: (row) => money(row.monthly_rent, row.currency) }, { key: 'security_deposit', label: 'Deposit', render: (row) => money(row.security_deposit, row.currency) }, { key: 'actions', label: 'Actions', render: (row) => <div className="action-row"><button onClick={() => setDetail({ type: 'lease', row })}><Eye size={14} /> View</button>{canEdit && <button onClick={() => startEditing({ type: 'lease', row })}><Edit3 size={14} /> Edit</button>}{canEdit && !['cancelled', 'terminated'].includes(row.lease_status) && <button className="danger" onClick={() => terminateLease(row.id)}><XCircle size={14} /> Terminate</button>}</div> }]} /></section> : <EmptyState title="No leases yet." description="Add a lease to track long-term occupancy, rent status, and renewals." action={<div className="action-row">{canEdit && <button className="primary" onClick={() => startEditing({ type: 'lease' })}>Add lease</button>}{!data.properties.length && <button onClick={() => navigate('/properties')}>Add property</button>}</div>} />)}

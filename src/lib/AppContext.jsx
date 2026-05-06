@@ -65,8 +65,8 @@ function formatSupabaseError(error, fallback = 'The database action failed.') {
 }
 
 function requireWorkspaceSession(workspace, activeSession) {
-  if (!workspace?.id) throw new Error('Select or create a workspace before saving bookings.');
-  if (!activeSession?.user?.id) throw new Error('Sign in again before saving bookings.');
+  if (!workspace?.id) throw new Error('No workspace selected. Select or create a workspace before saving bookings.');
+  if (!activeSession?.user?.id) throw new Error('Your session expired. Sign in again before saving bookings.');
 }
 
 function cleanNumber(value) {
@@ -384,6 +384,8 @@ export function AppProvider({ children }) {
 
   const updateBooking = async (id, payload) => {
     const client = requireSupabase();
+    requireWorkspaceSession(currentWorkspace, session);
+    if (!id) throw new Error('Select a booking before saving changes.');
     const contact = await upsertContact({ full_name: payload.guest_name, email: payload.guest_email, phone: payload.guest_phone, contact_type: 'guest' });
     const { data: booking, error: bookingError } = await client.from('bookings').update({ ...payload, contact_id: contact?.id || payload.contact_id || null }).eq('id', id).eq('workspace_id', currentWorkspace.id).select('*').single();
     if (bookingError) throw new Error(formatSupabaseError(bookingError, 'Booking update failed.'));
