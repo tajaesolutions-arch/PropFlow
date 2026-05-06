@@ -50,6 +50,20 @@ function requireSupabase() {
   return supabase;
 }
 
+function formatSupabaseError(error, fallback = 'The database action failed.') {
+  if (!error) return fallback;
+  const message = error.message || error.details || error.hint || fallback;
+  const parts = [message];
+  if (error.details && !message.includes(error.details)) parts.push(error.details);
+  if (error.hint && !parts.some((part) => part.includes(error.hint))) parts.push(error.hint);
+  return parts.filter(Boolean).join(' ');
+}
+
+function requireWorkspaceSession(workspace, activeSession) {
+  if (!workspace?.id) throw new Error('Select or create a workspace before saving bookings.');
+  if (!activeSession?.user?.id) throw new Error('Sign in again before saving bookings.');
+}
+
 function cleanNumber(value) {
   if (value === '' || value === undefined || value === null) return null;
   const numericValue = Number(value);
@@ -68,17 +82,24 @@ export function AppProvider({ children }) {
 
   const refreshWorkspaceData = async (workspace = currentWorkspace) => {
     if (!supabase || !workspace?.id) { setData(emptyData); return; }
-    const [propertiesRes, cleaningRes, maintenanceRes, bookingsRes, leasesRes, contactsRes, invitesRes, membersRes, filesRes] = await Promise.all([
-      supabase.from('properties').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false }),
-      supabase.from('cleaning_tasks').select('*').eq('workspace_id', workspace.id).order('scheduled_for', { ascending: true }),
-      supabase.from('maintenance_work_orders').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false }),
-      supabase.from('bookings').select('*').eq('workspace_id', workspace.id).order('check_in', { ascending: true }),
-      supabase.from('leases').select('*').eq('workspace_id', workspace.id).order('lease_start', { ascending: true }),
-      supabase.from('contacts').select('*').eq('workspace_id', workspace.id).order('updated_at', { ascending: false }),
-      supabase.from('workspace_invites').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false }),
-      supabase.from('workspace_members').select('*, profiles(full_name, email)').eq('workspace_id', workspace.id).order('created_at', { ascending: true }),
-      supabase.from('file_uploads').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false }),
-    ]);
+    const workspaceQueries = [
+      ['properties', supabase.from('properties').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false })],
+      ['cleaning tasks', supabase.from('cleaning_tasks').select('*').eq('workspace_id', workspace.id).order('scheduled_for', { ascending: true })],
+      ['maintenance work orders', supabase.from('maintenance_work_orders').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false })],
+      ['bookings', supabase.from('bookings').select('*').eq('workspace_id', workspace.id).order('check_in', { ascending: true })],
+      ['leases', supabase.from('leases').select('*').eq('workspace_id', workspace.id).order('lease_start', { ascending: true })],
+      ['contacts', supabase.from('contacts').select('*').eq('workspace_id', workspace.id).order('updated_at', { ascending: false })],
+      ['workspace invites', supabase.from('workspace_invites').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false })],
+      ['workspace members', supabase.from('workspace_members').select('*, profiles(full_name, email)').eq('workspace_id', workspace.id).order('created_at', { ascending: true })],
+      ['file uploads', supabase.from('file_uploads').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false })],
+    ];
+    const [propertiesRes, cleaningRes, maintenanceRes, bookingsRes, leasesRes, contactsRes, invitesRes, membersRes, filesRes] = await Promise.all(workspaceQueries.map(([, query]) => query));
+    const failedQuery = workspaceQueries.find(([label], index) => [propertiesRes, cleaningRes, maintenanceRes, bookingsRes, leasesRes, contactsRes, invitesRes, membersRes, filesRes][index].error);
+    if (failedQuery) {
+      const failedIndex = workspaceQueries.indexOf(failedQuery);
+      const failedResponse = [propertiesRes, cleaningRes, maintenanceRes, bookingsRes, leasesRes, contactsRes, invitesRes, membersRes, filesRes][failedIndex];
+      throw new Error(`Could not load ${failedQuery[0]}: ${formatSupabaseError(failedResponse.error)}`);
+    }
     const props = (propertiesRes.data || []).map(normalizeProperty);
     setData({
       ...emptyData,
@@ -349,16 +370,45 @@ export function AppProvider({ children }) {
 
 
   const friendlyBookingError = (error) => {
-    const message = error?.message || 'The booking or lease could not be saved.';
-    if (message.toLowerCase().includes('overlap') || message.toLowerCase().includes('active lease') || error?.code === '23P01') return new Error(message);
-    return error;
+    const message = formatSupabaseError(error, 'The booking or lease could not be saved.');
+    const lower = message.toLowerCase();
+    if (lower.includes('overlap') || lower.includes('already has') || lower.includes('active lease') || error?.code === '23P01') return new Error(message);
+    if (error?.code === '42501' || lower.includes('row-level security') || lower.includes('permission')) return new Error(`Permission denied while saving: ${message}`);
+    if (error?.code === '23502' || lower.includes('null value')) return new Error(`Missing required booking field: ${message}`);
+    if (error?.code === '23503' || lower.includes('foreign key')) return new Error(`The selected workspace, property, contact, or user could not be linked: ${message}`);
+    if (error instanceof Error) return new Error(message);
+    return new Error(message);
   };
+
+  const bookingRecordFromPayload = (payload, contactId) => ({
+    workspace_id: currentWorkspace.id,
+    property_id: payload.property_id,
+    contact_id: contactId || null,
+    guest_name: payload.guest_name?.trim(),
+    guest_email: payload.guest_email?.trim() || null,
+    guest_phone: payload.guest_phone?.trim() || null,
+    check_in: payload.check_in,
+    check_out: payload.check_out,
+    guest_count: cleanNumber(payload.guest_count),
+    source: payload.source || 'manual',
+    status: payload.status || 'confirmed',
+    payment_status: payload.payment_status || 'unpaid',
+    currency: payload.currency || defaultCurrencyForProperty(payload.property_id),
+    total_amount: cleanNumber(payload.total_amount),
+    cleaning_fee: cleanNumber(payload.cleaning_fee),
+    taxes_fees: cleanNumber(payload.taxes_fees),
+    owner_payout: cleanNumber(payload.owner_payout),
+    notes: payload.notes?.trim() || null,
+    auto_create_cleaning: payload.auto_create_cleaning !== false,
+    created_by: session.user.id,
+  });
 
   const defaultCurrencyForProperty = (propertyId) => data.properties.find((property) => property.id === propertyId)?.currency || currentWorkspace?.defaultCurrency || 'USD';
 
   const createOrUpdateContact = async ({ full_name, email, phone, contact_type, notes }) => {
     const client = requireSupabase();
-    const { data: contact, error: contactError } = await client.rpc('create_or_update_contact', { p_workspace_id: currentWorkspace.id, p_full_name: full_name, p_email: email || null, p_phone: phone || null, p_contact_type: contact_type, p_notes: notes || null });
+    requireWorkspaceSession(currentWorkspace, session);
+    const { data: contact, error: contactError } = await client.rpc('create_or_update_contact', { p_workspace_id: currentWorkspace.id, p_full_name: full_name?.trim(), p_email: email?.trim() || null, p_phone: phone?.trim() || null, p_contact_type: contact_type, p_notes: notes?.trim() || null });
     if (contactError) throw contactError;
     return contact;
   };
@@ -369,13 +419,30 @@ export function AppProvider({ children }) {
   const createBooking = async (payload) => {
     const client = requireSupabase();
     try {
+      requireWorkspaceSession(currentWorkspace, session);
       const contact = await createOrUpdateContact({ full_name: payload.guest_name, email: payload.guest_email, phone: payload.guest_phone, contact_type: 'guest', notes: payload.notes });
-      const record = { ...payload, contact_id: contact?.id || null, currency: payload.currency || defaultCurrencyForProperty(payload.property_id), workspace_id: currentWorkspace.id, created_by: session.user.id };
+      const record = bookingRecordFromPayload(payload, contact?.id);
       const { data: row, error: bookingError } = await client.from('bookings').insert(record).select('*').single();
       if (bookingError) throw bookingError;
-      await client.from('activity_logs').insert({ workspace_id: currentWorkspace.id, actor_user_id: session.user.id, action: 'booking.created', metadata: { booking_id: row.id, property_id: row.property_id } });
-      await refreshWorkspaceData();
-      return normalizeBooking(row, data.properties);
+
+      const { error: activityError } = await client.from('activity_logs').insert({ workspace_id: currentWorkspace.id, actor_user_id: session.user.id, action: 'booking.created', metadata: { booking_id: row.id, property_id: row.property_id } });
+      const warnings = [];
+      if (activityError) warnings.push(`Activity log was not recorded: ${formatSupabaseError(activityError)}`);
+
+      if (record.auto_create_cleaning && row.status !== 'cancelled') {
+        const { data: cleaningTask, error: cleaningError } = await client.from('cleaning_tasks').select('id').eq('workspace_id', currentWorkspace.id).eq('booking_id', row.id).maybeSingle();
+        if (cleaningError) warnings.push(`Booking was created, but cleaning task verification failed: ${formatSupabaseError(cleaningError)}`);
+        if (!cleaningError && !cleaningTask) warnings.push('Booking was created, but no checkout cleaning task was found. Please create one manually or check the booking cleaning automation trigger.');
+      }
+
+      try {
+        await refreshWorkspaceData();
+      } catch (refreshError) {
+        const normalizedBooking = normalizeBooking(row, data.properties);
+        setData((current) => ({ ...current, bookings: current.bookings.some((booking) => booking.id === row.id) ? current.bookings : [...current.bookings, normalizedBooking] }));
+        warnings.push(`Booking was created, but the bookings table could not refresh automatically: ${formatSupabaseError(refreshError)}`);
+      }
+      return { booking: normalizeBooking(row, data.properties), warning: warnings.join(' ') };
     } catch (error) {
       throw friendlyBookingError(error);
     }
@@ -384,6 +451,7 @@ export function AppProvider({ children }) {
   const updateBooking = async (id, payload) => {
     const client = requireSupabase();
     try {
+      requireWorkspaceSession(currentWorkspace, session);
       const patch = { ...payload };
       if (payload.guest_name || payload.guest_email || payload.guest_phone) {
         const contact = await createOrUpdateContact({ full_name: payload.guest_name, email: payload.guest_email, phone: payload.guest_phone, contact_type: 'guest', notes: payload.notes });
@@ -402,6 +470,7 @@ export function AppProvider({ children }) {
   const createLease = async (payload) => {
     const client = requireSupabase();
     try {
+      requireWorkspaceSession(currentWorkspace, session);
       const contact = await createOrUpdateContact({ full_name: payload.tenant_name, email: payload.tenant_email, phone: payload.tenant_phone, contact_type: 'tenant', notes: payload.notes });
       const record = { ...payload, contact_id: contact?.id || null, currency: payload.currency || defaultCurrencyForProperty(payload.property_id), workspace_id: currentWorkspace.id, created_by: session.user.id };
       const { data: row, error: leaseError } = await client.from('leases').insert(record).select('*').single();
@@ -417,6 +486,7 @@ export function AppProvider({ children }) {
   const updateLease = async (id, payload) => {
     const client = requireSupabase();
     try {
+      requireWorkspaceSession(currentWorkspace, session);
       const patch = { ...payload };
       if (payload.tenant_name || payload.tenant_email || payload.tenant_phone) {
         const contact = await createOrUpdateContact({ full_name: payload.tenant_name, email: payload.tenant_email, phone: payload.tenant_phone, contact_type: 'tenant', notes: payload.notes });
