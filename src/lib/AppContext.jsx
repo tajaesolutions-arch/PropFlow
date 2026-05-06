@@ -13,6 +13,10 @@ function normalizeWorkspace(row) {
   return { ...row, defaultCurrency: row.default_currency || row.defaultCurrency || 'USD', code: row.company_code || row.code };
 }
 
+function firstResult(data) {
+  return Array.isArray(data) ? data[0] : data;
+}
+
 function normalizeProperty(row) {
   return { ...row, rentalType: row.rental_type, propertyType: row.property_type, nightlyRate: row.nightly_rate, monthlyRent: row.monthly_rent, squareFeet: row.square_feet, assignedOwnerId: row.assigned_owner_id, archivedAt: row.archived_at };
 }
@@ -108,6 +112,16 @@ export function AppProvider({ children }) {
     });
     await refreshWorkspaceData(selectedWorkspace);
     setAuthLoading(false);
+    return { currentUser: {
+      id: user.id,
+      email: user.email,
+      name: profile.full_name || profile.email,
+      status: profile.status || selectedMembership?.status || 'active',
+      roles: userRoles,
+      primaryRole: resolvePrimaryRole(userRoles),
+      workspaceId: selectedWorkspace?.id,
+      isPropFlowAdmin: Boolean(profile.is_propflow_admin),
+    }, memberships: activeMemberships, workspaces: normalizedWorkspaces, currentWorkspace: selectedWorkspace || null };
   };
 
   useEffect(() => {
@@ -161,11 +175,99 @@ export function AppProvider({ children }) {
       p_company_code: payload.company_code || null,
     };
 
-    const { data: workspace, error: workspaceError } = await client.rpc('create_workspace_with_owner', rpcPayload);
+    const { data: workspaceResult, error: workspaceError } = await client.rpc('create_workspace_with_owner', rpcPayload);
     if (workspaceError) throw new Error(workspaceError.message || 'Workspace creation failed. Please try again or contact support.');
 
-    await loadAccount(session);
-    return normalizeWorkspace(workspace);
+    const newWorkspace = normalizeWorkspace(firstResult(workspaceResult));
+    if (!newWorkspace?.id) {
+      let account;
+      try {
+        account = await loadAccount(session);
+      } catch (error) {
+        setAuthLoading(false);
+        throw new Error('Workspace was created, but we could not load it. Please refresh or log in again.');
+      }
+      if (account?.currentWorkspace?.id) {
+        localStorage.setItem(storageKey, account.currentWorkspace.id);
+        await refreshWorkspaceData(account.currentWorkspace);
+        return account.currentWorkspace;
+      }
+      throw new Error('Workspace was created, but we could not load it. Please refresh or log in again.');
+    }
+
+    localStorage.setItem(storageKey, newWorkspace.id);
+    setCurrentWorkspaceState(newWorkspace);
+    setWorkspaces((existing) => {
+      const others = existing.filter((workspace) => workspace.id !== newWorkspace.id);
+      return [...others, newWorkspace];
+    });
+
+    const { data: membership } = await client
+      .from('workspace_members')
+      .select('*, workspaces(*)')
+      .eq('workspace_id', newWorkspace.id)
+      .eq('user_id', session.user.id)
+      .maybeSingle();
+
+    if (membership) {
+      const normalizedMembership = { ...membership, workspaces: membership.workspaces || newWorkspace };
+      setMemberships((existing) => {
+        const others = existing.filter((item) => item.workspace_id !== normalizedMembership.workspace_id);
+        return [...others, normalizedMembership];
+      });
+      setCurrentUser((user) => {
+        const nextRoles = normalizedMembership.roles || user?.roles || [roles.OWNER_ADMIN];
+        return {
+          id: user?.id || session.user.id,
+          email: user?.email || session.user.email,
+          name: user?.name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'PropFlow user',
+          status: user?.status || normalizedMembership.status || 'active',
+          roles: nextRoles,
+          primaryRole: resolvePrimaryRole(nextRoles),
+          workspaceId: newWorkspace.id,
+          isPropFlowAdmin: Boolean(user?.isPropFlowAdmin),
+        };
+      });
+    } else {
+      setCurrentUser((user) => user ? ({ ...user, workspaceId: newWorkspace.id }) : user);
+    }
+
+    await refreshWorkspaceData(newWorkspace);
+    let account;
+    try {
+      account = await loadAccount(session);
+    } catch (error) {
+      setAuthLoading(false);
+      throw new Error('Workspace was created, but we could not load it. Please refresh or log in again.');
+    }
+
+    const finalMembership = membership || account?.memberships?.find((item) => item.workspace_id === newWorkspace.id);
+    setCurrentWorkspaceState(newWorkspace);
+    setWorkspaces((existing) => {
+      const others = existing.filter((workspace) => workspace.id !== newWorkspace.id);
+      return [...others, newWorkspace];
+    });
+    if (finalMembership) {
+      setMemberships((existing) => {
+        const others = existing.filter((item) => item.workspace_id !== finalMembership.workspace_id);
+        return [...others, { ...finalMembership, workspaces: finalMembership.workspaces || newWorkspace }];
+      });
+    }
+    setCurrentUser((user) => {
+      const nextRoles = finalMembership?.roles || user?.roles || [roles.OWNER_ADMIN];
+      return {
+        id: user?.id || session.user.id,
+        email: user?.email || session.user.email,
+        name: user?.name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'PropFlow user',
+        status: user?.status || finalMembership?.status || 'active',
+        roles: nextRoles,
+        primaryRole: resolvePrimaryRole(nextRoles),
+        workspaceId: newWorkspace.id,
+        isPropFlowAdmin: Boolean(user?.isPropFlowAdmin),
+      };
+    });
+    await refreshWorkspaceData(newWorkspace);
+    return newWorkspace;
   };
 
   const acceptInvite = async (codeOrToken) => {
