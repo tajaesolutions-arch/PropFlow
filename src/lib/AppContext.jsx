@@ -175,32 +175,64 @@ export function AppProvider({ children }) {
       p_company_code: payload.company_code || null,
     };
 
+    const applyCreatedWorkspaceState = (workspace, membership) => {
+      if (!workspace?.id) return;
+      const ownerRoles = Array.from(new Set([...(membership?.roles || []), roles.OWNER_ADMIN]));
+      const ownerMembership = {
+        ...(membership || {}),
+        workspace_id: workspace.id,
+        user_id: session.user.id,
+        roles: ownerRoles,
+        status: membership?.status || 'active',
+        workspaces: membership?.workspaces || workspace,
+      };
+
+      localStorage.setItem(storageKey, workspace.id);
+      setCurrentWorkspaceState(workspace);
+      setWorkspaces((existing) => {
+        const others = existing.filter((item) => item.id !== workspace.id);
+        return [...others, workspace];
+      });
+      setMemberships((existing) => {
+        const others = existing.filter((item) => item.workspace_id !== workspace.id);
+        return [...others, ownerMembership];
+      });
+      setCurrentUser((user) => ({
+        id: user?.id || session.user.id,
+        email: user?.email || session.user.email,
+        name: user?.name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'PropFlow user',
+        status: 'active',
+        roles: ownerRoles,
+        primaryRole: resolvePrimaryRole(ownerRoles),
+        workspaceId: workspace.id,
+        isPropFlowAdmin: Boolean(user?.isPropFlowAdmin),
+      }));
+    };
+
+    const throwWorkspaceReloadError = (message) => {
+      const reloadError = new Error(message);
+      reloadError.workspaceCreated = true;
+      throw reloadError;
+    };
+
     const { data: workspaceResult, error: workspaceError } = await client.rpc('create_workspace_with_owner', rpcPayload);
     if (workspaceError) throw new Error(workspaceError.message || 'Workspace creation failed. Please try again or contact support.');
 
     const newWorkspace = normalizeWorkspace(firstResult(workspaceResult));
     if (!newWorkspace?.id) {
-      let account;
       try {
-        account = await loadAccount(session);
+        const account = await loadAccount(session);
+        if (account?.currentWorkspace?.id) {
+          localStorage.setItem(storageKey, account.currentWorkspace.id);
+          await refreshWorkspaceData(account.currentWorkspace);
+          return account.currentWorkspace;
+        }
       } catch (error) {
         setAuthLoading(false);
-        throw new Error('Workspace was created, but we could not load it. Please refresh or log in again.');
+        throwWorkspaceReloadError('Workspace created. Refreshing your dashboard…');
       }
-      if (account?.currentWorkspace?.id) {
-        localStorage.setItem(storageKey, account.currentWorkspace.id);
-        await refreshWorkspaceData(account.currentWorkspace);
-        return account.currentWorkspace;
-      }
-      throw new Error('Workspace was created, but we could not load it. Please refresh or log in again.');
+      throwWorkspaceReloadError('Workspace created. Refreshing your dashboard…');
     }
-
-    localStorage.setItem(storageKey, newWorkspace.id);
-    setCurrentWorkspaceState(newWorkspace);
-    setWorkspaces((existing) => {
-      const others = existing.filter((workspace) => workspace.id !== newWorkspace.id);
-      return [...others, newWorkspace];
-    });
 
     const { data: membership } = await client
       .from('workspace_members')
@@ -209,65 +241,23 @@ export function AppProvider({ children }) {
       .eq('user_id', session.user.id)
       .maybeSingle();
 
-    if (membership) {
-      const normalizedMembership = { ...membership, workspaces: membership.workspaces || newWorkspace };
-      setMemberships((existing) => {
-        const others = existing.filter((item) => item.workspace_id !== normalizedMembership.workspace_id);
-        return [...others, normalizedMembership];
-      });
-      setCurrentUser((user) => {
-        const nextRoles = normalizedMembership.roles || user?.roles || [roles.OWNER_ADMIN];
-        return {
-          id: user?.id || session.user.id,
-          email: user?.email || session.user.email,
-          name: user?.name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'PropFlow user',
-          status: user?.status || normalizedMembership.status || 'active',
-          roles: nextRoles,
-          primaryRole: resolvePrimaryRole(nextRoles),
-          workspaceId: newWorkspace.id,
-          isPropFlowAdmin: Boolean(user?.isPropFlowAdmin),
-        };
-      });
-    } else {
-      setCurrentUser((user) => user ? ({ ...user, workspaceId: newWorkspace.id }) : user);
-    }
+    const normalizedMembership = membership ? { ...membership, workspaces: membership.workspaces || newWorkspace } : null;
+    applyCreatedWorkspaceState(newWorkspace, normalizedMembership);
 
-    await refreshWorkspaceData(newWorkspace);
-    let account;
     try {
-      account = await loadAccount(session);
+      await refreshWorkspaceData(newWorkspace);
+      const account = await loadAccount(session);
+      const accountWorkspace = account?.workspaces?.find((workspace) => workspace.id === newWorkspace.id) || account?.currentWorkspace;
+      const finalWorkspace = normalizeWorkspace(accountWorkspace) || newWorkspace;
+      const finalMembership = account?.memberships?.find((item) => item.workspace_id === finalWorkspace.id) || normalizedMembership;
+      applyCreatedWorkspaceState(finalWorkspace, finalMembership);
+      await refreshWorkspaceData(finalWorkspace);
+      return finalWorkspace;
     } catch (error) {
+      applyCreatedWorkspaceState(newWorkspace, normalizedMembership);
       setAuthLoading(false);
-      throw new Error('Workspace was created, but we could not load it. Please refresh or log in again.');
+      throwWorkspaceReloadError('Workspace created. Refreshing your dashboard…');
     }
-
-    const finalMembership = membership || account?.memberships?.find((item) => item.workspace_id === newWorkspace.id);
-    setCurrentWorkspaceState(newWorkspace);
-    setWorkspaces((existing) => {
-      const others = existing.filter((workspace) => workspace.id !== newWorkspace.id);
-      return [...others, newWorkspace];
-    });
-    if (finalMembership) {
-      setMemberships((existing) => {
-        const others = existing.filter((item) => item.workspace_id !== finalMembership.workspace_id);
-        return [...others, { ...finalMembership, workspaces: finalMembership.workspaces || newWorkspace }];
-      });
-    }
-    setCurrentUser((user) => {
-      const nextRoles = finalMembership?.roles || user?.roles || [roles.OWNER_ADMIN];
-      return {
-        id: user?.id || session.user.id,
-        email: user?.email || session.user.email,
-        name: user?.name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'PropFlow user',
-        status: user?.status || finalMembership?.status || 'active',
-        roles: nextRoles,
-        primaryRole: resolvePrimaryRole(nextRoles),
-        workspaceId: newWorkspace.id,
-        isPropFlowAdmin: Boolean(user?.isPropFlowAdmin),
-      };
-    });
-    await refreshWorkspaceData(newWorkspace);
-    return newWorkspace;
   };
 
   const acceptInvite = async (codeOrToken) => {
