@@ -37,6 +37,34 @@ function dateOnly(value) { return value ? String(value).slice(0, 10) : ''; }
 function normalizeText(value) { return String(value || '').trim(); }
 function hasDateOrderError(start, end) { return Boolean(start && end && end <= start); }
 function formatSubmitError(error, fallback) { return error?.message || fallback; }
+function bookingDraftKey(workspaceId) { return workspaceId ? `propflow.bookingDraft.${workspaceId}` : ''; }
+function readBookingDraft(workspaceId) {
+  const key = bookingDraftKey(workspaceId);
+  if (!key || typeof window === 'undefined') return null;
+  try {
+    const stored = window.localStorage.getItem(key);
+    if (!stored) return null;
+    const parsed = JSON.parse(stored);
+    return parsed?.form ? parsed : { form: parsed, modalOpen: false };
+  } catch (error) {
+    console.error('[PropFlow] Could not read booking draft', error);
+    return null;
+  }
+}
+function writeBookingDraft(workspaceId, form, modalOpen = true) {
+  const key = bookingDraftKey(workspaceId);
+  if (!key || typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify({ form, modalOpen, updatedAt: new Date().toISOString() }));
+  } catch (error) {
+    console.error('[PropFlow] Could not save booking draft', error);
+  }
+}
+function clearBookingDraft(workspaceId) {
+  const key = bookingDraftKey(workspaceId);
+  if (!key || typeof window === 'undefined') return;
+  window.localStorage.removeItem(key);
+}
 
 function ModalShell({ title, description, children, onClose, submitting }) {
   React.useEffect(() => {
@@ -45,7 +73,9 @@ function ModalShell({ title, description, children, onClose, submitting }) {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [onClose, submitting]);
 
-  return <div className="modal-backdrop" role="presentation">
+  const onBackdropMouseDown = (event) => { if (event.target === event.currentTarget && !submitting) onClose(); };
+
+  return <div className="modal-backdrop" role="presentation" onMouseDown={onBackdropMouseDown}>
     <section className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="booking-lease-modal-title">
       <header className="modal-header">
         <div>
@@ -72,8 +102,9 @@ function WarningMessage({ warning }) {
   return <div className="modal-warning" role="status">{warning}</div>;
 }
 
-function BookingForm({ initial, properties, workspace, onSubmit, onCancel, submitting, submitError, submitWarning, onDirtyChange }) {
-  const [form, setForm] = React.useState(toBookingForm(initial));
+function BookingForm({ initial, draftForm, properties, workspace, onSubmit, onCancel, submitting, submitError, submitWarning, onDirtyChange, onDraftChange }) {
+  const isEditing = Boolean(initial);
+  const [form, setForm] = React.useState(() => (isEditing ? toBookingForm(initial) : { ...toBookingForm(initial), ...(draftForm || {}) }));
   const [validationErrors, setValidationErrors] = React.useState([]);
   const initialSnapshot = React.useMemo(() => JSON.stringify(toBookingForm(initial)), [initial]);
   const dirty = JSON.stringify(form) !== initialSnapshot;
@@ -81,6 +112,7 @@ function BookingForm({ initial, properties, workspace, onSubmit, onCancel, submi
 
   React.useEffect(() => { if (form.property_id && !form.currency) setForm((value) => ({ ...value, currency: propertyCurrency(properties, workspace, form.property_id) })); }, [form.property_id, form.currency, properties, workspace]);
   React.useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
+  React.useEffect(() => { if (!isEditing) onDraftChange(form); }, [form, isEditing, onDraftChange]);
   React.useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
 
   const validate = () => {
@@ -132,7 +164,7 @@ function BookingForm({ initial, properties, workspace, onSubmit, onCancel, submi
       </div>
       <footer className="modal-actions">
         <button type="button" onClick={onCancel} disabled={submitting}>Cancel</button>
-        <button type="submit" className="primary" disabled={submitting}>{submitting ? 'Saving…' : 'Save booking'}</button>
+        <button type="submit" className="primary" disabled={submitting}>{submitting ? 'Saving…' : 'Save Booking'}</button>
       </footer>
     </form>
   </ModalShell>;
@@ -147,6 +179,7 @@ function LeaseForm({ initial, properties, workspace, onSubmit, onCancel, submitt
 
   React.useEffect(() => { if (form.property_id && !form.currency) setForm((value) => ({ ...value, currency: propertyCurrency(properties, workspace, form.property_id) })); }, [form.property_id, form.currency, properties, workspace]);
   React.useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
+  React.useEffect(() => { if (!isEditing) onDraftChange(form); }, [form, isEditing, onDraftChange]);
   React.useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
 
   const validate = () => {
@@ -193,7 +226,7 @@ function LeaseForm({ initial, properties, workspace, onSubmit, onCancel, submitt
       </div>
       <footer className="modal-actions">
         <button type="button" onClick={onCancel} disabled={submitting}>Cancel</button>
-        <button type="submit" className="primary" disabled={submitting}>{submitting ? 'Saving…' : 'Save lease'}</button>
+        <button type="submit" className="primary" disabled={submitting}>{submitting ? 'Saving…' : 'Save Lease'}</button>
       </footer>
     </form>
   </ModalShell>;
@@ -203,6 +236,7 @@ export function BookingsPage() {
   const { data, currentWorkspace, currentUser, createBooking, updateBooking, cancelBooking, createLease, updateLease, terminateLease } = useApp();
   const [tab, setTab] = React.useState('bookings');
   const [editing, setEditing] = React.useState(null);
+  const [bookingDraftForm, setBookingDraftForm] = React.useState(null);
   const [detail, setDetail] = React.useState(null);
   const [message, setMessage] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
@@ -220,36 +254,68 @@ export function BookingsPage() {
   const leaseMetrics = React.useMemo(() => ({ active: data.leases.filter((lease) => ['active', 'ending_soon'].includes(lease.lease_status)).length, expiring: data.leases.filter((lease) => lease.lease_end && lease.lease_end <= inDays(60)).length, overdue: data.leases.filter((lease) => lease.rent_payment_status === 'overdue').length, renewals: data.leases.filter((lease) => lease.lease_status === 'ending_soon').length }), [data.leases]);
 
   React.useEffect(() => {
+    if (!currentWorkspace?.id || editing) return;
+    const draft = readBookingDraft(currentWorkspace.id);
+    if (draft?.form) setBookingDraftForm(draft.form);
+    if (draft?.form && draft.modalOpen) {
+      setTab('bookings');
+      setEditing({ type: 'booking' });
+      setModalDirty(true);
+    }
+  }, [currentWorkspace?.id]);
+
+  React.useEffect(() => {
     if (!editing || !modalDirty) return undefined;
     const onBeforeUnload = (event) => { event.preventDefault(); event.returnValue = 'Discard unsaved changes?'; };
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, [editing, modalDirty]);
 
+  const discardCurrentEditing = () => {
+    if (!editing) return true;
+    const discardMessage = editing.type === 'booking' && !editing.row ? 'Discard unsaved booking?' : 'Discard unsaved changes?';
+    if (modalDirty && !window.confirm(discardMessage)) return false;
+    if (editing.type === 'booking' && !editing.row) {
+      clearBookingDraft(currentWorkspace?.id);
+      setBookingDraftForm(null);
+    }
+    return true;
+  };
+
   const startEditing = (nextEditing) => {
-    if (editing && modalDirty && !window.confirm('Discard unsaved changes?')) return;
+    if (!discardCurrentEditing()) return;
     setModalDirty(false);
     setModalError('');
     setModalWarning('');
     setMessage('');
+    if (nextEditing.type === 'booking' && !nextEditing.row) {
+      const draft = readBookingDraft(currentWorkspace?.id);
+      setBookingDraftForm(draft?.form || null);
+      writeBookingDraft(currentWorkspace?.id, draft?.form || { ...emptyBooking }, true);
+    }
     setEditing(nextEditing);
   };
   const closeEditing = () => {
     if (submitting) return;
-    if (modalDirty && !window.confirm('Discard unsaved changes?')) return;
+    if (!discardCurrentEditing()) return;
     setEditing(null);
     setModalDirty(false);
     setModalError('');
     setModalWarning('');
   };
   const switchTab = (nextTab) => {
-    if (editing && modalDirty && !window.confirm('Discard unsaved changes?')) return;
+    if (!discardCurrentEditing()) return;
     setTab(nextTab);
     setEditing(null);
     setModalDirty(false);
     setModalError('');
     setModalWarning('');
   };
+
+  const handleBookingDraftChange = React.useCallback((draftForm) => {
+    setBookingDraftForm(draftForm);
+    writeBookingDraft(currentWorkspace?.id, draftForm, true);
+  }, [currentWorkspace?.id]);
 
   const saveBooking = async (payload) => {
     setSubmitting(true);
@@ -258,10 +324,15 @@ export function BookingsPage() {
     setModalWarning('');
     try {
       const result = editing?.type === 'booking' ? await updateBooking(editing.row.id, payload) : await createBooking(payload);
+      if (!editing?.row) {
+        clearBookingDraft(currentWorkspace?.id);
+        setBookingDraftForm(null);
+      }
       setEditing(null);
       setModalDirty(false);
       setMessage(result?.warning || 'Booking saved. Contact and checkout cleaning automation have been synced.');
     } catch (error) {
+      console.error('[PropFlow] Booking save failed', error);
       setModalError(formatSubmitError(error, 'Booking could not be saved. Please try again.'));
     } finally {
       setSubmitting(false);
@@ -278,6 +349,7 @@ export function BookingsPage() {
       setModalDirty(false);
       setMessage(result?.warning || 'Lease saved. Tenant contact and occupancy calendar are synced.');
     } catch (error) {
+      console.error('[PropFlow] Lease save failed', error);
       setModalError(formatSubmitError(error, 'Lease could not be saved. Please try again.'));
     } finally {
       setSubmitting(false);
@@ -295,7 +367,7 @@ export function BookingsPage() {
     </section>
     {tab === 'bookings' ? <div className="stat-grid dense"><StatCard label="Total bookings" value={bookingMetrics.total} icon={CalendarPlus} /><StatCard label="Upcoming check-ins" value={bookingMetrics.checkins} icon={Clock} /><StatCard label="Projected revenue" value={money(bookingMetrics.revenue, currentWorkspace?.defaultCurrency)} icon={DollarSign} /><StatCard label="Occupancy today" value={bookingMetrics.occupancy} icon={CheckCircle2} /></div> : <div className="stat-grid dense"><StatCard label="Active leases" value={leaseMetrics.active} icon={CheckCircle2} /><StatCard label="Expiring in 60 days" value={leaseMetrics.expiring} icon={Clock} /><StatCard label="Overdue rent" value={leaseMetrics.overdue} icon={XCircle} /><StatCard label="Renewals due soon" value={leaseMetrics.renewals} icon={CalendarPlus} /></div>}
     <section className="card"><div className="filter-bar booking-filter"><label><Search size={14} /> <input placeholder="Search guest, tenant, property" value={filters.query} onChange={setFilter('query')} /></label><select value={filters.property} onChange={setFilter('property')}><option value="all">All properties</option>{data.properties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select><input type="date" value={filters.start} onChange={setFilter('start')} /><input type="date" value={filters.end} onChange={setFilter('end')} /><select value={filters.status} onChange={setFilter('status')}><option value="all">All statuses</option>{(tab === 'bookings' ? bookingStatuses : leaseStatuses).map((status) => <option key={status}>{status}</option>)}</select><select value={filters.payment} onChange={setFilter('payment')}><option value="all">All payment statuses</option>{(tab === 'bookings' ? paymentStatuses : rentStatuses).map((status) => <option key={status}>{status}</option>)}</select>{tab === 'bookings' && <select value={filters.source} onChange={setFilter('source')}><option value="all">All sources</option>{bookingSources.map((source) => <option key={source}>{source}</option>)}</select>}<select value={filters.currency} onChange={setFilter('currency')}><option value="all">All currencies</option>{currencies.map((currency) => <option key={currency}>{currency}</option>)}</select><label className="inline-check"><input type="checkbox" checked={filters.showCancelled} onChange={setFilter('showCancelled')} /> Show cancelled</label></div></section>
-    {editing?.type === 'booking' && <BookingForm initial={editing.row} properties={activeProperties} workspace={currentWorkspace} onSubmit={saveBooking} onCancel={closeEditing} submitting={submitting} submitError={modalError} submitWarning={modalWarning} onDirtyChange={setModalDirty} />}
+    {editing?.type === 'booking' && <BookingForm initial={editing.row} draftForm={bookingDraftForm} properties={activeProperties} workspace={currentWorkspace} onSubmit={saveBooking} onCancel={closeEditing} submitting={submitting} submitError={modalError} submitWarning={modalWarning} onDirtyChange={setModalDirty} onDraftChange={handleBookingDraftChange} />}
     {editing?.type === 'lease' && <LeaseForm initial={editing.row} properties={activeProperties} workspace={currentWorkspace} onSubmit={saveLease} onCancel={closeEditing} submitting={submitting} submitError={modalError} submitWarning={modalWarning} onDirtyChange={setModalDirty} />}
     {detail && <section className="card detail-panel"><div className="card-header"><div><h3>{detail.type === 'booking' ? detail.row.guest_name : detail.row.tenant_name}</h3><p>{detail.row.property} · {detail.type === 'booking' ? `${detail.row.check_in} → ${detail.row.check_out}` : `${detail.row.lease_start} → ${detail.row.lease_end || 'Open ended'}`}</p></div><button onClick={() => setDetail(null)}>Close</button></div><pre>{JSON.stringify(detail.row, null, 2)}</pre></section>}
     {tab === 'bookings' ? (filteredBookings.length || data.bookings.length ? <section className="card"><DataTable rows={filteredBookings} columns={[{ key: 'guest_name', label: 'Guest' }, { key: 'property', label: 'Property', render: (row) => <span>{row.property}<br /><small>Derived: {propertyStatus(row.property_id)}</small></span> }, { key: 'dates', label: 'Stay', render: (row) => <span>{row.check_in}<br /><small>to {row.check_out}</small></span> }, { key: 'source', label: 'Source' }, { key: 'status', label: 'Status', render: (row) => <StatusBadge>{row.status}</StatusBadge> }, { key: 'payment_status', label: 'Payment', render: (row) => <StatusBadge>{row.payment_status}</StatusBadge> }, { key: 'total_amount', label: 'Total', render: (row) => money(row.total_amount, row.currency) }, { key: 'cleaning', label: 'Cleaning', render: (row) => row.auto_create_cleaning ? 'Auto' : 'Off' }, { key: 'actions', label: 'Actions', render: (row) => <div className="action-row"><button onClick={() => setDetail({ type: 'booking', row })}><Eye size={14} /> View</button>{canEdit && <button onClick={() => startEditing({ type: 'booking', row })}><Edit3 size={14} /> Edit</button>}{canEdit && row.status !== 'cancelled' && <button className="danger" onClick={() => cancelBooking(row.id)}><XCircle size={14} /> Cancel</button>}</div> }]} /></section> : <EmptyState title="No bookings yet." description="Add a booking to start scheduling stays and checkout cleaning tasks." action={<div className="action-row">{canEdit && <button className="primary" onClick={() => startEditing({ type: 'booking' })}>Add booking</button>}{!data.properties.length && <button onClick={() => navigate('/properties')}>Add property</button>}</div>} />) : (filteredLeases.length || data.leases.length ? <section className="card"><DataTable rows={filteredLeases} columns={[{ key: 'tenant_name', label: 'Tenant' }, { key: 'property', label: 'Property', render: (row) => <span>{row.property}<br /><small>Derived: {propertyStatus(row.property_id)}</small></span> }, { key: 'dates', label: 'Lease period', render: (row) => <span>{row.lease_start}<br /><small>to {row.lease_end}</small></span> }, { key: 'lease_status', label: 'Status', render: (row) => <StatusBadge>{row.lease_status}</StatusBadge> }, { key: 'rent_payment_status', label: 'Rent', render: (row) => <StatusBadge>{row.rent_payment_status}</StatusBadge> }, { key: 'monthly_rent', label: 'Monthly rent', render: (row) => money(row.monthly_rent, row.currency) }, { key: 'security_deposit', label: 'Deposit', render: (row) => money(row.security_deposit, row.currency) }, { key: 'actions', label: 'Actions', render: (row) => <div className="action-row"><button onClick={() => setDetail({ type: 'lease', row })}><Eye size={14} /> View</button>{canEdit && <button onClick={() => startEditing({ type: 'lease', row })}><Edit3 size={14} /> Edit</button>}{canEdit && !['cancelled', 'terminated'].includes(row.lease_status) && <button className="danger" onClick={() => terminateLease(row.id)}><XCircle size={14} /> Terminate</button>}</div> }]} /></section> : <EmptyState title="No leases yet." description="Add a lease to track long-term occupancy, rent status, and renewals." action={<div className="action-row">{canEdit && <button className="primary" onClick={() => startEditing({ type: 'lease' })}>Add lease</button>}{!data.properties.length && <button onClick={() => navigate('/properties')}>Add property</button>}</div>} />)}
