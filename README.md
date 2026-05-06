@@ -111,13 +111,14 @@ Expected behavior without Vercel env vars:
 
 ## Required Supabase migration
 
-The current Phase 1 schema migration is:
+The current Phase 1 schema migrations are:
 
 ```text
 supabase/migrations/202605050001_propflow_schema.sql
+supabase/migrations/202605060001_create_workspace_with_owner_rpc.sql
 ```
 
-Apply this migration before running the app against a Supabase project. If you see `Could not find the table 'public.workspaces' in the schema cache`, the migration has not been applied to that project, was applied to a different project, or Supabase needs its API schema cache refreshed after the SQL runs.
+Apply both migrations before running the app against a Supabase project. If you see `Could not find the table 'public.workspaces' in the schema cache`, the base migration has not been applied to that project, was applied to a different project, or Supabase needs its API schema cache refreshed after the SQL runs.
 
 The migration creates or repairs these app-required objects without dropping customer data:
 
@@ -134,6 +135,7 @@ The migration creates or repairs these app-required objects without dropping cus
 - `notifications`
 - private Storage bucket `propflow-private`
 - RLS helper functions and table/storage policies
+- secure `public.create_workspace_with_owner(...)` RPC for initial workspace creation
 
 ## Exact Supabase migration instructions
 
@@ -145,8 +147,9 @@ Use this path when the hosted app is already connected to a Supabase project or 
 2. Go to **SQL Editor** → **New query**.
 3. Copy the full contents of `supabase/migrations/202605050001_propflow_schema.sql`.
 4. Paste the full SQL into the editor and click **Run**. The file is idempotent and uses `CREATE TABLE IF NOT EXISTS`, non-destructive `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, and policy/trigger replacement so it can be run again if needed.
-5. In **Table Editor**, confirm the `public.workspaces` table exists along with the other Phase 1 tables listed above.
-6. If the app still reports a schema-cache error immediately after running the SQL, wait briefly and reload the app; Supabase PostgREST schema cache refresh can lag right after DDL.
+5. Open another **New query**, copy the full contents of `supabase/migrations/202605060001_create_workspace_with_owner_rpc.sql`, paste it, and click **Run**. This second migration creates the `SECURITY DEFINER` RPC used by the app for workspace creation and drops the older broad direct `workspaces` insert policy.
+6. In **Table Editor**, confirm the `public.workspaces` table exists along with the other Phase 1 tables listed above. In **Database** → **Functions**, confirm `public.create_workspace_with_owner` exists and is executable by authenticated users.
+7. If the app still reports a schema-cache error immediately after running the SQL, wait briefly and reload the app; Supabase PostgREST schema cache refresh can lag right after DDL.
 
 ### Option B: Supabase CLI for a hosted project
 
@@ -170,7 +173,7 @@ supabase db reset
 2. The app upserts/loads `profiles` for the authenticated user.
 3. The app loads `workspace_members` and joined `workspaces`.
 4. If the user has no workspace membership, they are routed to `/workspace-setup`.
-5. New workspace creation inserts a workspace and makes the creator a `workspace_owner`.
+5. New workspace creation calls the secure `public.create_workspace_with_owner(...)` RPC, which upserts the creator profile, inserts the workspace, adds owner membership, writes an activity log when available, and returns the created workspace. Authenticated clients should not insert directly into `public.workspaces`.
 6. Joining by invite token or workspace/company code only succeeds when a pending invite exists for the authenticated user's email and is not expired/revoked.
 7. Users with multiple workspaces can switch the active workspace from the top bar.
 8. Suspended users can log in but are routed to `/suspended` and RLS blocks workspace data.
@@ -201,7 +204,7 @@ Use a real Supabase project for these checks:
 - [ ] `/login` renders and no demo login is present.
 - [ ] `/signup` creates a Supabase Auth user or shows email-confirmation messaging.
 - [ ] New authenticated user without membership is routed to `/workspace-setup`.
-- [ ] User can create a workspace and becomes `workspace_owner`.
+- [ ] User can create a workspace through the `create_workspace_with_owner` RPC and becomes `workspace_owner`.
 - [ ] Owner lands on `/dashboard`.
 - [ ] Owner can open `/settings` and create an invite.
 - [ ] Invite role dropdown does not include `propflow_admin`.
