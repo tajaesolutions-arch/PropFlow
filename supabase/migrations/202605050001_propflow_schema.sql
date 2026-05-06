@@ -564,7 +564,8 @@ create policy profiles_insert_own on public.profiles for insert with check (id =
 drop policy if exists workspaces_select_member on public.workspaces;
 create policy workspaces_select_member on public.workspaces for select using (public.is_active_workspace_member(id));
 drop policy if exists workspaces_insert_authenticated on public.workspaces;
-create policy workspaces_insert_authenticated on public.workspaces for insert with check (auth.uid() is not null and status = 'active');
+-- Initial workspace creation is handled by public.create_workspace_with_owner()
+-- in the follow-up RPC migration instead of broad direct client inserts.
 drop policy if exists workspaces_update_owner_manager on public.workspaces;
 create policy workspaces_update_owner_manager on public.workspaces for update using (public.has_workspace_role(id, array['workspace_owner'])) with check (public.has_workspace_role(id, array['workspace_owner']));
 

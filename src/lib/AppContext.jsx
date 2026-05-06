@@ -37,7 +37,9 @@ function requireSupabase() {
 }
 
 function cleanNumber(value) {
-  return value === '' || value === undefined ? null : Number(value);
+  if (value === '' || value === undefined || value === null) return null;
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : null;
 }
 
 export function AppProvider({ children }) {
@@ -144,13 +146,24 @@ export function AppProvider({ children }) {
 
   const createWorkspace = async (payload) => {
     const client = requireSupabase();
-    const code = payload.company_code || payload.name?.toUpperCase().replace(/[^A-Z0-9]+/g, '-').slice(0, 12) || inviteToken().slice(0, 8);
-    const workspacePayload = { ...payload, property_count_estimate: cleanNumber(payload.property_count_estimate), company_code: code, created_by: session.user.id };
-    const { data: workspace, error: workspaceError } = await client.from('workspaces').insert(workspacePayload).select('*').single();
-    if (workspaceError) throw workspaceError;
-    const { error: memberError } = await client.from('workspace_members').insert({ workspace_id: workspace.id, user_id: session.user.id, roles: [roles.OWNER_ADMIN], status: 'active' });
-    if (memberError) throw memberError;
-    await client.from('activity_logs').insert({ workspace_id: workspace.id, actor_user_id: session.user.id, action: 'workspace.created', metadata: { name: workspace.name } });
+    if (!session?.user) throw new Error('Sign in before creating a workspace.');
+
+    const rpcPayload = {
+      p_name: payload.name,
+      p_business_type: payload.business_type || null,
+      p_country: payload.country,
+      p_default_currency: payload.default_currency,
+      p_business_email: payload.business_email || null,
+      p_phone: payload.phone || null,
+      p_website: payload.website || null,
+      p_property_count_estimate: cleanNumber(payload.property_count_estimate),
+      p_plan_placeholder: payload.plan_placeholder || null,
+      p_company_code: payload.company_code || null,
+    };
+
+    const { data: workspace, error: workspaceError } = await client.rpc('create_workspace_with_owner', rpcPayload);
+    if (workspaceError) throw new Error(workspaceError.message || 'Workspace creation failed. Please try again or contact support.');
+
     await loadAccount(session);
     return normalizeWorkspace(workspace);
   };
