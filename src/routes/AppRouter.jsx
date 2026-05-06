@@ -27,6 +27,7 @@ import { OwnerDashboardPage } from '../pages/OwnerDashboardPage.jsx';
 import { CleanerDashboardPage } from '../pages/CleanerDashboardPage.jsx';
 import { MaintenanceDashboardPage } from '../pages/MaintenanceDashboardPage.jsx';
 import { AccountantDashboardPage } from '../pages/AccountantDashboardPage.jsx';
+import { BillingPage } from '../pages/BillingPage.jsx';
 import { ComingSoonPage } from '../pages/ComingSoonPage.jsx';
 
 const publicRoutes = { '/': LandingPage, '/pricing': PricingPage, '/login': LoginPage, '/signup': SignupPage };
@@ -62,7 +63,7 @@ const protectedRoutes = {
   '/inventory': InventoryPage,
   '/team': SettingsPage,
   '/smart-tools': () => <ComingSoonPage title="Smart Tools / AI Tools" />,
-  '/billing': () => <ComingSoonPage title="Billing / Subscription" />,
+  '/billing': BillingPage,
   '/help': () => <ComingSoonPage title="Help / Support" />,
 };
 
