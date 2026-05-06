@@ -30,8 +30,9 @@ import { MaintenanceDashboardPage } from '../pages/MaintenanceDashboardPage.jsx'
 import { AccountantDashboardPage } from '../pages/AccountantDashboardPage.jsx';
 import { BillingPage } from '../pages/BillingPage.jsx';
 import { ComingSoonPage } from '../pages/ComingSoonPage.jsx';
+import { PublicBookingPage } from '../pages/PublicBookingPage.jsx';
 
-const publicRoutes = { '/': LandingPage, '/pricing': PricingPage, '/login': LoginPage, '/signup': SignupPage };
+const publicRoutes = { '/': LandingPage, '/pricing': PricingPage, '/login': LoginPage, '/signup': SignupPage, '/book': PublicBookingPage };
 const dashboardAccess = {
   '/dashboard': [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
   '/owner-dashboard': [roles.OWNER],
