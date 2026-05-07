@@ -239,7 +239,7 @@ function LeaseForm({ initial, properties, workspace, onSubmit, onCancel, submitt
 }
 
 export function BookingsPage() {
-  const { data, currentWorkspace, currentUser, session, createBooking, updateBooking, cancelBooking, createLease, updateLease, terminateLease } = useApp();
+  const { data, currentWorkspace, currentUser, session, createBooking, updateBooking, createLease, updateLease } = useApp();
   const [tab, setTab] = React.useState('bookings');
   const [editing, setEditing] = React.useState(null);
   const [bookingDraftForm, setBookingDraftForm] = React.useState(null);
@@ -381,6 +381,55 @@ export function BookingsPage() {
     {editing?.type === 'booking' && <BookingForm initial={editing.row} draftForm={bookingDraftForm} properties={activeProperties} workspace={currentWorkspace} session={session} onSubmit={saveBooking} onCancel={closeEditing} submitting={submitting} submitError={modalError} submitWarning={modalWarning} onDirtyChange={setModalDirty} onDraftChange={handleBookingDraftChange} />}
     {editing?.type === 'lease' && <LeaseForm initial={editing.row} properties={activeProperties} workspace={currentWorkspace} onSubmit={saveLease} onCancel={closeEditing} submitting={submitting} submitError={modalError} submitWarning={modalWarning} onDirtyChange={setModalDirty} />}
     {detail && <section className="card detail-panel"><div className="card-header"><div><h3>{detail.type === 'booking' ? detail.row.guest_name : detail.row.tenant_name}</h3><p>{detail.row.property} · {detail.type === 'booking' ? `${detail.row.check_in} → ${detail.row.check_out}` : `${detail.row.lease_start} → ${detail.row.lease_end || 'Open ended'}`}</p></div><button onClick={() => setDetail(null)}>Close</button></div><pre>{JSON.stringify(detail.row, null, 2)}</pre></section>}
-    {tab === 'bookings' ? (filteredBookings.length || data.bookings.length ? <section className="card"><DataTable rows={filteredBookings} columns={[{ key: 'guest_name', label: 'Guest' }, { key: 'property', label: 'Property', render: (row) => <span>{row.property}<br /><small>Derived: {propertyStatus(row.property_id)}</small></span> }, { key: 'dates', label: 'Stay', render: (row) => <span>{row.check_in}<br /><small>to {row.check_out}</small></span> }, { key: 'source', label: 'Source' }, { key: 'status', label: 'Status', render: (row) => <StatusBadge>{row.status}</StatusBadge> }, { key: 'payment_status', label: 'Payment', render: (row) => <StatusBadge>{row.payment_status}</StatusBadge> }, { key: 'total_amount', label: 'Total', render: (row) => money(row.total_amount, row.currency) }, { key: 'cleaning', label: 'Cleaning', render: (row) => row.auto_create_cleaning ? 'Auto' : 'Off' }, { key: 'actions', label: 'Actions', render: (row) => <div className="action-row"><button onClick={() => setDetail({ type: 'booking', row })}><Eye size={14} /> View</button>{canEdit && <button onClick={() => startEditing({ type: 'booking', row })}><Edit3 size={14} /> Edit</button>}{canEdit && row.status !== 'cancelled' && <button className="danger" onClick={() => cancelBooking(row.id)}><XCircle size={14} /> Cancel</button>}</div> }]} /></section> : <EmptyState title="No bookings yet." description="Add a booking to start scheduling stays and checkout cleaning tasks." action={<div className="action-row">{canEdit && <button className="primary" onClick={() => startEditing({ type: 'booking' })}>Add booking</button>}{!data.properties.length && <button onClick={() => navigate('/properties')}>Add property</button>}</div>} />) : (filteredLeases.length || data.leases.length ? <section className="card"><DataTable rows={filteredLeases} columns={[{ key: 'tenant_name', label: 'Tenant' }, { key: 'property', label: 'Property', render: (row) => <span>{row.property}<br /><small>Derived: {propertyStatus(row.property_id)}</small></span> }, { key: 'dates', label: 'Lease period', render: (row) => <span>{row.lease_start}<br /><small>to {row.lease_end}</small></span> }, { key: 'lease_status', label: 'Status', render: (row) => <StatusBadge>{row.lease_status}</StatusBadge> }, { key: 'rent_payment_status', label: 'Rent', render: (row) => <StatusBadge>{row.rent_payment_status}</StatusBadge> }, { key: 'monthly_rent', label: 'Monthly rent', render: (row) => money(row.monthly_rent, row.currency) }, { key: 'security_deposit', label: 'Deposit', render: (row) => money(row.security_deposit, row.currency) }, { key: 'actions', label: 'Actions', render: (row) => <div className="action-row"><button onClick={() => setDetail({ type: 'lease', row })}><Eye size={14} /> View</button>{canEdit && <button onClick={() => startEditing({ type: 'lease', row })}><Edit3 size={14} /> Edit</button>}{canEdit && !['cancelled', 'terminated'].includes(row.lease_status) && <button className="danger" onClick={() => terminateLease(row.id)}><XCircle size={14} /> Terminate</button>}</div> }]} /></section> : <EmptyState title="No leases yet." description="Add a lease to track long-term occupancy, rent status, and renewals." action={<div className="action-row">{canEdit && <button className="primary" onClick={() => startEditing({ type: 'lease' })}>Add lease</button>}{!data.properties.length && <button onClick={() => navigate('/properties')}>Add property</button>}</div>} />)}
+    {tab === 'bookings' ? (filteredBookings.length || data.bookings.length ? <section className="card"><DataTable rows={filteredBookings} columns={[{ key: 'guest_name', label: 'Guest' }, { key: 'property', label: 'Property', render: (row) => <span>{row.property}<br /><small>Derived: {propertyStatus(row.property_id)}</small></span> }, { key: 'dates', label: 'Stay', render: (row) => <span>{row.check_in}<br /><small>to {row.check_out}</small></span> }, { key: 'source', label: 'Source' }, { key: 'status', label: 'Status', render: (row) => <StatusBadge>{row.status}</StatusBadge> }, { key: 'payment_status', label: 'Payment', render: (row) => <StatusBadge>{row.payment_status}</StatusBadge> }, { key: 'total_amount', label: 'Total', render: (row) => money(row.total_amount, row.currency) }, { key: 'cleaning', label: 'Cleaning', render: (row) => row.auto_create_cleaning ? 'Auto' : 'Off' }, { key: 'actions', label: 'Actions', render: (row) => <div className="action-row"><button onClick={() => setDetail({ type: 'booking', row })}><Eye size={14} /> View</button>{canEdit && <button onClick={() => startEditing({ type: 'booking', row })}><Edit3 size={14} /> Edit</button>}{canEdit && row.status !== 'cancelled' && <button className="danger" onClick={() => cancelBookingById(row.id)}><XCircle size={14} /> Cancel</button>}</div> }]} /></section> : <EmptyState title="No bookings yet." description="Add a booking to start scheduling stays and checkout cleaning tasks." action={<div className="action-row">{canEdit && <button className="primary" onClick={() => startEditing({ type: 'booking' })}>Add booking</button>}{!data.properties.length && <button onClick={() => navigate('/properties')}>Add property</button>}</div>} />) : (filteredLeases.length || data.leases.length ? <section className="card"><DataTable rows={filteredLeases} columns={[{ key: 'tenant_name', label: 'Tenant' }, { key: 'property', label: 'Property', render: (row) => <span>{row.property}<br /><small>Derived: {propertyStatus(row.property_id)}</small></span> }, { key: 'dates', label: 'Lease period', render: (row) => <span>{row.lease_start}<br /><small>to {row.lease_end}</small></span> }, { key: 'lease_status', label: 'Status', render: (row) => <StatusBadge>{row.lease_status}</StatusBadge> }, { key: 'rent_payment_status', label: 'Rent', render: (row) => <StatusBadge>{row.rent_payment_status}</StatusBadge> }, { key: 'monthly_rent', label: 'Monthly rent', render: (row) => money(row.monthly_rent, row.currency) }, { key: 'security_deposit', label: 'Deposit', render: (row) => money(row.security_deposit, row.currency) }, { key: 'actions', label: 'Actions', render: (row) => <div className="action-row"><button onClick={() => setDetail({ type: 'lease', row })}><Eye size={14} /> View</button>{canEdit && <button onClick={() => startEditing({ type: 'lease', row })}><Edit3 size={14} /> Edit</button>}{canEdit && !['cancelled', 'terminated'].includes(row.lease_status) && <button className="danger" onClick={() => terminateLeaseById(row.id)}><XCircle size={14} /> Terminate</button>}</div> }]} /></section> : <EmptyState title="No leases yet." description="Add a lease to track long-term occupancy, rent status, and renewals." action={<div className="action-row">{canEdit && <button className="primary" onClick={() => startEditing({ type: 'lease' })}>Add lease</button>}{!data.properties.length && <button onClick={() => navigate('/properties')}>Add property</button>}</div>} />)}
   </AppLayout>;
-}
+};
+  const saveLease = async (payload) => {
+    setSubmitting(true);
+    setMessage('');
+    setModalError('');
+    setModalWarning('');
+    try {
+      const result = editing?.type === 'lease' ? await updateLease(editing.row.id, payload) : await createLease(payload);
+      setEditing(null);
+      setModalDirty(false);
+      setMessage(result?.warning || 'Lease saved. Tenant contact and occupancy calendar are synced.');
+    } catch (error) {
+      console.error('[PropFlow] Lease save failed', error);
+      setModalError(formatSubmitError(error, 'Lease could not be saved. Please try again.'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  const cancelBookingById = async (bookingId) => {
+    if (!bookingId) return;
+    if (!window.confirm('Cancel this booking?')) return;
+
+    setMessage('');
+
+    try {
+      await updateBooking(bookingId, { status: 'cancelled' });
+      setMessage('Booking cancelled.');
+    } catch (error) {
+      console.error('[PropFlow] Booking cancellation failed', error);
+      setMessage(formatSubmitError(error, 'Booking could not be cancelled. Please try again.'));
+    }
+  };
+
+  const terminateLeaseById = async (leaseId) => {
+    if (!leaseId) return;
+    if (!window.confirm('Terminate this lease?')) return;
+
+    setMessage('');
+
+    try {
+      await updateLease(leaseId, {
+        lease_status: 'terminated',
+        terminated_at: new Date().toISOString(),
+      });
+      setMessage('Lease terminated.');
+    } catch (error) {
+      console.error('[PropFlow] Lease termination failed', error);
+      setMessage(formatSubmitError(error, 'Lease could not be terminated. Please try again.'));
+    }
+  };
