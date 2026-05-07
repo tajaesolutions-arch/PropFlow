@@ -122,6 +122,14 @@ export function navigate(path) {
   }
 }
 
+function RedirectTo({ to }) {
+  React.useEffect(() => {
+    navigate(to);
+  }, [to]);
+
+  return <LoadingScreen />;
+}
+
 function LoadingScreen() {
   return (
     <div className="auth-page">
