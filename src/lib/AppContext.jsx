@@ -528,15 +528,6 @@ makeWorkspaceQuery('owner reports', 'ownerReports', supabase.from('owner_reports
   return work;
 };
 
-  const updateMaintenanceWorkOrder = async (id, payload) => {
-    const client = requireSupabase();
-    const { data: work, error: workError } = await client.from('maintenance_work_orders').update(payload).eq('id', id).eq('workspace_id', currentWorkspace.id).select('*').single();
-    if (workError) throw new Error(formatSupabaseError(workError, 'Maintenance work order update failed.'));
-    await refreshWorkspaceData();
-    return work;
-  };
-
-
   const computeSupplyStatus = (payload) => {
     if (payload.archived_at) return 'archived';
     const quantity = Number(payload.current_quantity ?? 0);
