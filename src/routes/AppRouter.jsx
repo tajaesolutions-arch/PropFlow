@@ -257,19 +257,16 @@ export function AppRouter() {
   if (authLoading) return <LoadingScreen />;
 
   if (path === '/login/redirect') {
-    navigate(getPostLoginPath(currentUser));
-    return null;
+    return <RedirectTo to={getPostLoginPath(currentUser)} />;
   }
 
   if (isPublicPath(path)) {
     if (currentUser && (path === '/login' || path === '/signup')) {
-      navigate(getPostLoginPath(currentUser));
-      return null;
+      return <RedirectTo to={getPostLoginPath(currentUser)} />;
     }
 
     if (currentUser && currentWorkspace && path === '/join') {
-      navigate(getPostLoginPath(currentUser));
-      return null;
+      return <RedirectTo to={getPostLoginPath(currentUser)} />;
     }
 
     const route = getPublicRoute(path);
@@ -277,25 +274,21 @@ export function AppRouter() {
   }
 
   if (!currentUser) {
-    navigate('/login');
-    return null;
+    return <RedirectTo to="/login" />;
   }
 
   if (currentUser.status === 'suspended' && path !== '/suspended' && path !== '/account') {
-    navigate('/suspended');
-    return null;
+    return <RedirectTo to="/suspended" />;
   }
 
   const isPropFlowAdmin = currentUser.roles?.includes(roles.ADMIN);
 
   if (!currentWorkspace && !isPropFlowAdmin && !shouldBypassWorkspaceRequirement(path)) {
-    navigate('/workspace-setup');
-    return null;
+    return <RedirectTo to="/workspace-setup" />;
   }
 
   if (currentWorkspace && isWorkspaceSetupPath(path)) {
-    navigate(getPostLoginPath(currentUser));
-    return null;
+    return <RedirectTo to={getPostLoginPath(currentUser)} />;
   }
 
   if (path === '/admin' && !isPropFlowAdmin) {
@@ -303,8 +296,7 @@ export function AppRouter() {
   }
 
   if (dashboardAccess[path] && !hasAnyRole(currentUser, dashboardAccess[path])) {
-    navigate(getPostLoginPath(currentUser));
-    return null;
+    return <RedirectTo to={getPostLoginPath(currentUser)} />;
   }
 
   if (propertyId) {
