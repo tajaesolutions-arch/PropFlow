@@ -1,5 +1,21 @@
 import React from 'react';
-import { CalendarPlus, CheckCircle2, Clock, DollarSign, Edit3, Eye, Plus, Search, X, XCircle } from 'lucide-react';
+import {
+  CalendarCheck,
+  CalendarPlus,
+  CheckCircle2,
+  Clock,
+  DollarSign,
+  Edit3,
+  Eye,
+  FileText,
+  Home,
+  Plus,
+  Search,
+  Users,
+  X,
+  XCircle,
+} from 'lucide-react';
+
 import { AppLayout } from '../components/layout/AppLayout.jsx';
 import { DataTable } from '../components/DataTable.jsx';
 import { EmptyState } from '../components/EmptyState.jsx';
@@ -8,7 +24,7 @@ import { StatusBadge } from '../components/StatusBadge.jsx';
 import { useApp } from '../lib/AppContext.jsx';
 import { hasAnyRole } from '../lib/auth.js';
 import { currencies, taskManagerRoles } from '../data/constants.js';
-import { formatCurrency, formatPercent } from '../lib/formatters.js';
+import { formatCurrency, formatDate, formatPercent } from '../lib/formatters.js';
 import { navigate } from '../routes/AppRouter.jsx';
 
 const bookingSources = ['manual', 'direct', 'airbnb', 'booking_com', 'vrbo', 'ical', 'csv', 'other'];
@@ -16,420 +32,1352 @@ const bookingStatuses = ['pending', 'confirmed', 'checked_in', 'checked_out', 'c
 const paymentStatuses = ['unpaid', 'partially_paid', 'paid', 'refunded', 'failed'];
 const leaseStatuses = ['active', 'ending_soon', 'expired', 'terminated', 'cancelled'];
 const rentStatuses = ['current', 'overdue', 'partially_paid', 'paid_ahead', 'unknown'];
+
 const today = () => new Date().toISOString().slice(0, 10);
-const inDays = (days) => { const date = new Date(); date.setDate(date.getDate() + days); return date.toISOString().slice(0, 10); };
-const money = (value, currency) => formatCurrency(Number(value || 0), currency || 'USD');
 
-const emptyBooking = { guest_name: '', guest_email: '', guest_phone: '', property_id: '', check_in: today(), check_out: inDays(1), guest_count: 1, source: 'manual', status: 'confirmed', payment_status: 'unpaid', currency: '', total_amount: '', cleaning_fee: '', taxes_fees: '', owner_payout: '', notes: '', auto_create_cleaning: true };
-const emptyLease = { tenant_name: '', tenant_email: '', tenant_phone: '', property_id: '', lease_start: today(), lease_end: '', monthly_rent: '', security_deposit: '', rent_payment_status: 'unknown', lease_status: 'active', currency: '', lease_document_file_id: '', notes: '' };
+const inDays = (days) => {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+};
 
-function toBookingForm(row) {
-  return row ? { guest_name: row.guest_name || '', guest_email: row.guest_email || '', guest_phone: row.guest_phone || '', property_id: row.property_id || '', check_in: row.check_in || '', check_out: row.check_out || '', guest_count: row.guest_count || 1, source: row.source || 'manual', status: row.status || 'confirmed', payment_status: row.payment_status || 'unpaid', currency: row.currency || '', total_amount: row.total_amount ?? '', cleaning_fee: row.cleaning_fee ?? '', taxes_fees: row.taxes_fees ?? '', owner_payout: row.owner_payout ?? '', notes: row.notes || '', auto_create_cleaning: row.auto_create_cleaning !== false } : { ...emptyBooking };
+const emptyBooking = {
+  guest_name: '',
+  guest_email: '',
+  guest_phone: '',
+  property_id: '',
+  check_in: today(),
+  check_out: inDays(1),
+  guest_count: 1,
+  source: 'manual',
+  status: 'confirmed',
+  payment_status: 'unpaid',
+  currency: '',
+  total_amount: '',
+  cleaning_fee: '',
+  taxes_fees: '',
+  owner_payout: '',
+  notes: '',
+  auto_create_cleaning: true,
+};
+
+const emptyLease = {
+  tenant_name: '',
+  tenant_email: '',
+  tenant_phone: '',
+  property_id: '',
+  lease_start: today(),
+  lease_end: '',
+  monthly_rent: '',
+  security_deposit: '',
+  rent_payment_status: 'unknown',
+  lease_status: 'active',
+  currency: '',
+  lease_document_file_id: '',
+  notes: '',
+};
+
+function cleanNumber(value) {
+  if (value === '' || value === null || value === undefined) return null;
+
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : null;
 }
-function toLeaseForm(row) {
-  return row ? { tenant_name: row.tenant_name || '', tenant_email: row.tenant_email || '', tenant_phone: row.tenant_phone || '', property_id: row.property_id || '', lease_start: row.lease_start || '', lease_end: row.lease_end || '', monthly_rent: row.monthly_rent ?? '', security_deposit: row.security_deposit ?? '', rent_payment_status: row.rent_payment_status || 'unknown', lease_status: row.lease_status || 'active', currency: row.currency || '', lease_document_file_id: row.lease_document_file_id || '', notes: row.notes || '' } : { ...emptyLease };
+
+function toNumber(value) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : 0;
 }
-function cleanMoneyFields(form, keys) { return keys.reduce((acc, key) => ({ ...acc, [key]: form[key] === '' ? null : Number(form[key]) }), { ...form }); }
-function propertyCurrency(properties, workspace, propertyId) { return properties.find((property) => property.id === propertyId)?.currency || workspace?.defaultCurrency || 'USD'; }
-function withinRange(row, startKey, endKey, filters) { if (filters.start && row[endKey] < filters.start) return false; if (filters.end && row[startKey] > filters.end) return false; return true; }
-function derivedPropertyStatus(property, bookings, leases, cleaningTasks) { const now = today(); if (leases.some((lease) => lease.property_id === property.id && ['active', 'ending_soon'].includes(lease.lease_status) && lease.lease_start <= now && (!lease.lease_end || lease.lease_end >= now))) return 'leased'; if (bookings.some((booking) => booking.property_id === property.id && ['confirmed', 'checked_in'].includes(booking.status) && booking.check_in <= now && booking.check_out > now)) return 'occupied'; if (cleaningTasks.some((task) => task.propertyId === property.id && ['scheduled', 'missed', 'needs_inspection'].includes(task.status) && dateOnly(task.scheduledFor) <= now)) return 'cleaning_due'; return property.status || 'active'; }
-function dateOnly(value) { return value ? String(value).slice(0, 10) : ''; }
-function normalizeText(value) { return String(value || '').trim(); }
-function hasDateOrderError(start, end) { return Boolean(start && end && end <= start); }
+
+function normalizeLabel(value) {
+  return String(value || 'unknown').replaceAll('_', ' ');
+}
+
+function normalizeText(value) {
+  return String(value || '').trim();
+}
+
+function dateOnly(value) {
+  return value ? String(value).slice(0, 10) : '';
+}
+
+function hasDateOrderError(start, end) {
+  return Boolean(start && end && end <= start);
+}
+
+function getPropertyId(record) {
+  return record?.propertyId || record?.property_id;
+}
+
+function getPropertyName(record, properties = []) {
+  const propertyId = getPropertyId(record);
+  const property = properties.find((item) => item.id === propertyId);
+
+  return record?.property || property?.name || 'Unassigned property';
+}
+
+function propertyCurrency(properties, workspace, propertyId) {
+  return (
+    properties.find((property) => property.id === propertyId)?.currency ||
+    workspace?.defaultCurrency ||
+    workspace?.default_currency ||
+    'USD'
+  );
+}
+
+function bookingAmount(booking) {
+  return toNumber(booking.total_amount ?? booking.totalAmount);
+}
+
+function leaseMonthlyRent(lease) {
+  return toNumber(lease.monthly_rent ?? lease.monthlyRent);
+}
+
+function isActiveBooking(booking) {
+  return !['cancelled', 'refunded', 'void'].includes(String(booking.status || '').toLowerCase());
+}
+
+function isUpcomingBooking(booking) {
+  const checkIn = dateOnly(booking.check_in || booking.checkIn);
+  return Boolean(checkIn && checkIn >= today() && isActiveBooking(booking));
+}
+
+function isCurrentLease(lease) {
+  const now = today();
+  const start = dateOnly(lease.lease_start || lease.leaseStart);
+  const end = dateOnly(lease.lease_end || lease.leaseEnd);
+  const status = String(lease.lease_status || lease.leaseStatus || '').toLowerCase();
+
+  return ['active', 'ending_soon'].includes(status) && start <= now && (!end || end >= now);
+}
+
+function withinRange(row, startKey, endKey, filters) {
+  const startValue = dateOnly(row[startKey]);
+  const endValue = dateOnly(row[endKey]);
+
+  if (filters.start && endValue && endValue < filters.start) return false;
+  if (filters.end && startValue && startValue > filters.end) return false;
+
+  return true;
+}
+
+function matchesQuery(values, query) {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return true;
+
+  return values.filter(Boolean).join(' ').toLowerCase().includes(q);
+}
+
+function toBookingForm(row, properties = [], workspace = null) {
+  const propertyId = row?.property_id || row?.propertyId || properties[0]?.id || '';
+
+  return row
+    ? {
+        guest_name: row.guest_name || row.guestName || '',
+        guest_email: row.guest_email || row.guestEmail || '',
+        guest_phone: row.guest_phone || row.guestPhone || '',
+        property_id: propertyId,
+        check_in: dateOnly(row.check_in || row.checkIn),
+        check_out: dateOnly(row.check_out || row.checkOut),
+        guest_count: row.guest_count || row.guestCount || 1,
+        source: row.source || 'manual',
+        status: row.status || 'confirmed',
+        payment_status: row.payment_status || row.paymentStatus || 'unpaid',
+        currency: row.currency || propertyCurrency(properties, workspace, propertyId),
+        total_amount: row.total_amount ?? row.totalAmount ?? '',
+        cleaning_fee: row.cleaning_fee ?? row.cleaningFee ?? '',
+        taxes_fees: row.taxes_fees ?? row.taxesFees ?? '',
+        owner_payout: row.owner_payout ?? row.ownerPayout ?? '',
+        notes: row.notes || '',
+        auto_create_cleaning: row.auto_create_cleaning ?? row.autoCreateCleaning ?? true,
+      }
+    : {
+        ...emptyBooking,
+        property_id: propertyId,
+        currency: propertyCurrency(properties, workspace, propertyId),
+      };
+}
+
+function toLeaseForm(row, properties = [], workspace = null) {
+  const propertyId = row?.property_id || row?.propertyId || properties[0]?.id || '';
+
+  return row
+    ? {
+        tenant_name: row.tenant_name || row.tenantName || '',
+        tenant_email: row.tenant_email || row.tenantEmail || '',
+        tenant_phone: row.tenant_phone || row.tenantPhone || '',
+        property_id: propertyId,
+        lease_start: dateOnly(row.lease_start || row.leaseStart),
+        lease_end: dateOnly(row.lease_end || row.leaseEnd),
+        monthly_rent: row.monthly_rent ?? row.monthlyRent ?? '',
+        security_deposit: row.security_deposit ?? row.securityDeposit ?? '',
+        rent_payment_status: row.rent_payment_status || row.rentPaymentStatus || 'unknown',
+        lease_status: row.lease_status || row.leaseStatus || 'active',
+        currency: row.currency || propertyCurrency(properties, workspace, propertyId),
+        lease_document_file_id: row.lease_document_file_id || row.leaseDocumentFileId || '',
+        notes: row.notes || '',
+      }
+    : {
+        ...emptyLease,
+        property_id: propertyId,
+        currency: propertyCurrency(properties, workspace, propertyId),
+      };
+}
+
+function cleanBookingPayload(form) {
+  return {
+    ...form,
+    guest_name: form.guest_name.trim(),
+    guest_email: form.guest_email.trim() || null,
+    guest_phone: form.guest_phone.trim() || null,
+    guest_count: Number(form.guest_count || 1),
+    total_amount: cleanNumber(form.total_amount),
+    cleaning_fee: cleanNumber(form.cleaning_fee),
+    taxes_fees: cleanNumber(form.taxes_fees),
+    owner_payout: cleanNumber(form.owner_payout),
+    notes: form.notes.trim() || null,
+  };
+}
+
+function cleanLeasePayload(form) {
+  return {
+    ...form,
+    tenant_name: form.tenant_name.trim(),
+    tenant_email: form.tenant_email.trim() || null,
+    tenant_phone: form.tenant_phone.trim() || null,
+    lease_end: form.lease_end || null,
+    monthly_rent: cleanNumber(form.monthly_rent),
+    security_deposit: cleanNumber(form.security_deposit),
+    lease_document_file_id: form.lease_document_file_id || null,
+    notes: form.notes.trim() || null,
+  };
+}
+
 function formatSubmitError(error, fallback) {
   const message = error?.message || fallback;
   return /Cannot read properties|undefined|null/i.test(message) ? fallback : message;
 }
-function bookingDraftKey(workspaceId) { return workspaceId ? `propflow.bookingDraft.${workspaceId}` : ''; }
-function readBookingDraft(workspaceId) {
-  const key = bookingDraftKey(workspaceId);
-  if (!key || typeof window === 'undefined') return null;
-  try {
-    const stored = window.localStorage.getItem(key);
-    if (!stored) return null;
-    const parsed = JSON.parse(stored);
-    return parsed?.form ? parsed : { form: parsed, modalOpen: false };
-  } catch (error) {
-    console.error('[PropFlow] Could not read booking draft', error);
-    return null;
-  }
-}
-function writeBookingDraft(workspaceId, form, modalOpen = true) {
-  const key = bookingDraftKey(workspaceId);
-  if (!key || typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(key, JSON.stringify({ form, modalOpen, updatedAt: new Date().toISOString() }));
-  } catch (error) {
-    console.error('[PropFlow] Could not save booking draft', error);
-  }
-}
-function clearBookingDraft(workspaceId) {
-  const key = bookingDraftKey(workspaceId);
-  if (!key || typeof window === 'undefined') return;
-  window.localStorage.removeItem(key);
-}
 
 function ModalShell({ title, description, children, onClose, submitting }) {
   React.useEffect(() => {
-    const onKeyDown = (event) => { if (event.key === 'Escape' && !submitting) onClose(); };
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape' && !submitting) onClose();
+    };
+
     document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+    };
   }, [onClose, submitting]);
 
-  const onBackdropMouseDown = (event) => { if (event.target === event.currentTarget && !submitting) onClose(); };
+  return (
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !submitting) onClose();
+      }}
+    >
+      <section className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="booking-lease-modal-title">
+        <header className="modal-header">
+          <div>
+            <h3 id="booking-lease-modal-title">{title}</h3>
+            <p>{description}</p>
+          </div>
 
-  return <div className="modal-backdrop" role="presentation" onMouseDown={onBackdropMouseDown}>
-    <section className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="booking-lease-modal-title">
-      <header className="modal-header">
-        <div>
-          <h3 id="booking-lease-modal-title">{title}</h3>
-          <p>{description}</p>
-        </div>
-        <button type="button" className="icon-btn" aria-label="Close modal" onClick={onClose} disabled={submitting}><X size={18} /></button>
-      </header>
-      {children}
-    </section>
-  </div>;
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Close modal"
+            onClick={onClose}
+            disabled={submitting}
+            data-skip-create-action="true"
+          >
+            <X size={18} />
+          </button>
+        </header>
+
+        {children}
+      </section>
+    </div>
+  );
 }
 
 function ErrorList({ errors }) {
   if (!errors.length) return null;
-  return <div className="modal-error" role="alert">
-    <strong>Please fix the following before saving:</strong>
-    <ul>{errors.map((error) => <li key={error}>{error}</li>)}</ul>
-  </div>;
+
+  return (
+    <div className="modal-error" role="alert">
+      <strong>Please fix the following before saving:</strong>
+      <ul>
+        {errors.map((error) => (
+          <li key={error}>{error}</li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
-function WarningMessage({ warning }) {
-  if (!warning) return null;
-  return <div className="modal-warning" role="status">{warning}</div>;
+function SelectOptions({ options }) {
+  return options.map((item) => (
+    <option key={item} value={item}>
+      {normalizeLabel(item)}
+    </option>
+  ));
 }
 
-function BookingForm({ initial, draftForm, properties, workspace, session, onSubmit, onCancel, submitting, submitError, submitWarning, onDirtyChange, onDraftChange }) {
-  const isEditing = Boolean(initial);
-  const [form, setForm] = React.useState(() => (isEditing ? toBookingForm(initial) : { ...toBookingForm(initial), ...(draftForm || {}) }));
+function BookingForm({
+  initial,
+  properties,
+  workspace,
+  session,
+  onSubmit,
+  onCancel,
+  submitting,
+  submitError,
+}) {
+  const [form, setForm] = React.useState(() => toBookingForm(initial, properties, workspace));
   const [validationErrors, setValidationErrors] = React.useState([]);
-  const initialSnapshot = React.useMemo(() => JSON.stringify(toBookingForm(initial)), [initial]);
-  const dirty = JSON.stringify(form) !== initialSnapshot;
-  const set = (key) => (event) => setForm((value) => ({ ...value, [key]: event.target.type === 'checkbox' ? event.target.checked : event.target.value }));
 
-  React.useEffect(() => { if (form.property_id && !form.currency) setForm((value) => ({ ...value, currency: propertyCurrency(properties, workspace, form.property_id) })); }, [form.property_id, form.currency, properties, workspace]);
-  React.useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
-  React.useEffect(() => { if (!isEditing) onDraftChange(form); }, [form, isEditing, onDraftChange]);
-  React.useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
+  React.useEffect(() => {
+    setForm(toBookingForm(initial, properties, workspace));
+    setValidationErrors([]);
+  }, [initial?.id, properties, workspace]);
+
+  const set = (key) => (event) => {
+    const value = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
+
+    setForm((current) => {
+      const next = { ...current, [key]: value };
+
+      if (key === 'property_id') {
+        next.currency = propertyCurrency(properties, workspace, value);
+      }
+
+      return next;
+    });
+  };
 
   const validate = () => {
     const errors = [];
+
     if (!workspace?.id) errors.push('No workspace selected. Select or create a workspace before saving bookings.');
     if (!session?.user?.id) errors.push('Your session expired. Sign in again before saving bookings.');
     if (!properties.length) errors.push('Add a property before creating a booking.');
-    if (properties.length && !form.property_id) errors.push('Missing property. Select a property before saving.');
-    if (!normalizeText(form.guest_name)) errors.push('Missing guest name. Enter the guest name.');
-    if (!form.check_in) errors.push('Missing check-in date.');
-    if (!form.check_out) errors.push('Missing check-out date.');
-    if (hasDateOrderError(form.check_in, form.check_out)) errors.push('Invalid check-in/check-out dates. Check-out must be after check-in.');
-    if (!form.source) errors.push('Missing booking source.');
-    if (!form.status) errors.push('Missing booking status.');
-    if (!form.payment_status) errors.push('Missing payment status.');
-    if (!form.currency) errors.push('Missing currency.');
+    if (properties.length && !form.property_id) errors.push('Select a property before saving.');
+    if (!normalizeText(form.guest_name)) errors.push('Guest name is required.');
+    if (!form.check_in) errors.push('Check-in date is required.');
+    if (!form.check_out) errors.push('Check-out date is required.');
+    if (hasDateOrderError(form.check_in, form.check_out)) errors.push('Check-out must be after check-in.');
+    if (!form.source) errors.push('Booking source is required.');
+    if (!form.status) errors.push('Booking status is required.');
+    if (!form.payment_status) errors.push('Payment status is required.');
+    if (!form.currency) errors.push('Currency is required.');
+
     return errors;
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+
     const errors = validate();
     setValidationErrors(errors);
+
     if (errors.length) return;
-    await onSubmit(cleanMoneyFields(form, ['total_amount', 'cleaning_fee', 'taxes_fees', 'owner_payout']));
+
+    await onSubmit(cleanBookingPayload(form));
   };
 
-  return <ModalShell title={initial ? 'Edit booking' : 'Add short-term booking'} description="Creates or updates the guest contact and schedules checkout cleaning when enabled." onClose={onCancel} submitting={submitting}>
-    <form className="modal-form" onSubmit={handleSubmit} noValidate>
-      <div className="modal-body">
-        <ErrorList errors={validationErrors} />
-        {submitError && <div className="modal-error" role="alert">{submitError}</div>}
-        <WarningMessage warning={submitWarning} />
-        <div className="form-grid">
-          <label>Guest name<input required value={form.guest_name} onChange={set('guest_name')} /></label>
-          <label>Guest email<input type="email" value={form.guest_email} onChange={set('guest_email')} /></label>
-          <label>Guest phone<input value={form.guest_phone} onChange={set('guest_phone')} /></label>
-          <label>Property<select required value={form.property_id} onChange={set('property_id')}><option value="">Select property</option>{properties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select></label>
-          <label>Check in<input type="date" required value={form.check_in} onChange={set('check_in')} /></label>
-          <label>Check out<input type="date" required value={form.check_out} onChange={set('check_out')} /></label>
-          <label>Guest count<input type="number" min="1" value={form.guest_count} onChange={set('guest_count')} /></label>
-          <label>Source<select required value={form.source} onChange={set('source')}>{bookingSources.map((item) => <option key={item}>{item}</option>)}</select></label>
-          <label>Status<select required value={form.status} onChange={set('status')}>{bookingStatuses.map((item) => <option key={item}>{item}</option>)}</select></label>
-          <label>Payment status<select required value={form.payment_status} onChange={set('payment_status')}>{paymentStatuses.map((item) => <option key={item}>{item}</option>)}</select></label>
-          <label>Currency<select required value={form.currency || propertyCurrency(properties, workspace, form.property_id)} onChange={set('currency')}>{currencies.map((item) => <option key={item}>{item}</option>)}</select></label>
-          <label>Total amount<input type="number" min="0" step="0.01" value={form.total_amount} onChange={set('total_amount')} /></label>
-          <label>Cleaning fee<input type="number" min="0" step="0.01" value={form.cleaning_fee} onChange={set('cleaning_fee')} /></label>
-          <label>Taxes / fees<input type="number" min="0" step="0.01" value={form.taxes_fees} onChange={set('taxes_fees')} /></label>
-          <label>Owner payout<input type="number" min="0" step="0.01" value={form.owner_payout} onChange={set('owner_payout')} /></label>
-          <label className="inline-check full"><input type="checkbox" checked={form.auto_create_cleaning} onChange={set('auto_create_cleaning')} /> Auto-create checkout cleaning task</label>
-          <label className="full">Notes<textarea value={form.notes} onChange={set('notes')} /></label>
+  return (
+    <ModalShell
+      title={initial ? 'Edit booking' : 'Add short-term booking'}
+      description="Create or update the guest contact, reservation details, payment status, and optional checkout cleaning task."
+      onClose={onCancel}
+      submitting={submitting}
+    >
+      <form className="modal-form" onSubmit={handleSubmit} noValidate>
+        <div className="modal-body">
+          <ErrorList errors={validationErrors} />
+
+          {submitError && (
+            <div className="modal-error" role="alert">
+              {submitError}
+            </div>
+          )}
+
+          {!properties.length && (
+            <div className="modal-warning" role="status">
+              Add a property before creating bookings.
+            </div>
+          )}
+
+          <div className="form-grid">
+            <label>
+              Guest name
+              <input required value={form.guest_name} onChange={set('guest_name')} />
+            </label>
+
+            <label>
+              Guest email
+              <input type="email" value={form.guest_email} onChange={set('guest_email')} />
+            </label>
+
+            <label>
+              Guest phone
+              <input value={form.guest_phone} onChange={set('guest_phone')} />
+            </label>
+
+            <label>
+              Property
+              <select required value={form.property_id} onChange={set('property_id')}>
+                <option value="">Select property</option>
+                {properties.map((property) => (
+                  <option key={property.id} value={property.id}>
+                    {property.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Check in
+              <input type="date" required value={form.check_in} onChange={set('check_in')} />
+            </label>
+
+            <label>
+              Check out
+              <input type="date" required value={form.check_out} onChange={set('check_out')} />
+            </label>
+
+            <label>
+              Guest count
+              <input type="number" min="1" value={form.guest_count} onChange={set('guest_count')} />
+            </label>
+
+            <label>
+              Source
+              <select required value={form.source} onChange={set('source')}>
+                <SelectOptions options={bookingSources} />
+              </select>
+            </label>
+
+            <label>
+              Status
+              <select required value={form.status} onChange={set('status')}>
+                <SelectOptions options={bookingStatuses} />
+              </select>
+            </label>
+
+            <label>
+              Payment status
+              <select required value={form.payment_status} onChange={set('payment_status')}>
+                <SelectOptions options={paymentStatuses} />
+              </select>
+            </label>
+
+            <label>
+              Currency
+              <select required value={form.currency} onChange={set('currency')}>
+                {currencies.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Total amount
+              <input type="number" min="0" step="0.01" value={form.total_amount} onChange={set('total_amount')} />
+            </label>
+
+            <label>
+              Cleaning fee
+              <input type="number" min="0" step="0.01" value={form.cleaning_fee} onChange={set('cleaning_fee')} />
+            </label>
+
+            <label>
+              Taxes / fees
+              <input type="number" min="0" step="0.01" value={form.taxes_fees} onChange={set('taxes_fees')} />
+            </label>
+
+            <label>
+              Owner payout
+              <input type="number" min="0" step="0.01" value={form.owner_payout} onChange={set('owner_payout')} />
+            </label>
+
+            <label className="inline-check full">
+              <input type="checkbox" checked={form.auto_create_cleaning} onChange={set('auto_create_cleaning')} />
+              Auto-create checkout cleaning task
+            </label>
+
+            <label className="full">
+              Notes
+              <textarea value={form.notes} onChange={set('notes')} rows={3} />
+            </label>
+          </div>
         </div>
-      </div>
-      <footer className="modal-actions">
-        <button type="button" onClick={onCancel} disabled={submitting}>Cancel</button>
-        <button type="submit" className="primary" disabled={submitting}>{submitting ? 'Saving…' : 'Save Booking'}</button>
-      </footer>
-    </form>
-  </ModalShell>;
+
+        <footer className="modal-actions">
+          <button type="button" onClick={onCancel} disabled={submitting} data-skip-create-action="true">
+            Cancel
+          </button>
+
+          <button type="submit" className="primary" disabled={submitting} data-skip-create-action="true">
+            {submitting ? 'Saving…' : 'Save Booking'}
+          </button>
+        </footer>
+      </form>
+    </ModalShell>
+  );
 }
 
-function LeaseForm({ initial, properties, workspace, onSubmit, onCancel, submitting, submitError, submitWarning, onDirtyChange }) {
-  const [form, setForm] = React.useState(toLeaseForm(initial));
+function LeaseForm({
+  initial,
+  properties,
+  workspace,
+  onSubmit,
+  onCancel,
+  submitting,
+  submitError,
+}) {
+  const [form, setForm] = React.useState(() => toLeaseForm(initial, properties, workspace));
   const [validationErrors, setValidationErrors] = React.useState([]);
-  const initialSnapshot = React.useMemo(() => JSON.stringify(toLeaseForm(initial)), [initial]);
-  const dirty = JSON.stringify(form) !== initialSnapshot;
-  const set = (key) => (event) => setForm((value) => ({ ...value, [key]: event.target.value }));
 
-  React.useEffect(() => { if (form.property_id && !form.currency) setForm((value) => ({ ...value, currency: propertyCurrency(properties, workspace, form.property_id) })); }, [form.property_id, form.currency, properties, workspace]);
-  React.useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
-  React.useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
+  React.useEffect(() => {
+    setForm(toLeaseForm(initial, properties, workspace));
+    setValidationErrors([]);
+  }, [initial?.id, properties, workspace]);
+
+  const set = (key) => (event) => {
+    const value = event.target.value;
+
+    setForm((current) => {
+      const next = { ...current, [key]: value };
+
+      if (key === 'property_id') {
+        next.currency = propertyCurrency(properties, workspace, value);
+      }
+
+      return next;
+    });
+  };
 
   const validate = () => {
     const errors = [];
-    if (!form.property_id) errors.push('Missing property. Select a property before saving.');
-    if (!normalizeText(form.tenant_name)) errors.push('Missing tenant name. Enter the tenant name.');
-    if (!form.lease_start) errors.push('Missing lease start date.');
-    if (!form.lease_end) errors.push('Missing lease end date.');
-    if (hasDateOrderError(form.lease_start, form.lease_end)) errors.push('Invalid lease dates. Lease end must be after lease start.');
-    if (!form.lease_status) errors.push('Missing lease status.');
-    if (!form.rent_payment_status) errors.push('Missing rent payment status.');
-    if (!form.currency) errors.push('Missing currency.');
+
+    if (!workspace?.id) errors.push('No workspace selected. Select or create a workspace before saving leases.');
+    if (!properties.length) errors.push('Add a property before creating a lease.');
+    if (properties.length && !form.property_id) errors.push('Select a property before saving.');
+    if (!normalizeText(form.tenant_name)) errors.push('Tenant name is required.');
+    if (!form.lease_start) errors.push('Lease start date is required.');
+    if (hasDateOrderError(form.lease_start, form.lease_end)) errors.push('Lease end must be after lease start.');
+    if (!form.lease_status) errors.push('Lease status is required.');
+    if (!form.rent_payment_status) errors.push('Rent payment status is required.');
+    if (!form.currency) errors.push('Currency is required.');
+
     return errors;
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+
     const errors = validate();
     setValidationErrors(errors);
+
     if (errors.length) return;
-    await onSubmit(cleanMoneyFields({ ...form, lease_document_file_id: form.lease_document_file_id || null }, ['monthly_rent', 'security_deposit']));
+
+    await onSubmit(cleanLeasePayload(form));
   };
 
-  return <ModalShell title={initial ? 'Edit lease' : 'Add long-term lease'} description="Creates or updates the tenant contact and blocks overlaps with active stays or leases." onClose={onCancel} submitting={submitting}>
-    <form className="modal-form" onSubmit={handleSubmit} noValidate>
-      <div className="modal-body">
-        <ErrorList errors={[...validationErrors, ...(submitError ? [submitError] : [])]} />
-        <WarningMessage warning={submitWarning} />
-        <div className="form-grid">
-          <label>Tenant name<input required value={form.tenant_name} onChange={set('tenant_name')} /></label>
-          <label>Tenant email<input type="email" value={form.tenant_email} onChange={set('tenant_email')} /></label>
-          <label>Tenant phone<input value={form.tenant_phone} onChange={set('tenant_phone')} /></label>
-          <label>Property<select required value={form.property_id} onChange={set('property_id')}><option value="">Select property</option>{properties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select></label>
-          <label>Lease start<input type="date" required value={form.lease_start} onChange={set('lease_start')} /></label>
-          <label>Lease end<input type="date" required value={form.lease_end} onChange={set('lease_end')} /></label>
-          <label>Monthly rent<input type="number" min="0" step="0.01" value={form.monthly_rent} onChange={set('monthly_rent')} /></label>
-          <label>Security deposit<input type="number" min="0" step="0.01" value={form.security_deposit} onChange={set('security_deposit')} /></label>
-          <label>Rent payment<select required value={form.rent_payment_status} onChange={set('rent_payment_status')}>{rentStatuses.map((item) => <option key={item}>{item}</option>)}</select></label>
-          <label>Lease status<select required value={form.lease_status} onChange={set('lease_status')}>{leaseStatuses.map((item) => <option key={item}>{item}</option>)}</select></label>
-          <label>Currency<select required value={form.currency || propertyCurrency(properties, workspace, form.property_id)} onChange={set('currency')}>{currencies.map((item) => <option key={item}>{item}</option>)}</select></label>
-          <label>Lease document upload placeholder<input value={form.lease_document_file_id} onChange={set('lease_document_file_id')} placeholder="Future private file ID" /></label>
-          <label className="full">Notes<textarea value={form.notes} onChange={set('notes')} /></label>
+  return (
+    <ModalShell
+      title={initial ? 'Edit lease' : 'Add long-term lease'}
+      description="Create or update a tenant lease linked to a property in this workspace."
+      onClose={onCancel}
+      submitting={submitting}
+    >
+      <form className="modal-form" onSubmit={handleSubmit} noValidate>
+        <div className="modal-body">
+          <ErrorList errors={validationErrors} />
+
+          {submitError && (
+            <div className="modal-error" role="alert">
+              {submitError}
+            </div>
+          )}
+
+          {!properties.length && (
+            <div className="modal-warning" role="status">
+              Add a property before creating leases.
+            </div>
+          )}
+
+          <div className="form-grid">
+            <label>
+              Tenant name
+              <input required value={form.tenant_name} onChange={set('tenant_name')} />
+            </label>
+
+            <label>
+              Tenant email
+              <input type="email" value={form.tenant_email} onChange={set('tenant_email')} />
+            </label>
+
+            <label>
+              Tenant phone
+              <input value={form.tenant_phone} onChange={set('tenant_phone')} />
+            </label>
+
+            <label>
+              Property
+              <select required value={form.property_id} onChange={set('property_id')}>
+                <option value="">Select property</option>
+                {properties.map((property) => (
+                  <option key={property.id} value={property.id}>
+                    {property.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Lease start
+              <input type="date" required value={form.lease_start} onChange={set('lease_start')} />
+            </label>
+
+            <label>
+              Lease end
+              <input type="date" value={form.lease_end} onChange={set('lease_end')} />
+            </label>
+
+            <label>
+              Monthly rent
+              <input type="number" min="0" step="0.01" value={form.monthly_rent} onChange={set('monthly_rent')} />
+            </label>
+
+            <label>
+              Security deposit
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.security_deposit}
+                onChange={set('security_deposit')}
+              />
+            </label>
+
+            <label>
+              Lease status
+              <select required value={form.lease_status} onChange={set('lease_status')}>
+                <SelectOptions options={leaseStatuses} />
+              </select>
+            </label>
+
+            <label>
+              Rent payment status
+              <select required value={form.rent_payment_status} onChange={set('rent_payment_status')}>
+                <SelectOptions options={rentStatuses} />
+              </select>
+            </label>
+
+            <label>
+              Currency
+              <select required value={form.currency} onChange={set('currency')}>
+                {currencies.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="full">
+              Notes
+              <textarea value={form.notes} onChange={set('notes')} rows={3} />
+            </label>
+          </div>
         </div>
-      </div>
-      <footer className="modal-actions">
-        <button type="button" onClick={onCancel} disabled={submitting}>Cancel</button>
-        <button type="submit" className="primary" disabled={submitting}>{submitting ? 'Saving…' : 'Save Lease'}</button>
-      </footer>
-    </form>
-  </ModalShell>;
+
+        <footer className="modal-actions">
+          <button type="button" onClick={onCancel} disabled={submitting} data-skip-create-action="true">
+            Cancel
+          </button>
+
+          <button type="submit" className="primary" disabled={submitting} data-skip-create-action="true">
+            {submitting ? 'Saving…' : 'Save Lease'}
+          </button>
+        </footer>
+      </form>
+    </ModalShell>
+  );
 }
 
 export function BookingsPage() {
-  const { data, currentWorkspace, currentUser, session, createBooking, updateBooking, createLease, updateLease } = useApp();
-  const [tab, setTab] = React.useState('bookings');
-  const [editing, setEditing] = React.useState(null);
-  const [bookingDraftForm, setBookingDraftForm] = React.useState(null);
-  const [detail, setDetail] = React.useState(null);
-  const [message, setMessage] = React.useState('');
+  const {
+    data,
+    session,
+    currentUser,
+    currentWorkspace,
+    createBooking,
+    updateBooking,
+    createLease,
+    updateLease,
+  } = useApp();
+
+  const properties = data.properties || [];
+  const bookings = data.bookings || [];
+  const leases = data.leases || [];
+  const cleaningTasks = data.cleaningTasks || [];
+
+  const canManage = hasAnyRole(currentUser, taskManagerRoles);
+  const workspaceCurrency = currentWorkspace?.defaultCurrency || currentWorkspace?.default_currency || 'USD';
+
+  const [activeTab, setActiveTab] = React.useState('bookings');
+  const [query, setQuery] = React.useState('');
+  const [filters, setFilters] = React.useState({
+    propertyId: 'all',
+    status: 'all',
+    paymentStatus: 'all',
+    start: '',
+    end: '',
+  });
+  const [editingBooking, setEditingBooking] = React.useState(null);
+  const [editingLease, setEditingLease] = React.useState(null);
+  const [creatingLease, setCreatingLease] = React.useState(false);
+  const [submitError, setSubmitError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
-  const [modalError, setModalError] = React.useState('');
-  const [modalWarning, setModalWarning] = React.useState('');
-  const [modalDirty, setModalDirty] = React.useState(false);
-  const [filters, setFilters] = React.useState({ query: '', property: 'all', start: '', end: '', status: 'all', payment: 'all', source: 'all', currency: 'all', showCancelled: false });
-  const canEdit = hasAnyRole(currentUser, taskManagerRoles);
-  const activeProperties = data.properties.filter((property) => property.status !== 'archived');
-  const setFilter = (key) => (event) => setFilters((value) => ({ ...value, [key]: event.target.type === 'checkbox' ? event.target.checked : event.target.value }));
-  const propertyStatus = (propertyId) => { const property = data.properties.find((item) => item.id === propertyId); return property ? derivedPropertyStatus(property, data.bookings, data.leases, data.cleaningTasks) : 'unknown'; };
-  const filteredBookings = React.useMemo(() => data.bookings.filter((booking) => (filters.showCancelled || booking.status !== 'cancelled') && (filters.property === 'all' || booking.property_id === filters.property) && (filters.status === 'all' || booking.status === filters.status) && (filters.payment === 'all' || booking.payment_status === filters.payment) && (filters.source === 'all' || booking.source === filters.source) && (filters.currency === 'all' || booking.currency === filters.currency) && withinRange(booking, 'check_in', 'check_out', filters) && [booking.guest_name, booking.property, booking.source].join(' ').toLowerCase().includes(filters.query.toLowerCase())), [data.bookings, filters]);
-  const filteredLeases = React.useMemo(() => data.leases.filter((lease) => (filters.showCancelled || !['cancelled', 'terminated'].includes(lease.lease_status)) && (filters.property === 'all' || lease.property_id === filters.property) && (filters.status === 'all' || lease.lease_status === filters.status) && (filters.payment === 'all' || lease.rent_payment_status === filters.payment) && (filters.currency === 'all' || lease.currency === filters.currency) && withinRange({ ...lease, lease_end: lease.lease_end || '2999-12-31' }, 'lease_start', 'lease_end', filters) && [lease.tenant_name, lease.property].join(' ').toLowerCase().includes(filters.query.toLowerCase())), [data.leases, filters]);
-  const bookingMetrics = React.useMemo(() => ({ total: data.bookings.length, upcoming: data.bookings.filter((booking) => booking.check_in >= today() && booking.status !== 'cancelled').length, checkins: data.bookings.filter((booking) => booking.check_in === today()).length, revenue: data.bookings.reduce((sum, booking) => sum + Number(booking.total_amount || 0), 0), occupancy: data.properties.length ? formatPercent(data.properties.filter((property) => propertyStatus(property.id) === 'occupied').length / data.properties.length) : '0%' }), [data.bookings, data.properties]);
-  const leaseMetrics = React.useMemo(() => ({ active: data.leases.filter((lease) => ['active', 'ending_soon'].includes(lease.lease_status)).length, expiring: data.leases.filter((lease) => lease.lease_end && lease.lease_end <= inDays(60)).length, overdue: data.leases.filter((lease) => lease.rent_payment_status === 'overdue').length, renewals: data.leases.filter((lease) => lease.lease_status === 'ending_soon').length }), [data.leases]);
+  const [message, setMessage] = React.useState('');
 
-  React.useEffect(() => {
-    if (!currentWorkspace?.id || editing) return;
-    const draft = readBookingDraft(currentWorkspace.id);
-    if (draft?.form) setBookingDraftForm(draft.form);
-    if (draft?.form && draft.modalOpen) {
-      setTab('bookings');
-      setEditing({ type: 'booking' });
-      setModalDirty(true);
-    }
-  }, [currentWorkspace?.id]);
+  const activeBookings = bookings.filter(isActiveBooking);
+  const upcomingBookings = bookings.filter(isUpcomingBooking);
+  const currentLeases = leases.filter(isCurrentLease);
+  const bookingRevenue = activeBookings.reduce((total, booking) => total + bookingAmount(booking), 0);
+  const monthlyLeaseRevenue = currentLeases.reduce((total, lease) => total + leaseMonthlyRent(lease), 0);
+  const paidBookings = bookings.filter((booking) => booking.payment_status === 'paid' || booking.paymentStatus === 'paid');
+  const paidRate = bookings.length ? (paidBookings.length / bookings.length) * 100 : 0;
 
-  React.useEffect(() => {
-    if (!editing || !modalDirty) return undefined;
-    const onBeforeUnload = (event) => { event.preventDefault(); event.returnValue = 'Discard unsaved changes?'; };
-    window.addEventListener('beforeunload', onBeforeUnload);
-    return () => window.removeEventListener('beforeunload', onBeforeUnload);
-  }, [editing, modalDirty]);
+  const propertyStatusRows = properties.map((property) => ({
+    ...property,
+    derivedStatus: derivedPropertyStatus(property, bookings, leases, cleaningTasks),
+  }));
 
-  const discardCurrentEditing = () => {
-    if (!editing) return true;
-    const discardMessage = editing.type === 'booking' && !editing.row ? 'Discard unsaved booking?' : 'Discard unsaved changes?';
-    if (modalDirty && !window.confirm(discardMessage)) return false;
-    if (editing.type === 'booking' && !editing.row) {
-      clearBookingDraft(currentWorkspace?.id);
-      setBookingDraftForm(null);
-    }
-    return true;
-  };
+  const filteredBookings = bookings
+    .filter((booking) => filters.propertyId === 'all' || getPropertyId(booking) === filters.propertyId)
+    .filter((booking) => filters.status === 'all' || booking.status === filters.status)
+    .filter((booking) => filters.paymentStatus === 'all' || booking.payment_status === filters.paymentStatus)
+    .filter((booking) => withinRange(booking, 'check_in', 'check_out', filters))
+    .filter((booking) =>
+      matchesQuery(
+        [
+          booking.guest_name,
+          booking.guestName,
+          booking.guest_email,
+          booking.guestEmail,
+          booking.guest_phone,
+          booking.guestPhone,
+          getPropertyName(booking, properties),
+          booking.source,
+          booking.status,
+          booking.payment_status,
+        ],
+        query,
+      ),
+    );
 
-  const startEditing = (nextEditing) => {
-    if (!discardCurrentEditing()) return;
-    setModalDirty(false);
-    setModalError('');
-    setModalWarning('');
-    setMessage('');
-    if (nextEditing.type === 'booking' && !nextEditing.row) {
-      const draft = readBookingDraft(currentWorkspace?.id);
-      setBookingDraftForm(draft?.form || null);
-      writeBookingDraft(currentWorkspace?.id, draft?.form || { ...emptyBooking }, true);
-    }
-    setEditing(nextEditing);
-  };
-  const closeEditing = () => {
+  const filteredLeases = leases
+    .filter((lease) => filters.propertyId === 'all' || getPropertyId(lease) === filters.propertyId)
+    .filter((lease) => filters.status === 'all' || lease.lease_status === filters.status)
+    .filter((lease) => filters.paymentStatus === 'all' || lease.rent_payment_status === filters.paymentStatus)
+    .filter((lease) => withinRange(lease, 'lease_start', 'lease_end', filters))
+    .filter((lease) =>
+      matchesQuery(
+        [
+          lease.tenant_name,
+          lease.tenantName,
+          lease.tenant_email,
+          lease.tenantEmail,
+          lease.tenant_phone,
+          lease.tenantPhone,
+          getPropertyName(lease, properties),
+          lease.lease_status,
+          lease.rent_payment_status,
+        ],
+        query,
+      ),
+    );
+
+  const closeModal = () => {
     if (submitting) return;
-    if (!discardCurrentEditing()) return;
-    setEditing(null);
-    setModalDirty(false);
-    setModalError('');
-    setModalWarning('');
-  };
-  const switchTab = (nextTab) => {
-    if (!discardCurrentEditing()) return;
-    setTab(nextTab);
-    setEditing(null);
-    setModalDirty(false);
-    setModalError('');
-    setModalWarning('');
+
+    setEditingBooking(null);
+    setEditingLease(null);
+    setCreatingLease(false);
+    setSubmitError('');
   };
 
-  const handleBookingDraftChange = React.useCallback((draftForm) => {
-    setBookingDraftForm(draftForm);
-    writeBookingDraft(currentWorkspace?.id, draftForm, true);
-  }, [currentWorkspace?.id]);
+  const clearMessageSoon = () => {
+    window.setTimeout(() => setMessage(''), 3000);
+  };
 
   const saveBooking = async (payload) => {
     setSubmitting(true);
-    setMessage('');
-    setModalError('');
-    setModalWarning('');
+    setSubmitError('');
+
     try {
-      if (!currentWorkspace?.id) throw new Error('No workspace selected. Select or create a workspace before saving bookings.');
-      if (!session?.user?.id) throw new Error('Your session expired. Sign in again before saving bookings.');
-      if (!activeProperties.length) throw new Error('Add a property before creating a booking.');
-      if (!payload.property_id) throw new Error('Missing property. Select a property before saving.');
-      const isExistingBooking = editing?.type === 'booking' && editing.row?.id;
-      const result = isExistingBooking ? await updateBooking(editing.row.id, payload) : await createBooking(payload);
-      if (!editing?.row) {
-        clearBookingDraft(currentWorkspace?.id);
-        setBookingDraftForm(null);
+      if (editingBooking?.id) {
+        await updateBooking(editingBooking.id, payload);
+        setMessage('Booking updated.');
+      } else {
+        await createBooking(payload);
+        setMessage('Booking created.');
       }
-      setEditing(null);
-      setModalDirty(false);
-      setMessage(result?.warning || 'Booking saved. Contact and checkout cleaning automation have been synced.');
+
+      clearMessageSoon();
+      closeModal();
     } catch (error) {
-      console.error('[PropFlow] Booking save failed', error);
-      setModalError(formatSubmitError(error, 'Booking could not be saved. Please try again.'));
+      setSubmitError(formatSubmitError(error, 'Booking could not be saved.'));
     } finally {
       setSubmitting(false);
     }
   };
+
   const saveLease = async (payload) => {
     setSubmitting(true);
-    setMessage('');
-    setModalError('');
-    setModalWarning('');
+    setSubmitError('');
+
     try {
-      const result = editing?.type === 'lease' ? await updateLease(editing.row.id, payload) : await createLease(payload);
-      setEditing(null);
-      setModalDirty(false);
-      setMessage(result?.warning || 'Lease saved. Tenant contact and occupancy calendar are synced.');
+      if (editingLease?.id) {
+        await updateLease(editingLease.id, payload);
+        setMessage('Lease updated.');
+      } else {
+        await createLease(payload);
+        setMessage('Lease created.');
+      }
+
+      clearMessageSoon();
+      closeModal();
     } catch (error) {
-      console.error('[PropFlow] Lease save failed', error);
-      setModalError(formatSubmitError(error, 'Lease could not be saved. Please try again.'));
+      setSubmitError(formatSubmitError(error, 'Lease could not be saved.'));
     } finally {
       setSubmitting(false);
     }
   };
 
-  return <AppLayout title="Bookings & leases">
-    <section className="card">
-      <div className="card-header">
-        <div><h3>Bookings + Calendar foundation</h3><p>Workspace-scoped short-term bookings and long-term leases connected to Supabase, contacts, cleaning tasks, and the calendar.</p></div>
-        <div className="action-row">{canEdit && <><button className="primary" onClick={() => { setTab('bookings'); startEditing({ type: 'booking' }); }}><Plus size={16} /> Add booking</button><button onClick={() => { setTab('leases'); startEditing({ type: 'lease' }); }}><Plus size={16} /> Add lease</button></>}<button onClick={() => navigate('/calendar')}>Open calendar</button></div>
-      </div>
-      {message && <p className={message.toLowerCase().includes('could not') ? 'helper error-helper' : 'helper'}>{message}</p>}
-      <div className="tabs"><button className={tab === 'bookings' ? 'active' : ''} onClick={() => switchTab('bookings')}>Short-Term Bookings</button><button className={tab === 'leases' ? 'active' : ''} onClick={() => switchTab('leases')}>Long-Term Leases</button></div>
-    </section>
-    {tab === 'bookings' ? <div className="stat-grid dense"><StatCard label="Total bookings" value={bookingMetrics.total} icon={CalendarPlus} /><StatCard label="Upcoming check-ins" value={bookingMetrics.checkins} icon={Clock} /><StatCard label="Projected revenue" value={money(bookingMetrics.revenue, currentWorkspace?.defaultCurrency)} icon={DollarSign} /><StatCard label="Occupancy today" value={bookingMetrics.occupancy} icon={CheckCircle2} /></div> : <div className="stat-grid dense"><StatCard label="Active leases" value={leaseMetrics.active} icon={CheckCircle2} /><StatCard label="Expiring in 60 days" value={leaseMetrics.expiring} icon={Clock} /><StatCard label="Overdue rent" value={leaseMetrics.overdue} icon={XCircle} /><StatCard label="Renewals due soon" value={leaseMetrics.renewals} icon={CalendarPlus} /></div>}
-    <section className="card"><div className="filter-bar booking-filter"><label><Search size={14} /> <input placeholder="Search guest, tenant, property" value={filters.query} onChange={setFilter('query')} /></label><select value={filters.property} onChange={setFilter('property')}><option value="all">All properties</option>{data.properties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select><input type="date" value={filters.start} onChange={setFilter('start')} /><input type="date" value={filters.end} onChange={setFilter('end')} /><select value={filters.status} onChange={setFilter('status')}><option value="all">All statuses</option>{(tab === 'bookings' ? bookingStatuses : leaseStatuses).map((status) => <option key={status}>{status}</option>)}</select><select value={filters.payment} onChange={setFilter('payment')}><option value="all">All payment statuses</option>{(tab === 'bookings' ? paymentStatuses : rentStatuses).map((status) => <option key={status}>{status}</option>)}</select>{tab === 'bookings' && <select value={filters.source} onChange={setFilter('source')}><option value="all">All sources</option>{bookingSources.map((source) => <option key={source}>{source}</option>)}</select>}<select value={filters.currency} onChange={setFilter('currency')}><option value="all">All currencies</option>{currencies.map((currency) => <option key={currency}>{currency}</option>)}</select><label className="inline-check"><input type="checkbox" checked={filters.showCancelled} onChange={setFilter('showCancelled')} /> Show cancelled</label></div></section>
-    {editing?.type === 'booking' && <BookingForm initial={editing.row} draftForm={bookingDraftForm} properties={activeProperties} workspace={currentWorkspace} session={session} onSubmit={saveBooking} onCancel={closeEditing} submitting={submitting} submitError={modalError} submitWarning={modalWarning} onDirtyChange={setModalDirty} onDraftChange={handleBookingDraftChange} />}
-    {editing?.type === 'lease' && <LeaseForm initial={editing.row} properties={activeProperties} workspace={currentWorkspace} onSubmit={saveLease} onCancel={closeEditing} submitting={submitting} submitError={modalError} submitWarning={modalWarning} onDirtyChange={setModalDirty} />}
-    {detail && <section className="card detail-panel"><div className="card-header"><div><h3>{detail.type === 'booking' ? detail.row.guest_name : detail.row.tenant_name}</h3><p>{detail.row.property} · {detail.type === 'booking' ? `${detail.row.check_in} → ${detail.row.check_out}` : `${detail.row.lease_start} → ${detail.row.lease_end || 'Open ended'}`}</p></div><button onClick={() => setDetail(null)}>Close</button></div><pre>{JSON.stringify(detail.row, null, 2)}</pre></section>}
-    {tab === 'bookings' ? (filteredBookings.length || data.bookings.length ? <section className="card"><DataTable rows={filteredBookings} columns={[{ key: 'guest_name', label: 'Guest' }, { key: 'property', label: 'Property', render: (row) => <span>{row.property}<br /><small>Derived: {propertyStatus(row.property_id)}</small></span> }, { key: 'dates', label: 'Stay', render: (row) => <span>{row.check_in}<br /><small>to {row.check_out}</small></span> }, { key: 'source', label: 'Source' }, { key: 'status', label: 'Status', render: (row) => <StatusBadge>{row.status}</StatusBadge> }, { key: 'payment_status', label: 'Payment', render: (row) => <StatusBadge>{row.payment_status}</StatusBadge> }, { key: 'total_amount', label: 'Total', render: (row) => money(row.total_amount, row.currency) }, { key: 'cleaning', label: 'Cleaning', render: (row) => row.auto_create_cleaning ? 'Auto' : 'Off' }, { key: 'actions', label: 'Actions', render: (row) => <div className="action-row"><button onClick={() => setDetail({ type: 'booking', row })}><Eye size={14} /> View</button>{canEdit && <button onClick={() => startEditing({ type: 'booking', row })}><Edit3 size={14} /> Edit</button>}{canEdit && row.status !== 'cancelled' && <button className="danger" onClick={() => cancelBookingById(row.id)}><XCircle size={14} /> Cancel</button>}</div> }]} /></section> : <EmptyState title="No bookings yet." description="Add a booking to start scheduling stays and checkout cleaning tasks." action={<div className="action-row">{canEdit && <button className="primary" onClick={() => startEditing({ type: 'booking' })}>Add booking</button>}{!data.properties.length && <button onClick={() => navigate('/properties')}>Add property</button>}</div>} />) : (filteredLeases.length || data.leases.length ? <section className="card"><DataTable rows={filteredLeases} columns={[{ key: 'tenant_name', label: 'Tenant' }, { key: 'property', label: 'Property', render: (row) => <span>{row.property}<br /><small>Derived: {propertyStatus(row.property_id)}</small></span> }, { key: 'dates', label: 'Lease period', render: (row) => <span>{row.lease_start}<br /><small>to {row.lease_end}</small></span> }, { key: 'lease_status', label: 'Status', render: (row) => <StatusBadge>{row.lease_status}</StatusBadge> }, { key: 'rent_payment_status', label: 'Rent', render: (row) => <StatusBadge>{row.rent_payment_status}</StatusBadge> }, { key: 'monthly_rent', label: 'Monthly rent', render: (row) => money(row.monthly_rent, row.currency) }, { key: 'security_deposit', label: 'Deposit', render: (row) => money(row.security_deposit, row.currency) }, { key: 'actions', label: 'Actions', render: (row) => <div className="action-row"><button onClick={() => setDetail({ type: 'lease', row })}><Eye size={14} /> View</button>{canEdit && <button onClick={() => startEditing({ type: 'lease', row })}><Edit3 size={14} /> Edit</button>}{canEdit && !['cancelled', 'terminated'].includes(row.lease_status) && <button className="danger" onClick={() => terminateLeaseById(row.id)}><XCircle size={14} /> Terminate</button>}</div> }]} /></section> : <EmptyState title="No leases yet." description="Add a lease to track long-term occupancy, rent status, and renewals." action={<div className="action-row">{canEdit && <button className="primary" onClick={() => startEditing({ type: 'lease' })}>Add lease</button>}{!data.properties.length && <button onClick={() => navigate('/properties')}>Add property</button>}</div>} />)}
-  </AppLayout>;
-};
-  const saveLease = async (payload) => {
-    setSubmitting(true);
-    setMessage('');
-    setModalError('');
-    setModalWarning('');
-    try {
-      const result = editing?.type === 'lease' ? await updateLease(editing.row.id, payload) : await createLease(payload);
-      setEditing(null);
-      setModalDirty(false);
-      setMessage(result?.warning || 'Lease saved. Tenant contact and occupancy calendar are synced.');
-    } catch (error) {
-      console.error('[PropFlow] Lease save failed', error);
-      setModalError(formatSubmitError(error, 'Lease could not be saved. Please try again.'));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-  const cancelBookingById = async (bookingId) => {
-    if (!bookingId) return;
-    if (!window.confirm('Cancel this booking?')) return;
-
-    setMessage('');
-
-    try {
-      await updateBooking(bookingId, { status: 'cancelled' });
-      setMessage('Booking cancelled.');
-    } catch (error) {
-      console.error('[PropFlow] Booking cancellation failed', error);
-      setMessage(formatSubmitError(error, 'Booking could not be cancelled. Please try again.'));
-    }
+  const setFilter = (key) => (event) => {
+    setFilters((current) => ({
+      ...current,
+      [key]: event.target.value,
+    }));
   };
 
-  const terminateLeaseById = async (leaseId) => {
-    if (!leaseId) return;
-    if (!window.confirm('Terminate this lease?')) return;
-
-    setMessage('');
-
-    try {
-      await updateLease(leaseId, {
-        lease_status: 'terminated',
-        terminated_at: new Date().toISOString(),
-      });
-      setMessage('Lease terminated.');
-    } catch (error) {
-      console.error('[PropFlow] Lease termination failed', error);
-      setMessage(formatSubmitError(error, 'Lease could not be terminated. Please try again.'));
-    }
+  const resetFilters = () => {
+    setQuery('');
+    setFilters({
+      propertyId: 'all',
+      status: 'all',
+      paymentStatus: 'all',
+      start: '',
+      end: '',
+    });
   };
+
+  const hasRecords = bookings.length || leases.length;
+
+  return (
+    <AppLayout
+      title="Bookings"
+      subtitle="Manage short-term reservations, long-term leases, guest details, payment status, and booking operations."
+    >
+      {message && (
+        <section className="helper" role="status">
+          {message}
+        </section>
+      )}
+
+      <section className="stat-grid">
+        <StatCard
+          label="Active bookings"
+          value={activeBookings.length}
+          subtitle={`${upcomingBookings.length} upcoming arrivals`}
+          icon={CalendarCheck}
+        />
+
+        <StatCard
+          label="Booking revenue"
+          value={formatCurrency(bookingRevenue, workspaceCurrency)}
+          subtitle="From active short-term bookings"
+          icon={DollarSign}
+        />
+
+        <StatCard
+          label="Current leases"
+          value={currentLeases.length}
+          subtitle={`${formatCurrency(monthlyLeaseRevenue, workspaceCurrency)} monthly rent`}
+          icon={Home}
+        />
+
+        <StatCard
+          label="Paid rate"
+          value={formatPercent(paidRate)}
+          subtitle={`${paidBookings.length} of ${bookings.length} bookings paid`}
+          icon={CheckCircle2}
+        />
+      </section>
+
+      <section className="card bookings-toolbar">
+        <div>
+          <h3>Booking operations</h3>
+          <p>Track reservations, leases, occupancy status, payment status, and guest/tenant records.</p>
+        </div>
+
+        <div className="bookings-toolbar-actions">
+          {canManage && (
+            <button type="button" className="primary" data-create-action="booking">
+              <Plus size={16} />
+              Add Booking
+            </button>
+          )}
+
+          {canManage && (
+            <button
+              type="button"
+              onClick={() => {
+                setSubmitError('');
+                setCreatingLease(true);
+              }}
+              data-skip-create-action="true"
+            >
+              <FileText size={16} />
+              Add Lease
+            </button>
+          )}
+
+          <button type="button" onClick={() => navigate('/calendar')} data-skip-create-action="true">
+            View Calendar
+          </button>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="tabs bookings-tabs">
+          <button
+            type="button"
+            className={activeTab === 'bookings' ? 'active' : ''}
+            onClick={() => {
+              setActiveTab('bookings');
+              setFilters((current) => ({ ...current, status: 'all', paymentStatus: 'all' }));
+            }}
+            data-skip-create-action="true"
+          >
+            Short-term bookings
+          </button>
+
+          <button
+            type="button"
+            className={activeTab === 'leases' ? 'active' : ''}
+            onClick={() => {
+              setActiveTab('leases');
+              setFilters((current) => ({ ...current, status: 'all', paymentStatus: 'all' }));
+            }}
+            data-skip-create-action="true"
+          >
+            Long-term leases
+          </button>
+
+          <button
+            type="button"
+            className={activeTab === 'property-status' ? 'active' : ''}
+            onClick={() => setActiveTab('property-status')}
+            data-skip-create-action="true"
+          >
+            Property status
+          </button>
+        </div>
+
+        <div className="bookings-filters">
+          <label className="bookings-search">
+            <Search size={16} />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search guest, tenant, property, status, source, or payment..."
+              aria-label="Search bookings and leases"
+            />
+
+            {query && (
+              <button
+                type="button"
+                className="search-clear"
+                onClick={() => setQuery('')}
+                aria-label="Clear search"
+                data-skip-create-action="true"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </label>
+
+          <label>
+            Property
+            <select value={filters.propertyId} onChange={setFilter('propertyId')}>
+              <option value="all">All properties</option>
+              {properties.map((property) => (
+                <option key={property.id} value={property.id}>
+                  {property.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Status
+            <select value={filters.status} onChange={setFilter('status')}>
+              <option value="all">All statuses</option>
+              {(activeTab === 'leases' ? leaseStatuses : bookingStatuses).map((statusOption) => (
+                <option key={statusOption} value={statusOption}>
+                  {normalizeLabel(statusOption)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Payment
+            <select value={filters.paymentStatus} onChange={setFilter('paymentStatus')}>
+              <option value="all">All payments</option>
+              {(activeTab === 'leases' ? rentStatuses : paymentStatuses).map((statusOption) => (
+                <option key={statusOption} value={statusOption}>
+                  {normalizeLabel(statusOption)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Start
+            <input type="date" value={filters.start} onChange={setFilter('start')} />
+          </label>
+
+          <label>
+            End
+            <input type="date" value={filters.end} onChange={setFilter('end')} />
+          </label>
+        </div>
+      </section>
+
+      {!hasRecords && activeTab !== 'property-status' && (
+        <EmptyState
+          eyebrow="Bookings"
+          icon={CalendarPlus}
+          title="Add your first booking or lease"
+          description="Use bookings for short-term reservations and leases for long-term rental tenants. Records are workspace-scoped and connected to properties."
+          action={
+            canManage ? (
+              <button type="button" className="primary" data-create-action="booking">
+                <Plus size={16} />
+                Add Booking
+              </button>
+            ) : null
+          }
+          secondaryAction={
+            canManage ? (
+              <button
+                type="button"
+                onClick={() => setCreatingLease(true)}
+                data-skip-create-action="true"
+              >
+                Add Lease
+              </button>
+            ) : null
+          }
+        />
+      )}
+
+      {activeTab === 'bookings' && hasRecords && (
+        <section className="card">
+          <div className="card-header">
+            <div>
+              <h3>Short-term bookings</h3>
+              <p>{filteredBookings.length} booking record{filteredBookings.length === 1 ? '' : 's'} match the filters.</p>
+            </div>
+
+            <button type="button" onClick={resetFilters} data-skip-create-action="true">
+              Clear filters
+            </button>
+          </div>
+
+          <DataTable
+            rows={filteredBookings}
+            empty="No bookings match these filters."
+            columns={[
+              {
+                key: 'guest',
+                label: 'Guest',
+                render: (booking) => (
+                  <span>
+                    <strong>{booking.guest_name || booking.guestName || 'Guest'}</strong>
+                    <small>{booking.guest_email || booking.guestEmail || booking.guest_phone || booking.guestPhone || 'No contact'}</small>
+                  </span>
+                ),
+              },
+              {
+                key: 'property',
+                label: 'Property',
+                render: (booking) => getPropertyName(booking, properties),
+              },
+              {
+                key: 'dates',
+                label: 'Dates',
+                render: (booking) => `${formatDate(booking.check_in || booking.checkIn)} → ${formatDate(booking.check_out || booking.checkOut)}`,
+              },
+              {
+                key: 'source',
+                label: 'Source',
+                render: (booking) => normalizeLabel(booking.source),
+              },
+              {
+                key: 'status',
+                label: 'Status',
+                render: (booking) => <StatusBadge>{booking.status || 'confirmed'}</StatusBadge>,
+              },
+              {
+                key: 'payment',
+                label: 'Payment',
+                render: (booking) => <StatusBadge>{booking.payment_status || booking.paymentStatus || 'unpaid'}</StatusBadge>,
+              },
+              {
+                key: 'amount',
+                label: 'Amount',
+                render: (booking) => formatCurrency(bookingAmount(booking), booking.currency || workspaceCurrency),
+              },
+              {
+                key: 'actions',
+                label: 'Actions',
+                render: (booking) => (
+                  <div className="action-row">
+                    {canManage && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSubmitError('');
+                          setEditingBooking(booking);
+                        }}
+                        data-skip-create-action="true"
+                      >
+                        <Edit3 size={16} />
+                        Edit
+                      </button>
+                    )}
+
+                    <button type="button" onClick={() => navigate('/calendar')} data-skip-create-action="true">
+                      <Eye size={16} />
+                      Calendar
+                    </button>
+                  </div>
+                ),
+              },
+            ]}
+          />
+        </section>
+      )}
+
+      {activeTab === 'leases' && hasRecords && (
+        <section className="card">
+          <div className="card-header">
+            <div>
+              <h3>Long-term leases</h3>
+              <p>{filteredLeases.length} lease record{filteredLeases.length === 1 ? '' : 's'} match the filters.</p>
+            </div>
+
+            <button type="button" onClick={resetFilters} data-skip-create-action="true">
+              Clear filters
+            </button>
+          </div>
+
+          <DataTable
+            rows={filteredLeases}
+            empty="No leases match these filters."
+            columns={[
+              {
+                key: 'tenant',
+                label: 'Tenant',
+                render: (lease) => (
+                  <span>
+                    <strong>{lease.tenant_name || lease.tenantName || 'Tenant'}</strong>
+                    <small>{lease.tenant_email || lease.tenantEmail || lease.tenant_phone || lease.tenantPhone || 'No contact'}</small>
+                  </span>
+                ),
+              },
+              {
+                key: 'property',
+                label: 'Property',
+                render: (lease) => getPropertyName(lease, properties),
+              },
+              {
+                key: 'dates',
+                label: 'Lease period',
+                render: (lease) => `${formatDate(lease.lease_start || lease.leaseStart)} → ${formatDate(lease.lease_end || lease.leaseEnd, 'Open-ended')}`,
+              },
+              {
+                key: 'rent',
+                label: 'Monthly rent',
+                render: (lease) => formatCurrency(leaseMonthlyRent(lease), lease.currency || workspaceCurrency),
+              },
+              {
+                key: 'status',
+                label: 'Lease status',
+                render: (lease) => <StatusBadge>{lease.lease_status || lease.leaseStatus || 'active'}</StatusBadge>,
+              },
+              {
+                key: 'payment',
+                label: 'Rent status',
+                render: (lease) => <StatusBadge>{lease.rent_payment_status || lease.rentPaymentStatus || 'unknown'}</StatusBadge>,
+              },
+              {
+                key: 'actions',
+                label: 'Actions',
+                render: (lease) => (
+                  <div className="action-row">
+                    {canManage && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSubmitError('');
+                          setEditingLease(lease);
+                        }}
+                        data-skip-create-action="true"
+                      >
+                        <Edit3 size={16} />
+                        Edit
+                      </button>
+                    )}
+
+                    <button type="button" onClick={() => navigate('/calendar')} data-skip-create-action="true">
+                      <Eye size={16} />
+                      Calendar
+                    </button>
+                  </div>
+                ),
+              },
+            ]}
+          />
+        </section>
+      )}
+
+      {activeTab === 'property-status' && (
+        <section className="card">
+          <div className="card-header">
+            <div>
+              <h3>Property booking status</h3>
+              <p>Derived occupancy status based on active leases, bookings, and cleaning tasks.</p>
+            </div>
+          </div>
+
+          <DataTable
+            rows={propertyStatusRows}
+            empty="Add properties to track booking status."
+            columns={[
+              {
+                key: 'name',
+                label: 'Property',
+                render: (property) => (
+                  <button
+                    type="button"
+                    className="link"
+                    onClick={() => navigate(`/properties/${property.id}`)}
+                    data-skip-create-action="true"
+                  >
+                    {property.name || 'Unnamed property'}
+                  </button>
+                ),
+              },
+              {
+                key: 'status',
+                label: 'Property status',
+                render: (property) => <StatusBadge>{property.derivedStatus || property.status || 'active'}</StatusBadge>,
+              },
+              {
+                key: 'address',
+                label: 'Location',
+                render: (property) => [property.city, property.state, property.country].filter(Boolean).join(', ') || property.address || '—',
+              },
+              {
+                key: 'type',
+                label: 'Type',
+                render: (property) => normalizeLabel(property.rental_type || property.rentalType || property.property_type || property.propertyType),
+              },
+            ]}
+          />
+        </section>
+      )}
+
+      {editingBooking && (
+        <BookingForm
+          initial={editingBooking}
+          properties={properties}
+          workspace={currentWorkspace}
+          session={session}
+          onSubmit={saveBooking}
+          onCancel={closeModal}
+          submitting={submitting}
+          submitError={submitError}
+        />
+      )}
+
+      {(editingLease || creatingLease) && (
+        <LeaseForm
+          initial={editingLease}
+          properties={properties}
+          workspace={currentWorkspace}
+          onSubmit={saveLease}
+          onCancel={closeModal}
+          submitting={submitting}
+          submitError={submitError}
+        />
+      )}
+    </AppLayout>
+  );
+}
+
+function derivedPropertyStatus(property, bookings, leases, cleaningTasks) {
+  const now = today();
+
+  if (
+    leases.some(
+      (lease) =>
+        getPropertyId(lease) === property.id &&
+        ['active', 'ending_soon'].includes(lease.lease_status || lease.leaseStatus) &&
+        dateOnly(lease.lease_start || lease.leaseStart) <= now &&
+        (!dateOnly(lease.lease_end || lease.leaseEnd) || dateOnly(lease.lease_end || lease.leaseEnd) >= now),
+    )
+  ) {
+    return 'leased';
+  }
+
+  if (
+    bookings.some(
+      (booking) =>
+        getPropertyId(booking) === property.id &&
+        ['confirmed', 'checked_in'].includes(booking.status) &&
+        dateOnly(booking.check_in || booking.checkIn) <= now &&
+        dateOnly(booking.check_out || booking.checkOut) > now,
+    )
+  ) {
+    return 'occupied';
+  }
+
+  if (
+    cleaningTasks.some(
+      (task) =>
+        getPropertyId(task) === property.id &&
+        ['scheduled', 'missed', 'needs_inspection'].includes(task.status) &&
+        dateOnly(task.scheduledFor || task.scheduled_for) <= now,
+    )
+  ) {
+    return 'cleaning_due';
+  }
+
+  return property.status || 'active';
+}
