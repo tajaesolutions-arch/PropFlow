@@ -16,6 +16,7 @@ import { StatusBadge } from '../components/StatusBadge.jsx';
 import { useApp } from '../lib/AppContext.jsx';
 import { currencies, inviteRoleOptions, roleLabels, roles } from '../data/constants.js';
 import { hasAnyRole } from '../lib/auth.js';
+import { supabase } from '../lib/supabase.js';
 
 const defaultInvite = {
   email: '',
@@ -24,6 +25,20 @@ const defaultInvite = {
   message: '',
   assignedPropertyIds: [],
   permissionLevel: 'standard',
+};
+
+const assignmentRoleOptions = [
+  roles.OWNER,
+  roles.CLEANER,
+  roles.MAINTENANCE,
+  roles.HOST,
+  roles.ACCOUNTANT,
+];
+
+const defaultAssignment = {
+  userId: '',
+  propertyId: '',
+  assignmentRole: roles.CLEANER,
 };
 
 function buildInviteLink(token) {
@@ -68,6 +83,15 @@ function roleList(value) {
   return value.map((role) => roleLabels[role] || role).join(', ');
 }
 
+function getPropertyName(properties, propertyId) {
+  return properties.find((property) => property.id === propertyId)?.name || 'Unknown property';
+}
+
+function getAssignmentMemberName(members, userId) {
+  const member = members.find((item) => item.user_id === userId || item.userId === userId);
+  return member ? getMemberName(member) : userId || 'Unknown member';
+}
+
 async function copyToClipboard(value) {
   if (!value) return;
 
@@ -89,9 +113,47 @@ export function SettingsPage() {
   const [lastLink, setLastLink] = React.useState('');
   const [message, setMessage] = React.useState('');
   const [busy, setBusy] = React.useState(false);
+  const [assignment, setAssignment] = React.useState(defaultAssignment);
+  const [propertyAssignments, setPropertyAssignments] = React.useState([]);
+  const [assignmentMessage, setAssignmentMessage] = React.useState('');
+  const [assignmentBusy, setAssignmentBusy] = React.useState(false);
+  const [assignmentsLoading, setAssignmentsLoading] = React.useState(false);
 
   const canInvite = hasAnyRole(currentUser, [roles.OWNER_ADMIN]);
+  const canManageAssignments = hasAnyRole(currentUser, [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER]);
   const activeProperties = (data.properties || []).filter((property) => property.status !== 'archived');
+  const members = data.members || [];
+  const assignableMembers = members.filter((member) => member.status !== 'revoked');
+
+  const loadPropertyAssignments = React.useCallback(async () => {
+    if (!isSupabaseConfigured || !supabase || !currentWorkspace?.id) {
+      setPropertyAssignments([]);
+      return;
+    }
+
+    setAssignmentsLoading(true);
+    setAssignmentMessage('');
+
+    try {
+      const { data: rows, error } = await supabase
+        .from('property_assignments')
+        .select('*')
+        .eq('workspace_id', currentWorkspace.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setPropertyAssignments(rows || []);
+    } catch (error) {
+      setPropertyAssignments([]);
+      setAssignmentMessage(error?.message || 'Property assignments could not be loaded.');
+    } finally {
+      setAssignmentsLoading(false);
+    }
+  }, [currentWorkspace?.id, isSupabaseConfigured]);
+
+  React.useEffect(() => {
+    loadPropertyAssignments();
+  }, [loadPropertyAssignments]);
 
   const setInviteField = (key) => (event) => {
     setInvite((value) => ({
@@ -113,6 +175,13 @@ export function SettingsPage() {
     setInvite((value) => ({
       ...value,
       assignedPropertyIds: [...event.target.selectedOptions].map((option) => option.value),
+    }));
+  };
+
+  const setAssignmentField = (key) => (event) => {
+    setAssignment((value) => ({
+      ...value,
+      [key]: event.target.value,
     }));
   };
 
@@ -159,6 +228,88 @@ export function SettingsPage() {
       setMessage(error.message || 'Invite creation failed.');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const submitAssignment = async (event) => {
+    event.preventDefault();
+
+    if (!canManageAssignments) {
+      setAssignmentMessage('Your role cannot manage property assignments in this workspace.');
+      return;
+    }
+
+    if (!isSupabaseConfigured || !supabase) {
+      setAssignmentMessage('Supabase is not configured. Add Supabase environment variables before saving assignments.');
+      return;
+    }
+
+    if (!currentWorkspace?.id) {
+      setAssignmentMessage('Select a workspace before saving assignments.');
+      return;
+    }
+
+    if (!assignment.userId || !assignment.propertyId || !assignment.assignmentRole) {
+      setAssignmentMessage('Choose a member, property, and assignment role.');
+      return;
+    }
+
+    setAssignmentBusy(true);
+    setAssignmentMessage('');
+
+    try {
+      const { error } = await supabase.from('property_assignments').upsert(
+        {
+          workspace_id: currentWorkspace.id,
+          property_id: assignment.propertyId,
+          user_id: assignment.userId,
+          assignment_role: assignment.assignmentRole,
+          created_by: currentUser?.id || null,
+        },
+        { onConflict: 'property_id,user_id,assignment_role', ignoreDuplicates: true },
+      );
+
+      if (error) throw error;
+
+      setAssignment(defaultAssignment);
+      setAssignmentMessage('Property assignment saved.');
+      await loadPropertyAssignments();
+    } catch (error) {
+      setAssignmentMessage(error?.message || 'Property assignment could not be saved.');
+    } finally {
+      setAssignmentBusy(false);
+    }
+  };
+
+  const removeAssignment = async (assignmentId) => {
+    if (!canManageAssignments) {
+      setAssignmentMessage('Your role cannot remove property assignments in this workspace.');
+      return;
+    }
+
+    if (!isSupabaseConfigured || !supabase || !currentWorkspace?.id) {
+      setAssignmentMessage('Supabase is not configured or no workspace is selected.');
+      return;
+    }
+
+    setAssignmentBusy(true);
+    setAssignmentMessage('');
+
+    try {
+      const { error } = await supabase
+        .from('property_assignments')
+        .delete()
+        .eq('id', assignmentId)
+        .eq('workspace_id', currentWorkspace.id);
+
+      if (error) throw error;
+
+      setAssignmentMessage('Property assignment removed.');
+      await loadPropertyAssignments();
+    } catch (error) {
+      setAssignmentMessage(error?.message || 'Property assignment could not be removed.');
+    } finally {
+      setAssignmentBusy(false);
     }
   };
 
@@ -403,6 +554,122 @@ export function SettingsPage() {
               </button>
             </div>
           )}
+        </section>
+
+        <section className="card full">
+          <div className="card-header">
+            <div>
+              <h3>Property assignments</h3>
+              <p>Assign existing workspace members to specific properties for owner, cleaner, maintenance, host, or accountant access.</p>
+            </div>
+            <Users size={20} />
+          </div>
+
+          {canManageAssignments ? (
+            <form onSubmit={submitAssignment}>
+              <div className="form-grid">
+                <label>
+                  Team member
+                  <select value={assignment.userId} onChange={setAssignmentField('userId')} required>
+                    <option value="">Select member</option>
+                    {assignableMembers.map((member, index) => (
+                      <option key={member.id || `${member.user_id}-${index}`} value={member.user_id}>
+                        {getMemberName(member)} — {getMemberEmail(member)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  Property
+                  <select value={assignment.propertyId} onChange={setAssignmentField('propertyId')} required>
+                    <option value="">Select property</option>
+                    {activeProperties.map((property) => (
+                      <option key={property.id} value={property.id}>
+                        {property.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  Assignment role
+                  <select value={assignment.assignmentRole} onChange={setAssignmentField('assignmentRole')} required>
+                    {assignmentRoleOptions.map((role) => (
+                      <option key={role} value={role}>
+                        {roleLabels[role] || role}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="action-row">
+                <button className="primary" disabled={assignmentBusy || assignmentsLoading}>
+                  {assignmentBusy ? 'Saving assignment…' : 'Assign member to property'}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <p className="helper">Your role cannot manage property assignments in this workspace.</p>
+          )}
+
+          {!activeProperties.length && (
+            <p className="helper">Add at least one active property before creating property assignments.</p>
+          )}
+
+          {!assignableMembers.length && (
+            <p className="helper">Invite or add workspace members before creating property assignments.</p>
+          )}
+
+          {assignmentMessage && (
+            <p className={assignmentMessage.toLowerCase().includes('could not') || assignmentMessage.toLowerCase().includes('cannot') || assignmentMessage.toLowerCase().includes('not configured') ? 'helper error-helper' : 'helper'}>
+              {assignmentMessage}
+            </p>
+          )}
+
+          <DataTable
+            rows={(propertyAssignments || []).map((row, index) => ({
+              id: row.id || `assignment-${index}`,
+              ...row,
+            }))}
+            columns={[
+              {
+                key: 'property_id',
+                label: 'Property',
+                render: (row) => getPropertyName(activeProperties, row.property_id),
+              },
+              {
+                key: 'user_id',
+                label: 'Member',
+                render: (row) => getAssignmentMemberName(members, row.user_id),
+              },
+              {
+                key: 'assignment_role',
+                label: 'Assignment role',
+                render: (row) => roleLabels[row.assignment_role] || row.assignment_role,
+              },
+              {
+                key: 'created_at',
+                label: 'Created',
+                render: (row) => formatDate(row.created_at),
+              },
+              {
+                key: 'actions',
+                label: 'Action',
+                render: (row) => (
+                  <button
+                    type="button"
+                    onClick={() => removeAssignment(row.id)}
+                    disabled={!canManageAssignments || assignmentBusy}
+                  >
+                    Remove
+                  </button>
+                ),
+              },
+            ]}
+            emptyMessage={assignmentsLoading ? 'Loading property assignments…' : 'No property assignments yet.'}
+          />
         </section>
 
         <section className="card full">
