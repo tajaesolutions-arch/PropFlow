@@ -1,11 +1,13 @@
 import React from 'react';
 import { ShieldCheck } from 'lucide-react';
-import { useApp } from '../lib/AppContext.jsx';
+
 import { getPostLoginPath } from '../lib/auth.js';
+import { useApp } from '../lib/AppContext.jsx';
 import { navigate } from '../routes/AppRouter.jsx';
 
 export function LoginPage() {
   const { signIn, isSupabaseConfigured } = useApp();
+
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [message, setMessage] = React.useState('');
@@ -24,23 +26,23 @@ export function LoginPage() {
     setBusy(true);
     setMessage('');
 
-   try {
-  const result = await signIn(email, password);
-  const nextUser = result?.accountState?.currentUser;
+    try {
+      const result = await signIn(email.trim(), password);
+      const nextUser = result?.accountState?.currentUser;
 
-  if (!nextUser) {
-    setMessage(
-      'Login succeeded, but your workspace profile did not finish loading. Refresh the page or check your Supabase workspace membership record.',
-    );
-    return;
-  }
+      if (!nextUser) {
+        setMessage(
+          'Login succeeded, but your workspace profile did not finish loading. Refresh the page or check your Supabase workspace membership record.',
+        );
+        return;
+      }
 
-  navigate(getPostLoginPath(nextUser));
-} catch (error) {
-  setMessage(error.message || 'Login failed.');
-} finally {
-  setBusy(false);
-}
+      navigate(getPostLoginPath(nextUser));
+    } catch (error) {
+      setMessage(error.message || 'Login failed.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -86,7 +88,7 @@ export function LoginPage() {
         {message && <div className="helper error-helper">{message}</div>}
 
         <button className="primary" disabled={busy}>
-          {busy ? 'Signing in…' : 'Login'}
+          {busy ? 'Authenticating…' : 'Login'}
         </button>
 
         <p>
