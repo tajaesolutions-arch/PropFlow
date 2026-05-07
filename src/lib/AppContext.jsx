@@ -52,7 +52,7 @@ function normalizeMember(row) {
 }
 
 function inviteToken() {
-  return crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function requireSupabase() {
@@ -80,6 +80,18 @@ function cleanNumber(value) {
   return Number.isFinite(numericValue) ? numericValue : null;
 }
 
+function buildContactUpdatePayload(payload, contact) {
+  const nextPayload = { ...payload };
+
+  if (contact?.id) {
+    nextPayload.contact_id = contact.id;
+  } else if (Object.prototype.hasOwnProperty.call(payload, 'contact_id')) {
+    nextPayload.contact_id = payload.contact_id || null;
+  }
+
+  return nextPayload;
+}
+
 export function AppProvider({ children }) {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(isSupabaseConfigured);
@@ -103,8 +115,10 @@ export function AppProvider({ children }) {
       makeWorkspaceQuery('cleaning tasks', 'cleaningTasks', supabase.from('cleaning_tasks').select('*').eq('workspace_id', workspace.id).order('scheduled_for', { ascending: true }), (rows, props) => (rows || []).map((row) => normalizeCleaning(row, props))),
       makeWorkspaceQuery('maintenance work orders', 'maintenanceWorkOrders', supabase.from('maintenance_work_orders').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false }), (rows, props) => (rows || []).map((row) => normalizeMaintenance(row, props))),
       makeWorkspaceQuery('supplies', 'supplies', supabase.from('supplies').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false }), (rows, props) => (rows || []).map((row) => normalizeSupply(row, props))),
-      makeWorkspaceQuery('workspace invites', 'invites', supabase.from('workspace_invites').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false })),
-      makeWorkspaceQuery('file uploads', 'fileUploads', supabase.from('file_uploads').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false })),
+   makeWorkspaceQuery('workspace invites', 'invites', supabase.from('workspace_invites').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false })),
+makeWorkspaceQuery('file uploads', 'fileUploads', supabase.from('file_uploads').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false })),
+makeWorkspaceQuery('notifications', 'notifications', supabase.from('notifications').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false })),
+makeWorkspaceQuery('owner reports', 'ownerReports', supabase.from('owner_reports').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false })),
     ];
 
     const settledResponses = await Promise.allSettled(workspaceQueries.map(({ query }) => query));
@@ -389,15 +403,33 @@ export function AppProvider({ children }) {
   };
 
   const updateBooking = async (id, payload) => {
-    const client = requireSupabase();
-    requireWorkspaceSession(currentWorkspace, session);
-    if (!id) throw new Error('Select a booking before saving changes.');
-    const contact = await upsertContact({ full_name: payload.guest_name, email: payload.guest_email, phone: payload.guest_phone, contact_type: 'guest' });
-    const { data: booking, error: bookingError } = await client.from('bookings').update({ ...payload, contact_id: contact?.id || payload.contact_id || null }).eq('id', id).eq('workspace_id', currentWorkspace.id).select('*').single();
-    if (bookingError) throw new Error(formatSupabaseError(bookingError, 'Booking update failed.'));
-    await refreshWorkspaceData();
-    return booking;
-  };
+  const client = requireSupabase();
+  requireWorkspaceSession(currentWorkspace, session);
+
+  if (!id) throw new Error('Select a booking before saving changes.');
+
+  const contact = await upsertContact({
+    full_name: payload.guest_name,
+    email: payload.guest_email,
+    phone: payload.guest_phone,
+    contact_type: 'guest',
+  });
+
+  const updatePayload = buildContactUpdatePayload(payload, contact);
+
+  const { data: booking, error: bookingError } = await client
+    .from('bookings')
+    .update(updatePayload)
+    .eq('id', id)
+    .eq('workspace_id', currentWorkspace.id)
+    .select('*')
+    .single();
+
+  if (bookingError) throw new Error(formatSupabaseError(bookingError, 'Booking update failed.'));
+
+  await refreshWorkspaceData();
+  return booking;
+};
 
   const createLease = async (payload) => {
     const client = requireSupabase();
@@ -410,13 +442,33 @@ export function AppProvider({ children }) {
   };
 
   const updateLease = async (id, payload) => {
-    const client = requireSupabase();
-    const contact = await upsertContact({ full_name: payload.tenant_name, email: payload.tenant_email, phone: payload.tenant_phone, contact_type: 'tenant' });
-    const { data: lease, error: leaseError } = await client.from('leases').update({ ...payload, contact_id: contact?.id || payload.contact_id || null }).eq('id', id).eq('workspace_id', currentWorkspace.id).select('*').single();
-    if (leaseError) throw new Error(formatSupabaseError(leaseError, 'Lease update failed.'));
-    await refreshWorkspaceData();
-    return lease;
-  };
+  const client = requireSupabase();
+  requireWorkspaceSession(currentWorkspace, session);
+
+  if (!id) throw new Error('Select a lease before saving changes.');
+
+  const contact = await upsertContact({
+    full_name: payload.tenant_name,
+    email: payload.tenant_email,
+    phone: payload.tenant_phone,
+    contact_type: 'tenant',
+  });
+
+  const updatePayload = buildContactUpdatePayload(payload, contact);
+
+  const { data: lease, error: leaseError } = await client
+    .from('leases')
+    .update(updatePayload)
+    .eq('id', id)
+    .eq('workspace_id', currentWorkspace.id)
+    .select('*')
+    .single();
+
+  if (leaseError) throw new Error(formatSupabaseError(leaseError, 'Lease update failed.'));
+
+  await refreshWorkspaceData();
+  return lease;
+};
 
   const upsertContact = async (payload) => {
     const client = requireSupabase();
@@ -436,22 +488,45 @@ export function AppProvider({ children }) {
     return task;
   };
 
-  const updateCleaningTask = async (id, payload) => {
-    const client = requireSupabase();
-    const { data: task, error: taskError } = await client.from('cleaning_tasks').update(payload).eq('id', id).eq('workspace_id', currentWorkspace.id).select('*').single();
-    if (taskError) throw new Error(formatSupabaseError(taskError, 'Cleaning task update failed.'));
-    await refreshWorkspaceData();
-    return task;
-  };
+ const updateCleaningTask = async (id, payload) => {
+  const client = requireSupabase();
+  requireWorkspaceSession(currentWorkspace, session);
 
-  const createMaintenanceWorkOrder = async (payload) => {
-    const client = requireSupabase();
-    requireWorkspaceSession(currentWorkspace, session);
-    const { data: work, error: workError } = await client.from('maintenance_work_orders').insert({ ...payload, workspace_id: currentWorkspace.id, created_by: session.user.id }).select('*').single();
-    if (workError) throw new Error(formatSupabaseError(workError, 'Maintenance work order creation failed.'));
-    await refreshWorkspaceData();
-    return work;
-  };
+  if (!id) throw new Error('Select a cleaning task before saving changes.');
+
+  const { data: task, error: taskError } = await client
+    .from('cleaning_tasks')
+    .update(payload)
+    .eq('id', id)
+    .eq('workspace_id', currentWorkspace.id)
+    .select('*')
+    .single();
+
+  if (taskError) throw new Error(formatSupabaseError(taskError, 'Cleaning task update failed.'));
+
+  await refreshWorkspaceData();
+  return task;
+};
+
+ const updateMaintenanceWorkOrder = async (id, payload) => {
+  const client = requireSupabase();
+  requireWorkspaceSession(currentWorkspace, session);
+
+  if (!id) throw new Error('Select a maintenance work order before saving changes.');
+
+  const { data: work, error: workError } = await client
+    .from('maintenance_work_orders')
+    .update(payload)
+    .eq('id', id)
+    .eq('workspace_id', currentWorkspace.id)
+    .select('*')
+    .single();
+
+  if (workError) throw new Error(formatSupabaseError(workError, 'Maintenance work order update failed.'));
+
+  await refreshWorkspaceData();
+  return work;
+};
 
   const updateMaintenanceWorkOrder = async (id, payload) => {
     const client = requireSupabase();
@@ -485,7 +560,7 @@ export function AppProvider({ children }) {
       supplier_name: payload.supplier_name?.trim() || null,
       supplier_contact: payload.supplier_contact?.trim() || null,
       estimated_unit_cost: cost,
-      currency: payload.currency?.trim() || currentWorkspace?.defaultCurrency || 'USD',
+      currency: payload.currency?.trim() || currentWorkspace?.defaultCurrency || currentWorkspace?.default_currency || 'USD',
       notes: payload.notes?.trim() || null,
       archived_at: archivedAt,
     };
@@ -561,7 +636,8 @@ export function AppProvider({ children }) {
     requireWorkspaceSession(currentWorkspace, session);
     if (!file) throw new Error('Choose a file before uploading.');
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '-');
-    const path = `${currentWorkspace.id}/${category}/${crypto.randomUUID()}-${safeName}`;
+   const uploadId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const path = `${currentWorkspace.id}/${category}/${uploadId}-${safeName}`;
     const { error: uploadError } = await client.storage.from('propflow-private').upload(path, file, { upsert: false });
     if (uploadError) throw new Error(formatSupabaseError(uploadError, 'File upload failed.'));
     const { data: upload, error: metadataError } = await client.from('file_uploads').insert({ workspace_id: currentWorkspace.id, property_id: propertyId || null, category, related_table: relatedTable || null, related_id: relatedId || null, bucket: 'propflow-private', path, filename: file.name, mime_type: file.type, size_bytes: file.size, uploaded_by: session.user.id }).select('*').single();
