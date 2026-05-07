@@ -1,5 +1,16 @@
 import React from 'react';
-import { Building2, Edit3, Eye, Home, Plus, Search, X } from 'lucide-react';
+import {
+  Archive,
+  Building2,
+  Edit3,
+  Eye,
+  Home,
+  Hotel,
+  Plus,
+  RotateCcw,
+  Search,
+  X,
+} from 'lucide-react';
 
 import { AppLayout } from '../components/layout/AppLayout.jsx';
 import { DataTable } from '../components/DataTable.jsx';
@@ -44,7 +55,13 @@ function cleanNumber(value) {
 }
 
 function formatLabel(value) {
-  return value ? value.replaceAll('_', ' ') : '—';
+  return value ? String(value).replaceAll('_', ' ') : '—';
+}
+
+function getField(property, camelKey, snakeKey, fallback = '') {
+  if (property?.[camelKey] !== undefined && property?.[camelKey] !== null) return property[camelKey];
+  if (property?.[snakeKey] !== undefined && property?.[snakeKey] !== null) return property[snakeKey];
+  return fallback;
 }
 
 function normalizePropertyForm(property, defaultCurrency) {
@@ -62,24 +79,24 @@ function normalizePropertyForm(property, defaultCurrency) {
     city: property.city || '',
     state: property.state || '',
     country: property.country || 'United States',
-    property_type: property.property_type || property.propertyType || 'short_term_rental',
-    rental_type: property.rental_type || property.rentalType || 'short_term',
+    property_type: getField(property, 'propertyType', 'property_type', 'short_term_rental'),
+    rental_type: getField(property, 'rentalType', 'rental_type', 'short_term'),
     currency: property.currency || defaultCurrency || 'USD',
-    nightly_rate: property.nightly_rate ?? property.nightlyRate ?? '',
-    monthly_rent: property.monthly_rent ?? property.monthlyRent ?? '',
+    nightly_rate: getField(property, 'nightlyRate', 'nightly_rate', ''),
+    monthly_rent: getField(property, 'monthlyRent', 'monthly_rent', ''),
     status: property.status || 'active',
     bedrooms: property.bedrooms ?? '',
     bathrooms: property.bathrooms ?? '',
-    square_feet: property.square_feet ?? property.squareFeet ?? '',
+    square_feet: getField(property, 'squareFeet', 'square_feet', ''),
     notes: property.notes || '',
   };
 }
 
 function getPropertyRate(property) {
-  const rentalType = property.rental_type || property.rentalType;
+  const rentalType = getField(property, 'rentalType', 'rental_type', 'short_term');
   const currency = property.currency || 'USD';
-  const nightlyRate = property.nightly_rate ?? property.nightlyRate;
-  const monthlyRent = property.monthly_rent ?? property.monthlyRent;
+  const nightlyRate = getField(property, 'nightlyRate', 'nightly_rate', null);
+  const monthlyRent = getField(property, 'monthlyRent', 'monthly_rent', null);
 
   if (rentalType === 'long_term') {
     return monthlyRent ? `${formatCurrency(monthlyRent, currency)} / mo` : '—';
@@ -93,6 +110,17 @@ function getPropertyRate(property) {
   }
 
   return nightlyRate ? `${formatCurrency(nightlyRate, currency)} / night` : '—';
+}
+
+function getPotentialMonthlyRevenue(property) {
+  const rentalType = getField(property, 'rentalType', 'rental_type', 'short_term');
+  const nightlyRate = cleanNumber(getField(property, 'nightlyRate', 'nightly_rate', null));
+  const monthlyRent = cleanNumber(getField(property, 'monthlyRent', 'monthly_rent', null));
+
+  if (rentalType === 'long_term') return monthlyRent || 0;
+  if (rentalType === 'both') return monthlyRent || (nightlyRate ? nightlyRate * 21 : 0);
+
+  return nightlyRate ? nightlyRate * 21 : 0;
 }
 
 function validateProperty(form) {
@@ -154,15 +182,72 @@ function buildPropertyPayload(form) {
   };
 }
 
-function PropertyForm({ property, defaultCurrency, onSubmit, onCancel, submitError = '', submitting = false }) {
+function matchesSearch(property, query) {
+  const normalizedQuery = String(query || '').trim().toLowerCase();
+  if (!normalizedQuery) return true;
+
+  const searchValue = [
+    property.name,
+    property.address,
+    property.city,
+    property.state,
+    property.country,
+    property.property_type,
+    property.propertyType,
+    property.rental_type,
+    property.rentalType,
+    property.status,
+    property.currency,
+    property.notes,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  return searchValue.includes(normalizedQuery);
+}
+
+function getPropertyLocation(property) {
+  return [property.city, property.state, property.country].filter(Boolean).join(', ') || property.address || 'No location';
+}
+
+function getPropertyTypeLabel(property) {
+  return formatLabel(getField(property, 'propertyType', 'property_type', 'property'));
+}
+
+function getRentalTypeLabel(property) {
+  return formatLabel(getField(property, 'rentalType', 'rental_type', 'rental'));
+}
+
+function PropertyEditModal({
+  property,
+  defaultCurrency,
+  onSubmit,
+  onCancel,
+  submitError = '',
+  submitting = false,
+}) {
   const [form, setForm] = React.useState(() => normalizePropertyForm(property, defaultCurrency));
   const [errors, setErrors] = React.useState([]);
-  const isEditing = Boolean(property?.id);
 
   React.useEffect(() => {
     setForm(normalizePropertyForm(property, defaultCurrency));
     setErrors([]);
   }, [property?.id, defaultCurrency]);
+
+  React.useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape' && !submitting) {
+        onCancel();
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [onCancel, submitting]);
 
   const set = (key) => (event) => {
     setForm((value) => ({
@@ -193,25 +278,40 @@ function PropertyForm({ property, defaultCurrency, onSubmit, onCancel, submitErr
       <section className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="property-form-title">
         <header className="modal-header">
           <div>
-            <h3 id="property-form-title">{isEditing ? 'Edit property' : 'Add property'}</h3>
+            <h3 id="property-form-title">Edit property</h3>
             <p>
-              Add the required property details now. Photos, documents, bookings, cleaning, and
-              maintenance can be managed from the property profile.
+              Update the property profile. Bookings, cleaning, maintenance, files, and owner records
+              stay linked to this workspace property.
             </p>
           </div>
-          <button type="button" className="icon-btn" aria-label="Close form" onClick={onCancel} disabled={submitting}>
+
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Close form"
+            onClick={onCancel}
+            disabled={submitting}
+            data-skip-create-action="true"
+          >
             <X size={18} />
           </button>
         </header>
 
         <form className="modal-form" onSubmit={submit} noValidate>
           <div className="modal-body">
-            {submitError && <div className="modal-error" role="alert">{submitError}</div>}
+            {submitError && (
+              <div className="modal-error" role="alert">
+                {submitError}
+              </div>
+            )}
+
             {errors.length > 0 && (
               <div className="modal-error" role="alert">
                 <strong>Please fix these fields:</strong>
                 <ul>
-                  {errors.map((error) => <li key={error}>{error}</li>)}
+                  {errors.map((error) => (
+                    <li key={error}>{error}</li>
+                  ))}
                 </ul>
               </div>
             )}
@@ -223,7 +323,7 @@ function PropertyForm({ property, defaultCurrency, onSubmit, onCancel, submitErr
               </label>
 
               <label>
-                Address/location
+                Address / location
                 <input value={form.address} onChange={set('address')} required />
               </label>
 
@@ -246,7 +346,9 @@ function PropertyForm({ property, defaultCurrency, onSubmit, onCancel, submitErr
                 Property type
                 <select value={form.property_type} onChange={set('property_type')} required>
                   {propertyTypes.map((item) => (
-                    <option key={item} value={item}>{formatLabel(item)}</option>
+                    <option key={item} value={item}>
+                      {formatLabel(item)}
+                    </option>
                   ))}
                 </select>
               </label>
@@ -255,7 +357,9 @@ function PropertyForm({ property, defaultCurrency, onSubmit, onCancel, submitErr
                 Rental type
                 <select value={form.rental_type} onChange={set('rental_type')} required>
                   {rentalTypes.map((item) => (
-                    <option key={item} value={item}>{formatLabel(item)}</option>
+                    <option key={item} value={item}>
+                      {formatLabel(item)}
+                    </option>
                   ))}
                 </select>
               </label>
@@ -264,7 +368,9 @@ function PropertyForm({ property, defaultCurrency, onSubmit, onCancel, submitErr
                 Status
                 <select value={form.status} onChange={set('status')} required>
                   {propertyStatuses.map((item) => (
-                    <option key={item} value={item}>{formatLabel(item)}</option>
+                    <option key={item} value={item}>
+                      {formatLabel(item)}
+                    </option>
                   ))}
                 </select>
               </label>
@@ -273,19 +379,33 @@ function PropertyForm({ property, defaultCurrency, onSubmit, onCancel, submitErr
                 Currency
                 <select value={form.currency} onChange={set('currency')} required>
                   {currencies.map((currency) => (
-                    <option key={currency} value={currency}>{currency}</option>
+                    <option key={currency} value={currency}>
+                      {currency}
+                    </option>
                   ))}
                 </select>
               </label>
 
               <label>
                 Nightly rate
-                <input value={form.nightly_rate} onChange={set('nightly_rate')} type="number" min="0" step="0.01" />
+                <input
+                  value={form.nightly_rate}
+                  onChange={set('nightly_rate')}
+                  type="number"
+                  min="0"
+                  step="0.01"
+                />
               </label>
 
               <label>
                 Monthly rent
-                <input value={form.monthly_rent} onChange={set('monthly_rent')} type="number" min="0" step="0.01" />
+                <input
+                  value={form.monthly_rent}
+                  onChange={set('monthly_rent')}
+                  type="number"
+                  min="0"
+                  step="0.01"
+                />
               </label>
 
               <label>
@@ -295,24 +415,40 @@ function PropertyForm({ property, defaultCurrency, onSubmit, onCancel, submitErr
 
               <label>
                 Bathrooms
-                <input value={form.bathrooms} onChange={set('bathrooms')} type="number" min="0" step="0.5" />
+                <input
+                  value={form.bathrooms}
+                  onChange={set('bathrooms')}
+                  type="number"
+                  min="0"
+                  step="0.5"
+                />
               </label>
 
               <label>
                 Square footage
-                <input value={form.square_feet} onChange={set('square_feet')} type="number" min="0" />
+                <input
+                  value={form.square_feet}
+                  onChange={set('square_feet')}
+                  type="number"
+                  min="0"
+                />
+              </label>
+
+              <label className="full">
+                Notes
+                <textarea value={form.notes} onChange={set('notes')} rows={3} />
               </label>
             </div>
-
-            <label className="full-width">
-              Notes
-              <textarea value={form.notes} onChange={set('notes')} rows={3} />
-            </label>
           </div>
 
           <footer className="modal-actions">
-            <button type="button" onClick={onCancel} disabled={submitting}>Cancel</button>
-            <button className="primary" disabled={submitting}>{submitting ? 'Saving...' : 'Save property'}</button>
+            <button type="button" onClick={onCancel} disabled={submitting} data-skip-create-action="true">
+              Cancel
+            </button>
+
+            <button className="primary" type="submit" disabled={submitting} data-skip-create-action="true">
+              {submitting ? 'Saving…' : 'Save property'}
+            </button>
           </footer>
         </form>
       </section>
@@ -321,7 +457,13 @@ function PropertyForm({ property, defaultCurrency, onSubmit, onCancel, submitErr
 }
 
 export function PropertiesPage() {
-  const { data, createProperty, updateProperty, currentUser, currentWorkspace } = useApp();
+  const {
+    data,
+    updateProperty,
+    archiveProperty,
+    currentUser,
+    currentWorkspace,
+  } = useApp();
 
   const [editingProperty, setEditingProperty] = React.useState(null);
   const [showArchived, setShowArchived] = React.useState(false);
@@ -338,127 +480,185 @@ export function PropertiesPage() {
   const properties = data.properties || [];
   const activeProperties = properties.filter((property) => property.status !== 'archived');
   const archivedProperties = properties.filter((property) => property.status === 'archived');
-  const shortTermProperties = activeProperties.filter((property) => (property.rental_type || property.rentalType) === 'short_term');
-  const longTermProperties = activeProperties.filter((property) => (property.rental_type || property.rentalType) === 'long_term');
+
+  const shortTermProperties = activeProperties.filter((property) =>
+    ['short_term', 'both'].includes(getField(property, 'rentalType', 'rental_type')),
+  );
+
+  const longTermProperties = activeProperties.filter((property) =>
+    ['long_term', 'both'].includes(getField(property, 'rentalType', 'rental_type')),
+  );
+
+  const maintenanceIssueProperties = activeProperties.filter((property) => property.status === 'maintenance_issue');
+
+  const potentialMonthlyRevenue = activeProperties.reduce(
+    (total, property) => total + getPotentialMonthlyRevenue(property),
+    0,
+  );
 
   const rows = properties
     .filter((property) => (showArchived ? true : property.status !== 'archived'))
     .filter((property) => status === 'all' || property.status === status)
-    .filter((property) => rentalType === 'all' || (property.rental_type || property.rentalType) === rentalType)
-    .filter((property) => {
-      const searchValue = [
-        property.name,
-        property.address,
-        property.city,
-        property.state,
-        property.country,
-        property.property_type,
-        property.propertyType,
-        property.rental_type,
-        property.rentalType,
-        property.status,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
+    .filter((property) => rentalType === 'all' || getField(property, 'rentalType', 'rental_type') === rentalType)
+    .filter((property) => matchesSearch(property, query));
 
-      return searchValue.includes(query.toLowerCase().trim());
-    });
-
-  const openCreateForm = () => {
-    setMessage('');
-    setSubmitError('');
-    setEditingProperty({ mode: 'create' });
+  const clearMessageSoon = () => {
+    window.setTimeout(() => setMessage(''), 3000);
   };
 
-  const openEditForm = (property) => {
-    setMessage('');
+  const openEdit = (property) => {
     setSubmitError('');
     setEditingProperty(property);
   };
 
-  const closeForm = () => {
+  const closeEdit = () => {
+    if (submitting) return;
+
     setEditingProperty(null);
     setSubmitError('');
   };
 
-  const submit = async (payload) => {
+  const submitEdit = async (payload) => {
+    if (!editingProperty?.id) return;
+
     setSubmitting(true);
-    setMessage('');
     setSubmitError('');
 
     try {
-      if (editingProperty?.id) {
-        await updateProperty(editingProperty.id, payload);
-        setMessage('Property updated.');
-      } else {
-        await createProperty(payload);
-        setMessage('Property saved. You can now add bookings, cleaning tasks, maintenance, photos, and documents.');
-      }
-
+      await updateProperty(editingProperty.id, payload);
       setEditingProperty(null);
+      setMessage('Property updated successfully.');
+      clearMessageSoon();
     } catch (error) {
-      setSubmitError(error.message || 'Could not save property.');
+      setSubmitError(error?.message || 'Property could not be saved.');
     } finally {
       setSubmitting(false);
     }
   };
 
+  const handleArchive = async (property, archived = true) => {
+    if (!canEdit || !property?.id) return;
+
+    setMessage('');
+
+    try {
+      await archiveProperty(property.id, archived);
+      setMessage(archived ? 'Property archived.' : 'Property restored.');
+      clearMessageSoon();
+    } catch (error) {
+      setMessage(error?.message || 'Property status could not be updated.');
+    }
+  };
+
   return (
-    <AppLayout title="Properties" subtitle="Manage workspace properties and property profiles">
-      <div className="stat-grid dense">
-        <StatCard label="Active properties" value={activeProperties.length} icon={Building2} />
-        <StatCard label="Short-term rentals" value={shortTermProperties.length} icon={Home} />
-        <StatCard label="Long-term rentals" value={longTermProperties.length} icon={Home} />
-        <StatCard label="Archived" value={archivedProperties.length} icon={Building2} />
-      </div>
+    <AppLayout
+      title="Properties"
+      subtitle="Manage every short-term rental, long-term rental, villa, unit, and commercial property in this workspace."
+    >
+      {message && (
+        <section className="helper" role="status">
+          {message}
+        </section>
+      )}
 
-      <section className="card">
-        <div className="card-header">
-          <div>
-            <h3>Workspace properties</h3>
-            <p>Add and manage real workspace properties. Search supports name, address, city, type, rental type, and status.</p>
-          </div>
+      <section className="stat-grid">
+        <StatCard
+          label="Active properties"
+          value={activeProperties.length}
+          subtitle={`${archivedProperties.length} archived`}
+          icon={Building2}
+        />
 
-          {canEdit && (
-            <button className="primary" type="button" onClick={openCreateForm}>
-              <Plus size={16} />
-              Add property
-            </button>
-          )}
+        <StatCard
+          label="Short-term / Airbnb"
+          value={shortTermProperties.length}
+          subtitle="Nightly-rate or hybrid properties"
+          icon={Hotel}
+        />
+
+        <StatCard
+          label="Long-term rentals"
+          value={longTermProperties.length}
+          subtitle="Monthly-rent or hybrid properties"
+          icon={Home}
+        />
+
+        <StatCard
+          label="Potential monthly revenue"
+          value={formatCurrency(potentialMonthlyRevenue, workspaceCurrency)}
+          subtitle={`${maintenanceIssueProperties.length} properties need maintenance review`}
+          icon={Building2}
+        />
+      </section>
+
+      <section className="card properties-toolbar">
+        <div>
+          <h3>Property portfolio</h3>
+          <p>Search, filter, view, and update workspace-scoped property records.</p>
         </div>
 
-        {message && <div className="helper">{message}</div>}
-        {submitError && <div className="helper error-helper">{submitError}</div>}
+        <div className="properties-toolbar-actions">
+          {canEdit && (
+            <button type="button" className="primary" data-create-action="property">
+              <Plus size={16} />
+              Add Property
+            </button>
+          )}
 
-        <div className="filter-bar booking-filter">
-          <label>
-            <span className="sr-only">Search properties</span>
-            <div className="search-box">
-              <Search size={16} />
-              <input
-                placeholder="Search by property name, address, city, type, or status"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
-            </div>
+          <button type="button" onClick={() => navigate('/calendar')} data-skip-create-action="true">
+            View Calendar
+          </button>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="properties-filters">
+          <label className="properties-search">
+            <Search size={16} />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search by property name, address, city, country, type, or status..."
+              aria-label="Search properties"
+            />
+            {query && (
+              <button
+                type="button"
+                className="search-clear"
+                onClick={() => setQuery('')}
+                aria-label="Clear property search"
+                data-skip-create-action="true"
+              >
+                <X size={14} />
+              </button>
+            )}
           </label>
 
-          <select value={status} onChange={(event) => setStatus(event.target.value)}>
-            <option value="all">All statuses</option>
-            {propertyStatuses.map((propertyStatus) => (
-              <option key={propertyStatus} value={propertyStatus}>{formatLabel(propertyStatus)}</option>
-            ))}
-          </select>
+          <label>
+            Status
+            <select value={status} onChange={(event) => setStatus(event.target.value)}>
+              <option value="all">All statuses</option>
+              {propertyStatuses.map((item) => (
+                <option key={item} value={item}>
+                  {formatLabel(item)}
+                </option>
+              ))}
+            </select>
+          </label>
 
-          <select value={rentalType} onChange={(event) => setRentalType(event.target.value)}>
-            <option value="all">All rental types</option>
-            {rentalTypes.map((type) => (
-              <option key={type} value={type}>{formatLabel(type)}</option>
-            ))}
-          </select>
+          <label>
+            Rental type
+            <select value={rentalType} onChange={(event) => setRentalType(event.target.value)}>
+              <option value="all">All rental types</option>
+              {rentalTypes.map((item) => (
+                <option key={item} value={item}>
+                  {formatLabel(item)}
+                </option>
+              ))}
+            </select>
+          </label>
 
-          <label className="inline-check">
+          <label className="inline-check properties-archive-toggle">
             <input
               type="checkbox"
               checked={showArchived}
@@ -469,84 +669,216 @@ export function PropertiesPage() {
         </div>
       </section>
 
-      <section className="card">
-        <div className="card-header">
-          <div>
-            <h3>Property records</h3>
-            <p>{rows.length} matching properties</p>
-          </div>
-        </div>
+      {rows.length ? (
+        <>
+          <section className="properties-card-grid">
+            {rows.slice(0, 6).map((property) => (
+              <article className="card property-card" key={property.id}>
+                <div className="property-card-hero">
+                  <div className="property-card-icon">
+                    <Building2 size={22} />
+                  </div>
 
-        {properties.length ? (
-          <DataTable
-            compact
-            rows={rows}
-            empty="No properties match the current filters."
-            columns={[
-              {
-                key: 'name',
-                label: 'Property',
-                render: (property) => (
-                  <div>
-                    <strong>{property.name}</strong>
-                    <small>{[property.address, property.city, property.country].filter(Boolean).join(', ') || 'No address set'}</small>
+                  <StatusBadge>{property.status || 'active'}</StatusBadge>
+                </div>
+
+                <div className="property-card-body">
+                  <h3>{property.name || 'Unnamed property'}</h3>
+                  <p>{getPropertyLocation(property)}</p>
+
+                  <div className="property-meta-grid">
+                    <span>
+                      <strong>{getPropertyTypeLabel(property)}</strong>
+                      <small>Property type</small>
+                    </span>
+
+                    <span>
+                      <strong>{getRentalTypeLabel(property)}</strong>
+                      <small>Rental type</small>
+                    </span>
+
+                    <span>
+                      <strong>{getPropertyRate(property)}</strong>
+                      <small>Rate</small>
+                    </span>
+
+                    <span>
+                      <strong>
+                        {[property.bedrooms, property.bathrooms].filter((value) => value !== null && value !== undefined && value !== '').join(' bd / ') || '—'}
+                      </strong>
+                      <small>Beds / baths</small>
+                    </span>
                   </div>
-                ),
-              },
-              {
-                key: 'property_type',
-                label: 'Type',
-                render: (property) => formatLabel(property.property_type || property.propertyType),
-              },
-              {
-                key: 'rental_type',
-                label: 'Rental',
-                render: (property) => formatLabel(property.rental_type || property.rentalType),
-              },
-              {
-                key: 'rate',
-                label: 'Rate',
-                render: getPropertyRate,
-              },
-              {
-                key: 'status',
-                label: 'Status',
-                render: (property) => <StatusBadge>{property.status || 'active'}</StatusBadge>,
-              },
-              {
-                key: 'actions',
-                label: 'Actions',
-                render: (property) => (
-                  <div className="table-actions">
-                    <button type="button" onClick={() => navigate(`/properties/${property.id}`)}>
-                      <Eye size={14} /> View
+                </div>
+
+                <div className="property-card-actions">
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/properties/${property.id}`)}
+                    data-skip-create-action="true"
+                  >
+                    <Eye size={16} />
+                    View
+                  </button>
+
+                  {canEdit && property.status !== 'archived' && (
+                    <button type="button" onClick={() => openEdit(property)} data-skip-create-action="true">
+                      <Edit3 size={16} />
+                      Edit
                     </button>
-                    {canEdit && (
-                      <button type="button" onClick={() => openEditForm(property)}>
-                        <Edit3 size={14} /> Edit
+                  )}
+                </div>
+              </article>
+            ))}
+          </section>
+
+          <section className="card">
+            <div className="card-header">
+              <div>
+                <h3>All properties</h3>
+                <p>{rows.length} property record{rows.length === 1 ? '' : 's'} match the current filters.</p>
+              </div>
+            </div>
+
+            <DataTable
+              rows={rows}
+              empty="No properties match these filters."
+              columns={[
+                {
+                  key: 'name',
+                  label: 'Property',
+                  render: (property) => (
+                    <button
+                      type="button"
+                      className="link"
+                      onClick={() => navigate(`/properties/${property.id}`)}
+                      data-skip-create-action="true"
+                    >
+                      {property.name || 'Unnamed property'}
+                    </button>
+                  ),
+                },
+                {
+                  key: 'location',
+                  label: 'Location',
+                  render: (property) => getPropertyLocation(property),
+                },
+                {
+                  key: 'property_type',
+                  label: 'Type',
+                  render: (property) => getPropertyTypeLabel(property),
+                },
+                {
+                  key: 'rental_type',
+                  label: 'Rental',
+                  render: (property) => getRentalTypeLabel(property),
+                },
+                {
+                  key: 'rate',
+                  label: 'Rate',
+                  render: (property) => getPropertyRate(property),
+                },
+                {
+                  key: 'status',
+                  label: 'Status',
+                  render: (property) => <StatusBadge>{property.status || 'active'}</StatusBadge>,
+                },
+                {
+                  key: 'actions',
+                  label: 'Actions',
+                  render: (property) => (
+                    <div className="action-row">
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/properties/${property.id}`)}
+                        data-skip-create-action="true"
+                      >
+                        <Eye size={16} />
+                        View
                       </button>
-                    )}
-                  </div>
-                ),
-              },
-            ]}
-          />
-        ) : (
-          <EmptyState
-            title="No properties yet"
-            description="Add your first real property to start tracking bookings, cleaning, maintenance, owners, and reports."
-            icon={Building2}
-            action={canEdit ? <button className="primary" type="button" onClick={openCreateForm}>Add first property</button> : null}
-          />
-        )}
-      </section>
+
+                      {canEdit && property.status !== 'archived' && (
+                        <button
+                          type="button"
+                          onClick={() => openEdit(property)}
+                          data-skip-create-action="true"
+                        >
+                          <Edit3 size={16} />
+                          Edit
+                        </button>
+                      )}
+
+                      {canEdit && property.status !== 'archived' && (
+                        <button
+                          type="button"
+                          onClick={() => handleArchive(property, true)}
+                          data-skip-create-action="true"
+                        >
+                          <Archive size={16} />
+                          Archive
+                        </button>
+                      )}
+
+                      {canEdit && property.status === 'archived' && (
+                        <button
+                          type="button"
+                          onClick={() => handleArchive(property, false)}
+                          data-skip-create-action="true"
+                        >
+                          <RotateCcw size={16} />
+                          Restore
+                        </button>
+                      )}
+                    </div>
+                  ),
+                },
+              ]}
+            />
+          </section>
+        </>
+      ) : (
+        <EmptyState
+          eyebrow="Properties"
+          icon={Building2}
+          title={properties.length ? 'No properties match your filters' : 'Add your first property'}
+          description={
+            properties.length
+              ? 'Adjust the search, status, rental type, or archived filter to find a property.'
+              : 'Create a real property record before adding bookings, cleaning tasks, maintenance work orders, or owner reports.'
+          }
+          action={
+            canEdit ? (
+              <button type="button" className="primary" data-create-action="property">
+                <Plus size={16} />
+                Add Property
+              </button>
+            ) : null
+          }
+          secondaryAction={
+            properties.length ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setQuery('');
+                  setStatus('all');
+                  setRentalType('all');
+                  setShowArchived(false);
+                }}
+                data-skip-create-action="true"
+              >
+                Clear filters
+              </button>
+            ) : null
+          }
+        />
+      )}
 
       {editingProperty && (
-        <PropertyForm
+        <PropertyEditModal
           property={editingProperty}
           defaultCurrency={workspaceCurrency}
-          onSubmit={submit}
-          onCancel={closeForm}
+          onSubmit={submitEdit}
+          onCancel={closeEdit}
           submitError={submitError}
           submitting={submitting}
         />
