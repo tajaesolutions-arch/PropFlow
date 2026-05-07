@@ -337,3 +337,23 @@ textarea{font:inherit;border:1px solid var(--border);border-radius:10px;padding:
   justify-content: center;
   gap: 10px;
 }
+/* Stat card polish */
+
+.stat-card small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.clickable-stat-card {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+
+.clickable-stat-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
