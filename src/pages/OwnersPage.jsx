@@ -3,10 +3,12 @@ import {
   Banknote,
   Building2,
   FileText,
+  Plus,
   Search,
   UserRound,
   Users,
   Wrench,
+  X,
 } from 'lucide-react';
 
 import { AppLayout } from '../components/layout/AppLayout.jsx';
@@ -15,16 +17,23 @@ import { EmptyState } from '../components/EmptyState.jsx';
 import { StatCard } from '../components/StatCard.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
 import { useApp } from '../lib/AppContext.jsx';
-import { formatCurrency } from '../lib/formatters.js';
+import { formatCurrency, formatDate } from '../lib/formatters.js';
 import { roles } from '../data/constants.js';
+import { hasAnyRole } from '../lib/auth.js';
 import { navigate } from '../routes/AppRouter.jsx';
 
 const closedStatuses = new Set(['completed', 'cancelled']);
 const cancelledStatuses = new Set(['cancelled', 'void', 'refunded']);
 
+const ownerManagerRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
+
 function toNumber(value) {
   const numericValue = Number(value);
   return Number.isFinite(numericValue) ? numericValue : 0;
+}
+
+function formatLabel(value) {
+  return String(value || 'unknown').replaceAll('_', ' ');
 }
 
 function getPropertyOwnerId(property) {
@@ -98,12 +107,25 @@ function getContactEmail(contact) {
   return contact.email || '—';
 }
 
+function getContactPhone(contact) {
+  return contact.phone || contact.phone_number || '—';
+}
+
 function isOwnerMember(member) {
   return Array.isArray(member.roles) && member.roles.includes(roles.OWNER);
 }
 
 function isOwnerContact(contact) {
   return ['owner', 'property_owner'].includes(contact.contact_type || contact.contactType);
+}
+
+function getOwnerInitials(owner) {
+  return String(owner?.name || 'PO')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('');
 }
 
 function buildOwnerMap({ properties, members, contacts }) {
@@ -118,24 +140,42 @@ function buildOwnerMap({ properties, members, contacts }) {
       id,
       name: getMemberName(member),
       email: getMemberEmail(member),
+      phone: '—',
       source: 'workspace member',
       status: member.status || 'active',
       properties: [],
+      contactRecord: null,
+      memberRecord: member,
     });
   });
 
   contacts.filter(isOwnerContact).forEach((contact) => {
     const id = contact.id || contact.email || getContactName(contact);
 
-    if (!id || ownerMap.has(id)) return;
+    if (!id) return;
+
+    if (ownerMap.has(id)) {
+      const existing = ownerMap.get(id);
+      ownerMap.set(id, {
+        ...existing,
+        name: existing.name || getContactName(contact),
+        email: existing.email || getContactEmail(contact),
+        phone: getContactPhone(contact),
+        contactRecord: contact,
+      });
+      return;
+    }
 
     ownerMap.set(id, {
       id,
       name: getContactName(contact),
       email: getContactEmail(contact),
+      phone: getContactPhone(contact),
       source: 'contact',
       status: contact.status || 'active',
       properties: [],
+      contactRecord: contact,
+      memberRecord: null,
     });
   });
 
@@ -149,9 +189,12 @@ function buildOwnerMap({ properties, members, contacts }) {
         id: ownerId,
         name: 'Assigned owner',
         email: '—',
+        phone: '—',
         source: 'property assignment',
         status: 'active',
         properties: [],
+        contactRecord: null,
+        memberRecord: null,
       });
     }
 
@@ -161,7 +204,15 @@ function buildOwnerMap({ properties, members, contacts }) {
   return ownerMap;
 }
 
-function buildOwnerRows({ properties, bookings, cleaningTasks, maintenanceWorkOrders, members, contacts, currency }) {
+function buildOwnerRows({
+  properties,
+  bookings,
+  cleaningTasks,
+  maintenanceWorkOrders,
+  members,
+  contacts,
+  currency,
+}) {
   const ownerMap = buildOwnerMap({ properties, members, contacts });
 
   return Array.from(ownerMap.values()).map((owner) => {
@@ -199,13 +250,73 @@ function buildOwnerRows({ properties, bookings, cleaningTasks, maintenanceWorkOr
       netProfit,
       ownerPayout,
       openMaintenance,
+      bookingCount: ownerBookings.length,
+      reportCount: 0,
       currency,
     };
   });
 }
 
+function OwnerCard({ owner }) {
+  return (
+    <article className="card owner-card">
+      <div className="owner-card-top">
+        <div className="owner-avatar" aria-hidden="true">
+          {getOwnerInitials(owner) || 'PO'}
+        </div>
+
+        <StatusBadge>{owner.status || 'active'}</StatusBadge>
+      </div>
+
+      <div>
+        <h3>{owner.name}</h3>
+        <p>{owner.email}</p>
+      </div>
+
+      <div className="owner-card-meta">
+        <span>
+          <strong>{owner.propertyCount}</strong>
+          <small>Properties</small>
+        </span>
+
+        <span>
+          <strong>{formatCurrency(owner.grossRevenue, owner.currency)}</strong>
+          <small>Revenue</small>
+        </span>
+
+        <span>
+          <strong>{formatCurrency(owner.ownerPayout, owner.currency)}</strong>
+          <small>Payout</small>
+        </span>
+
+        <span>
+          <strong>{owner.openMaintenance}</strong>
+          <small>Open repairs</small>
+        </span>
+      </div>
+
+      <div className="owner-card-properties">
+        <strong>Assigned properties</strong>
+        <p>{owner.propertyNames}</p>
+      </div>
+
+      <div className="owner-card-actions">
+        <button type="button" onClick={() => navigate('/reports')} data-skip-create-action="true">
+          <FileText size={16} />
+          Reports
+        </button>
+
+        <button type="button" onClick={() => navigate('/properties')} data-skip-create-action="true">
+          <Building2 size={16} />
+          Properties
+        </button>
+      </div>
+    </article>
+  );
+}
+
 export function OwnersPage() {
-  const { data, currentWorkspace } = useApp();
+  const { data, currentWorkspace, currentUser } = useApp();
 
   const [filters, setFilters] = React.useState({
     query: '',
@@ -214,6 +325,7 @@ export function OwnersPage() {
   });
 
   const currency = currentWorkspace?.defaultCurrency || currentWorkspace?.default_currency || 'USD';
+  const canManageOwners = hasAnyRole(currentUser, ownerManagerRoles);
 
   const properties = data.properties || [];
   const bookings = data.bookings || [];
@@ -233,21 +345,36 @@ export function OwnersPage() {
     currency,
   }).sort((a, b) => b.grossRevenue - a.grossRevenue);
 
-  const totalOwners = ownerRows.length;
+  const ownerRowsWithReports = ownerRows.map((owner) => {
+    const reportCount = reports.filter((report) => {
+      const ownerId = report.owner_id || report.ownerId || report.contact_id || report.contactId;
+      return ownerId === owner.id;
+    }).length;
+
+    return {
+      ...owner,
+      reportCount,
+    };
+  });
+
+  const totalOwners = ownerRowsWithReports.length;
   const assignedProperties = properties.filter((property) => Boolean(getPropertyOwnerId(property))).length;
-  const totalOwnerPayouts = ownerRows.reduce((sum, owner) => sum + owner.ownerPayout, 0);
-  const openMaintenance = ownerRows.reduce((sum, owner) => sum + owner.openMaintenance, 0);
+  const unassignedProperties = properties.filter((property) => !getPropertyOwnerId(property)).length;
+  const totalOwnerPayouts = ownerRowsWithReports.reduce((sum, owner) => sum + owner.ownerPayout, 0);
+  const openMaintenance = ownerRowsWithReports.reduce((sum, owner) => sum + owner.openMaintenance, 0);
+  const totalRevenue = ownerRowsWithReports.reduce((sum, owner) => sum + owner.grossRevenue, 0);
 
-  const sources = [...new Set(ownerRows.map((owner) => owner.source).filter(Boolean))];
-  const statuses = [...new Set(ownerRows.map((owner) => owner.status).filter(Boolean))];
+  const sources = [...new Set(ownerRowsWithReports.map((owner) => owner.source).filter(Boolean))];
+  const statuses = [...new Set(ownerRowsWithReports.map((owner) => owner.status).filter(Boolean))];
 
-  const filteredOwners = ownerRows
+  const filteredOwners = ownerRowsWithReports
     .filter((owner) => filters.source === 'all' || owner.source === filters.source)
     .filter((owner) => filters.status === 'all' || owner.status === filters.status)
     .filter((owner) => {
       const searchText = [
         owner.name,
         owner.email,
+        owner.phone,
         owner.source,
         owner.status,
         owner.propertyNames,
@@ -266,153 +393,256 @@ export function OwnersPage() {
     }));
   };
 
-  return (
-    <AppLayout title="Owners" subtitle="Owner records, assigned properties, payouts, reports, and property health">
-      <div className="stat-grid dense">
-        <StatCard label="Owner records" value={totalOwners} icon={Users} />
-        <StatCard label="Assigned properties" value={assignedProperties} icon={Building2} />
-        <StatCard label="Owner payouts" value={formatCurrency(totalOwnerPayouts, currency)} icon={Banknote} />
-        <StatCard label="Open maintenance" value={openMaintenance} icon={Wrench} tone={openMaintenance ? 'warning' : 'accent'} />
-      </div>
+  const clearFilters = () => {
+    setFilters({
+      query: '',
+      source: 'all',
+      status: 'all',
+    });
+  };
 
-      <section className="card">
-        <div className="card-header">
-          <div>
-            <h3>Owner management</h3>
-            <p>
-              Owner records are built from workspace owner-role members, owner contacts, and assigned
-              property records. Full owner CRM, payout approvals, and owner statement automation can
-              be added after the core data model is stable.
-            </p>
-          </div>
+  return (
+    <AppLayout
+      title="Owners"
+      subtitle="Owner records, assigned properties, payouts, reports, and property health."
+    >
+      <section className="stat-grid dense">
+        <StatCard label="Owner records" value={totalOwners} icon={Users} />
+        <StatCard
+          label="Assigned properties"
+          value={assignedProperties}
+          subtitle={`${unassignedProperties} unassigned`}
+          icon={Building2}
+        />
+        <StatCard
+          label="Owner payouts"
+          value={formatCurrency(totalOwnerPayouts, currency)}
+          subtitle={`${formatCurrency(totalRevenue, currency)} gross revenue`}
+          icon={Banknote}
+        />
+        <StatCard
+          label="Open maintenance"
+          value={openMaintenance}
+          icon={Wrench}
+          tone={openMaintenance ? 'warning' : 'accent'}
+        />
+      </section>
+
+      <section className="card owners-toolbar">
+        <div>
+          <h3>Owner management</h3>
+          <p>
+            Owner records are built from owner-role workspace members, owner contacts, and assigned
+            property records.
+          </p>
         </div>
 
-        <div className="filter-bar booking-filter">
-          <label>
-            <span className="sr-only">Search owners</span>
-            <div className="search-box">
-              <Search size={16} />
-              <input
-                value={filters.query}
-                onChange={setFilter('query')}
-                placeholder="Search owner, email, property, source, or status"
-              />
-            </div>
+        <div className="owners-toolbar-actions">
+          {canManageOwners && (
+            <button type="button" className="primary" data-create-action="owner">
+              <Plus size={16} />
+              Add Owner
+            </button>
+          )}
+
+          {canManageOwners && (
+            <button type="button" data-create-action="invite">
+              Invite Owner
+            </button>
+          )}
+
+          <button type="button" onClick={() => navigate('/reports')} data-skip-create-action="true">
+            Owner Reports
+          </button>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="owners-filters">
+          <label className="owners-search">
+            <Search size={16} />
+            <input
+              value={filters.query}
+              onChange={setFilter('query')}
+              placeholder="Search owner, email, property, source, or status..."
+              aria-label="Search owners"
+            />
+
+            {filters.query && (
+              <button
+                type="button"
+                className="search-clear"
+                onClick={() => setFilters((current) => ({ ...current, query: '' }))}
+                aria-label="Clear owner search"
+                data-skip-create-action="true"
+              >
+                <X size={14} />
+              </button>
+            )}
           </label>
 
-          <select value={filters.source} onChange={setFilter('source')}>
-            <option value="all">All sources</option>
-            {sources.map((source) => (
-              <option key={source} value={source}>
-                {source}
-              </option>
-            ))}
-          </select>
+          <label>
+            Source
+            <select value={filters.source} onChange={setFilter('source')}>
+              <option value="all">All sources</option>
+              {sources.map((source) => (
+                <option key={source} value={source}>
+                  {formatLabel(source)}
+                </option>
+              ))}
+            </select>
+          </label>
 
-          <select value={filters.status} onChange={setFilter('status')}>
-            <option value="all">All statuses</option>
-            {statuses.map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
-          </select>
+          <label>
+            Status
+            <select value={filters.status} onChange={setFilter('status')}>
+              <option value="all">All statuses</option>
+              {statuses.map((status) => (
+                <option key={status} value={status}>
+                  {formatLabel(status)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <button type="button" onClick={clearFilters} data-skip-create-action="true">
+            Clear filters
+          </button>
         </div>
       </section>
 
       {filteredOwners.length ? (
-        <section className="card">
-          <div className="card-header">
-            <div>
-              <h3>Owner list</h3>
-              <p>{filteredOwners.length} owner record{filteredOwners.length === 1 ? '' : 's'} shown.</p>
-            </div>
-          </div>
+        <>
+          <section className="owners-card-grid">
+            {filteredOwners.slice(0, 6).map((owner) => (
+              <OwnerCard key={owner.id} owner={owner} />
+            ))}
+          </section>
 
-          <DataTable
-            rows={filteredOwners}
-            columns={[
-              {
-                key: 'name',
-                label: 'Owner',
-                render: (row) => (
-                  <span>
-                    {row.name}
-                    <br />
-                    <small>{row.email}</small>
-                  </span>
-                ),
-              },
-              {
-                key: 'propertyCount',
-                label: 'Properties',
-              },
-              {
-                key: 'propertyNames',
-                label: 'Assigned properties',
-              },
-              {
-                key: 'grossRevenue',
-                label: 'Revenue',
-                render: (row) => formatCurrency(row.grossRevenue, row.currency),
-              },
-              {
-                key: 'expenses',
-                label: 'Expenses',
-                render: (row) => formatCurrency(row.expenses, row.currency),
-              },
-              {
-                key: 'ownerPayout',
-                label: 'Owner payout',
-                render: (row) => formatCurrency(row.ownerPayout, row.currency),
-              },
-              {
-                key: 'openMaintenance',
-                label: 'Open repairs',
-              },
-              {
-                key: 'status',
-                label: 'Status',
-                render: (row) => <StatusBadge>{row.status}</StatusBadge>,
-              },
-            ]}
-          />
-        </section>
+          <section className="card">
+            <div className="card-header">
+              <div>
+                <h3>Owner list</h3>
+                <p>
+                  {filteredOwners.length} owner record{filteredOwners.length === 1 ? '' : 's'} shown.
+                </p>
+              </div>
+            </div>
+
+            <DataTable
+              rows={filteredOwners}
+              columns={[
+                {
+                  key: 'name',
+                  label: 'Owner',
+                  render: (row) => (
+                    <span>
+                      <strong>{row.name}</strong>
+                      <small>{row.email}</small>
+                    </span>
+                  ),
+                },
+                {
+                  key: 'propertyCount',
+                  label: 'Properties',
+                },
+                {
+                  key: 'propertyNames',
+                  label: 'Assigned properties',
+                },
+                {
+                  key: 'grossRevenue',
+                  label: 'Revenue',
+                  render: (row) => formatCurrency(row.grossRevenue, row.currency),
+                },
+                {
+                  key: 'expenses',
+                  label: 'Expenses',
+                  render: (row) => formatCurrency(row.expenses, row.currency),
+                },
+                {
+                  key: 'netProfit',
+                  label: 'Net profit',
+                  render: (row) => formatCurrency(row.netProfit, row.currency),
+                },
+                {
+                  key: 'ownerPayout',
+                  label: 'Owner payout',
+                  render: (row) => formatCurrency(row.ownerPayout, row.currency),
+                },
+                {
+                  key: 'openMaintenance',
+                  label: 'Open repairs',
+                  render: (row) =>
+                    row.openMaintenance ? (
+                      <StatusBadge tone="warning">{row.openMaintenance} open</StatusBadge>
+                    ) : (
+                      <StatusBadge tone="success">clear</StatusBadge>
+                    ),
+                },
+                {
+                  key: 'status',
+                  label: 'Status',
+                  render: (row) => <StatusBadge>{row.status}</StatusBadge>,
+                },
+              ]}
+            />
+          </section>
+        </>
       ) : (
         <EmptyState
-          title={ownerRows.length ? 'No owners match the current filters.' : 'No owner records yet.'}
+          eyebrow="Owners"
+          icon={UserRound}
+          title={ownerRowsWithReports.length ? 'No owners match the current filters' : 'No owner records yet'}
           description={
-            ownerRows.length
-              ? 'Adjust your search, source, or status filters.'
+            ownerRowsWithReports.length
+              ? 'Adjust the search, source, or status filters.'
               : 'Owner records will appear when you invite users with the Property Owner role, create owner contacts, or assign owners to properties.'
+          }
+          action={
+            canManageOwners ? (
+              <button type="button" className="primary" data-create-action="owner">
+                <Plus size={16} />
+                Add Owner
+              </button>
+            ) : null
           }
         />
       )}
 
-      <div className="panel-grid two">
+      <section className="panel-grid two">
         <section className="card">
           <div className="card-header">
             <div>
               <h3>Owner reports</h3>
               <p>Manual and scheduled owner statement records.</p>
             </div>
-            <FileText size={20} />
+            <FileText size={20} className="muted" />
           </div>
 
           {reports.length ? (
             reports.slice(0, 8).map((report) => (
               <div className="list-row" key={report.id}>
                 <span>
-                  {report.title || 'Owner report'}
-                  <small>{report.period || report.created_at || 'Report period not set'}</small>
+                  <strong>{report.title || 'Owner report'}</strong>
+                  <small>
+                    {report.period || formatDate(report.created_at) || 'Report period not set'}
+                  </small>
                 </span>
-                <StatusBadge>{report.status || 'ready'}</StatusBadge>
+                <StatusBadge>{report.status || 'draft'}</StatusBadge>
               </div>
             ))
           ) : (
             <EmptyState
-              title="No owner reports yet."
-              description="Manual owner reports should be generated first. Scheduled monthly reports can use the same report structure later."
+              compact
+              icon={FileText}
+              title="No owner reports yet"
+              description="Owner reports will appear here after report generation is connected."
+              action={
+                <button type="button" onClick={() => navigate('/reports')} data-skip-create-action="true">
+                  Go to Reports
+                </button>
+              }
             />
           )}
         </section>
@@ -420,45 +650,46 @@ export function OwnersPage() {
         <section className="card">
           <div className="card-header">
             <div>
-              <h3>Owner workflow next phase</h3>
-              <p>Recommended features after owners, properties, bookings, and reports are stable.</p>
+              <h3>Property assignment health</h3>
+              <p>Keep owner assignments clean before generating payouts and statements.</p>
             </div>
-            <UserRound size={20} />
+            <Building2 size={20} className="muted" />
           </div>
 
-          <ul className="checklist">
-            <li>
-              <UserRound size={16} />
-              Add dedicated owner profile form.
-            </li>
-            <li>
+          <div className="metadata-grid owners-assignment-grid">
+            <span>
               <Building2 size={16} />
-              Assign owners from the property profile.
-            </li>
-            <li>
-              <Banknote size={16} />
-              Generate owner payout statements.
-            </li>
-            <li>
-              <FileText size={16} />
-              Export owner reports to PDF and CSV.
-            </li>
-            <li>
-              <Wrench size={16} />
-              Include maintenance and cleaning updates in owner reports.
-            </li>
-          </ul>
+              <strong>{assignedProperties}</strong>
+              <small>Assigned</small>
+            </span>
 
-          <div className="action-row">
-            <button type="button" onClick={() => navigate('/reports')}>
-              View reports
-            </button>
-            <button type="button" onClick={() => navigate('/properties')}>
-              Manage properties
-            </button>
+            <span>
+              <Building2 size={16} />
+              <strong>{unassignedProperties}</strong>
+              <small>Unassigned</small>
+            </span>
+
+            <span>
+              <Users size={16} />
+              <strong>{totalOwners}</strong>
+              <small>Owner records</small>
+            </span>
+
+            <span>
+              <Wrench size={16} />
+              <strong>{openMaintenance}</strong>
+              <small>Open repairs</small>
+            </span>
           </div>
+
+          {unassignedProperties > 0 && (
+            <div className="helper">
+              {unassignedProperties} propert{unassignedProperties === 1 ? 'y is' : 'ies are'} missing
+              an assigned owner. Assign owners from the property profile when ready.
+            </div>
+          )}
         </section>
-      </div>
+      </section>
     </AppLayout>
   );
 }
