@@ -3,44 +3,61 @@ import { getPostLoginPath, hasAnyRole } from '../lib/auth.js';
 import { useApp } from '../lib/AppContext.jsx';
 import { roles } from '../data/constants.js';
 
-import { LandingPage } from '../pages/LandingPage.jsx';
-import { PricingPage } from '../pages/PricingPage.jsx';
-import { LoginPage } from '../pages/LoginPage.jsx';
-import { SignupPage } from '../pages/SignupPage.jsx';
-import { JoinWorkspacePage } from '../pages/JoinWorkspacePage.jsx';
-import { SuspendedPage } from '../pages/SuspendedPage.jsx';
-import { DashboardPage } from '../pages/DashboardPage.jsx';
-import { PropertiesPage } from '../pages/PropertiesPage.jsx';
-import { PropertyDetailPage } from '../pages/PropertyDetailPage.jsx';
-import { BookingsPage } from '../pages/BookingsPage.jsx';
-import { CalendarPage } from '../pages/CalendarPage.jsx';
-import { CleaningPage } from '../pages/CleaningPage.jsx';
-import { MaintenancePage } from '../pages/MaintenancePage.jsx';
-import { OwnersPage } from '../pages/OwnersPage.jsx';
-import { GuestsPage } from '../pages/GuestsPage.jsx';
-import { ReportsPage } from '../pages/ReportsPage.jsx';
-import { NotificationsPage } from '../pages/NotificationsPage.jsx';
-import { NotificationSettingsPage } from '../pages/NotificationSettingsPage.jsx';
-import { InventoryPage } from '../pages/InventoryPage.jsx';
-import { SettingsPage } from '../pages/SettingsPage.jsx';
-import { AccountSettingsPage } from '../pages/AccountSettingsPage.jsx';
-import { AdminDashboardPage } from '../pages/AdminDashboardPage.jsx';
-import { OwnerDashboardPage } from '../pages/OwnerDashboardPage.jsx';
-import { CleanerDashboardPage } from '../pages/CleanerDashboardPage.jsx';
-import { MaintenanceDashboardPage } from '../pages/MaintenanceDashboardPage.jsx';
-import { AccountantDashboardPage } from '../pages/AccountantDashboardPage.jsx';
-import { BillingPage } from '../pages/BillingPage.jsx';
-import { ComingSoonPage } from '../pages/ComingSoonPage.jsx';
-import { PublicBookingPage } from '../pages/PublicBookingPage.jsx';
+function lazyPage(importer, exportName) {
+  return React.lazy(() =>
+    importer().then((module) => ({
+      default: module[exportName],
+    })),
+  );
+}
+
+const LandingPage = lazyPage(() => import('../pages/LandingPage.jsx'), 'LandingPage');
+const PricingPage = lazyPage(() => import('../pages/PricingPage.jsx'), 'PricingPage');
+const LoginPage = lazyPage(() => import('../pages/LoginPage.jsx'), 'LoginPage');
+const SignupPage = lazyPage(() => import('../pages/SignupPage.jsx'), 'SignupPage');
+const JoinWorkspacePage = lazyPage(() => import('../pages/JoinWorkspacePage.jsx'), 'JoinWorkspacePage');
+const SuspendedPage = lazyPage(() => import('../pages/SuspendedPage.jsx'), 'SuspendedPage');
+const DashboardPage = lazyPage(() => import('../pages/DashboardPage.jsx'), 'DashboardPage');
+const PropertiesPage = lazyPage(() => import('../pages/PropertiesPage.jsx'), 'PropertiesPage');
+const PropertyDetailPage = lazyPage(() => import('../pages/PropertyDetailPage.jsx'), 'PropertyDetailPage');
+const BookingsPage = lazyPage(() => import('../pages/BookingsPage.jsx'), 'BookingsPage');
+const CalendarPage = lazyPage(() => import('../pages/CalendarPage.jsx'), 'CalendarPage');
+const CleaningPage = lazyPage(() => import('../pages/CleaningPage.jsx'), 'CleaningPage');
+const MaintenancePage = lazyPage(() => import('../pages/MaintenancePage.jsx'), 'MaintenancePage');
+const OwnersPage = lazyPage(() => import('../pages/OwnersPage.jsx'), 'OwnersPage');
+const GuestsPage = lazyPage(() => import('../pages/GuestsPage.jsx'), 'GuestsPage');
+const ReportsPage = lazyPage(() => import('../pages/ReportsPage.jsx'), 'ReportsPage');
+const NotificationsPage = lazyPage(() => import('../pages/NotificationsPage.jsx'), 'NotificationsPage');
+const NotificationSettingsPage = lazyPage(
+  () => import('../pages/NotificationSettingsPage.jsx'),
+  'NotificationSettingsPage',
+);
+const InventoryPage = lazyPage(() => import('../pages/InventoryPage.jsx'), 'InventoryPage');
+const SettingsPage = lazyPage(() => import('../pages/SettingsPage.jsx'), 'SettingsPage');
+const AccountSettingsPage = lazyPage(() => import('../pages/AccountSettingsPage.jsx'), 'AccountSettingsPage');
+const AdminDashboardPage = lazyPage(() => import('../pages/AdminDashboardPage.jsx'), 'AdminDashboardPage');
+const OwnerDashboardPage = lazyPage(() => import('../pages/OwnerDashboardPage.jsx'), 'OwnerDashboardPage');
+const CleanerDashboardPage = lazyPage(() => import('../pages/CleanerDashboardPage.jsx'), 'CleanerDashboardPage');
+const MaintenanceDashboardPage = lazyPage(
+  () => import('../pages/MaintenanceDashboardPage.jsx'),
+  'MaintenanceDashboardPage',
+);
+const AccountantDashboardPage = lazyPage(
+  () => import('../pages/AccountantDashboardPage.jsx'),
+  'AccountantDashboardPage',
+);
+const BillingPage = lazyPage(() => import('../pages/BillingPage.jsx'), 'BillingPage');
+const ComingSoonPage = lazyPage(() => import('../pages/ComingSoonPage.jsx'), 'ComingSoonPage');
+const PublicBookingPage = lazyPage(() => import('../pages/PublicBookingPage.jsx'), 'PublicBookingPage');
 
 const publicRoutes = {
-  '/': LandingPage,
-  '/pricing': PricingPage,
-  '/login': LoginPage,
-  '/signup': SignupPage,
-  '/join': JoinWorkspacePage,
-  '/suspended': SuspendedPage,
-  '/book': PublicBookingPage,
+  '/': { Page: LandingPage },
+  '/pricing': { Page: PricingPage },
+  '/login': { Page: LoginPage },
+  '/signup': { Page: SignupPage },
+  '/join': { Page: JoinWorkspacePage },
+  '/suspended': { Page: SuspendedPage },
+  '/book': { Page: PublicBookingPage },
 };
 
 const dashboardAccess = {
@@ -52,30 +69,36 @@ const dashboardAccess = {
 };
 
 const protectedRoutes = {
-  '/workspace-setup': JoinWorkspacePage,
-  '/dashboard': DashboardPage,
-  '/properties': PropertiesPage,
-  '/bookings': BookingsPage,
-  '/calendar': CalendarPage,
-  '/cleaning': CleaningPage,
-  '/maintenance': MaintenancePage,
-  '/owners': OwnersPage,
-  '/guests': GuestsPage,
-  '/reports': ReportsPage,
-  '/notifications': NotificationsPage,
-  '/notification-settings': NotificationSettingsPage,
-  '/settings': SettingsPage,
-  '/account': AccountSettingsPage,
-  '/admin': AdminDashboardPage,
-  '/owner-dashboard': OwnerDashboardPage,
-  '/cleaner-dashboard': CleanerDashboardPage,
-  '/maintenance-dashboard': MaintenanceDashboardPage,
-  '/accountant-dashboard': AccountantDashboardPage,
-  '/inventory': InventoryPage,
-  '/team': SettingsPage,
-  '/billing': BillingPage,
-  '/smart-tools': () => <ComingSoonPage title="Smart Tools / AI Tools" />,
-  '/help': () => <ComingSoonPage title="Help / Support" />,
+  '/workspace-setup': { Page: JoinWorkspacePage },
+  '/dashboard': { Page: DashboardPage },
+  '/properties': { Page: PropertiesPage },
+  '/bookings': { Page: BookingsPage },
+  '/calendar': { Page: CalendarPage },
+  '/cleaning': { Page: CleaningPage },
+  '/maintenance': { Page: MaintenancePage },
+  '/owners': { Page: OwnersPage },
+  '/guests': { Page: GuestsPage },
+  '/reports': { Page: ReportsPage },
+  '/notifications': { Page: NotificationsPage },
+  '/notification-settings': { Page: NotificationSettingsPage },
+  '/settings': { Page: SettingsPage },
+  '/account': { Page: AccountSettingsPage },
+  '/admin': { Page: AdminDashboardPage },
+  '/owner-dashboard': { Page: OwnerDashboardPage },
+  '/cleaner-dashboard': { Page: CleanerDashboardPage },
+  '/maintenance-dashboard': { Page: MaintenanceDashboardPage },
+  '/accountant-dashboard': { Page: AccountantDashboardPage },
+  '/inventory': { Page: InventoryPage },
+  '/team': { Page: SettingsPage },
+  '/billing': { Page: BillingPage },
+  '/smart-tools': {
+    Page: ComingSoonPage,
+    props: { title: 'Smart Tools / AI Tools' },
+  },
+  '/help': {
+    Page: ComingSoonPage,
+    props: { title: 'Help / Support' },
+  },
 };
 
 export const routeAccess = {
@@ -110,6 +133,68 @@ function LoadingScreen() {
   );
 }
 
+function RuntimeErrorScreen({ error }) {
+  return (
+    <div className="auth-page">
+      <div className="auth-card wide">
+        <p className="eyebrow">Runtime error</p>
+        <h1>PropFlow could not load this screen</h1>
+        <p>
+          A page failed while loading. This screen is shown instead of a blank white page so the
+          error can be fixed.
+        </p>
+
+        <div className="helper error-helper">
+          {error?.message || String(error || 'Unknown runtime error')}
+        </div>
+
+        <div className="action-row">
+          <button type="button" className="primary" onClick={() => navigate('/')}>
+            Go to homepage
+          </button>
+
+          <button type="button" onClick={() => navigate('/login')}>
+            Go to login
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+class RouteErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, info) {
+    console.error('[PropFlow] Route render failed', error, info);
+  }
+
+  render() {
+    if (this.state.error) {
+      return <RuntimeErrorScreen error={this.state.error} />;
+    }
+
+    return this.props.children;
+  }
+}
+
+function renderRoute(Page, props = {}) {
+  return (
+    <RouteErrorBoundary>
+      <React.Suspense fallback={<LoadingScreen />}>
+        <Page {...props} />
+      </React.Suspense>
+    </RouteErrorBoundary>
+  );
+}
+
 function NotFoundPage() {
   return (
     <div className="auth-page">
@@ -117,7 +202,7 @@ function NotFoundPage() {
         <p className="eyebrow">404</p>
         <h1>Page not found</h1>
         <p>The page you are looking for does not exist or is not available for your role.</p>
-        <button className="primary-button" type="button" onClick={() => navigate('/dashboard')}>
+        <button className="primary" type="button" onClick={() => navigate('/dashboard')}>
           Back to dashboard
         </button>
       </div>
@@ -129,8 +214,8 @@ function isPublicPath(path) {
   return Boolean(publicRoutes[path]) || path.startsWith('/book/');
 }
 
-function getPublicPage(path) {
-  if (path.startsWith('/book/')) return PublicBookingPage;
+function getPublicRoute(path) {
+  if (path.startsWith('/book/')) return { Page: PublicBookingPage };
   return publicRoutes[path];
 }
 
@@ -179,8 +264,8 @@ export function AppRouter() {
       return null;
     }
 
-    const Page = getPublicPage(path);
-    return <Page />;
+    const route = getPublicRoute(path);
+    return renderRoute(route.Page, route.props);
   }
 
   if (!currentUser) {
@@ -206,7 +291,7 @@ export function AppRouter() {
   }
 
   if (path === '/admin' && !isPropFlowAdmin) {
-    return <SuspendedPage variant="denied" />;
+    return renderRoute(SuspendedPage, { variant: 'denied' });
   }
 
   if (dashboardAccess[path] && !hasAnyRole(currentUser, dashboardAccess[path])) {
@@ -227,29 +312,29 @@ export function AppRouter() {
           roles.MAINTENANCE,
         ]}
       >
-        <PropertyDetailPage propertyId={propertyId} />
+        {renderRoute(PropertyDetailPage, { propertyId })}
       </RoleGuard>
     );
   }
 
-  const Page = protectedRoutes[path];
+  const route = protectedRoutes[path];
 
-  if (!Page) {
+  if (!route) {
     return <NotFoundPage />;
   }
 
-  return <Page />;
+  return renderRoute(route.Page, route.props);
 }
 
 export function RoleGuard({ allowed, children }) {
   const { currentUser } = useApp();
 
   if (currentUser?.status === 'suspended') {
-    return <SuspendedPage />;
+    return renderRoute(SuspendedPage);
   }
 
   if (!hasAnyRole(currentUser, allowed)) {
-    return <SuspendedPage variant="denied" />;
+    return renderRoute(SuspendedPage, { variant: 'denied' });
   }
 
   return children;
