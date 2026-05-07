@@ -5,22 +5,96 @@ import { useApp } from '../lib/AppContext.jsx';
 import { navigate } from '../routes/AppRouter.jsx';
 
 const quickLinks = [
-  { id: 'dashboard', type: 'Page', title: 'Dashboard', subtitle: 'Main workspace dashboard', path: '/dashboard' },
-  { id: 'properties', type: 'Page', title: 'Properties', subtitle: 'Property portfolio and profiles', path: '/properties' },
-  { id: 'bookings', type: 'Page', title: 'Bookings', subtitle: 'Bookings, leases, and reservations', path: '/bookings' },
-  { id: 'calendar', type: 'Page', title: 'Calendar', subtitle: 'Bookings, cleaning, maintenance, and leases', path: '/calendar' },
-  { id: 'cleaning', type: 'Page', title: 'Cleaning', subtitle: 'Cleaning tasks and guest-ready updates', path: '/cleaning' },
-  { id: 'maintenance', type: 'Page', title: 'Maintenance', subtitle: 'Work orders, repairs, and urgent issues', path: '/maintenance' },
-  { id: 'owners', type: 'Page', title: 'Owners', subtitle: 'Owner records, payouts, and property health', path: '/owners' },
-  { id: 'guests', type: 'Page', title: 'Guests / CRM', subtitle: 'Guest contacts and booking history', path: '/guests' },
-  { id: 'reports', type: 'Page', title: 'Reports', subtitle: 'Owner reports, exports, and performance summaries', path: '/reports' },
-  { id: 'inventory', type: 'Page', title: 'Supplies / Inventory', subtitle: 'Stock levels, vendors, and low-stock alerts', path: '/inventory' },
-  { id: 'settings', type: 'Page', title: 'Settings', subtitle: 'Workspace settings and team invites', path: '/settings' },
-  { id: 'billing', type: 'Page', title: 'Billing', subtitle: 'Subscription and Stripe readiness', path: '/billing' },
+  {
+    id: 'dashboard',
+    type: 'Page',
+    title: 'Dashboard',
+    subtitle: 'Main workspace dashboard',
+    path: '/dashboard',
+  },
+  {
+    id: 'properties',
+    type: 'Page',
+    title: 'Properties',
+    subtitle: 'Property portfolio and profiles',
+    path: '/properties',
+  },
+  {
+    id: 'bookings',
+    type: 'Page',
+    title: 'Bookings',
+    subtitle: 'Bookings, leases, and reservations',
+    path: '/bookings',
+  },
+  {
+    id: 'calendar',
+    type: 'Page',
+    title: 'Calendar',
+    subtitle: 'Bookings, cleaning, maintenance, and leases',
+    path: '/calendar',
+  },
+  {
+    id: 'cleaning',
+    type: 'Page',
+    title: 'Cleaning',
+    subtitle: 'Cleaning tasks and guest-ready updates',
+    path: '/cleaning',
+  },
+  {
+    id: 'maintenance',
+    type: 'Page',
+    title: 'Maintenance',
+    subtitle: 'Work orders, repairs, and urgent issues',
+    path: '/maintenance',
+  },
+  {
+    id: 'owners',
+    type: 'Page',
+    title: 'Owners',
+    subtitle: 'Owner records, payouts, and property health',
+    path: '/owners',
+  },
+  {
+    id: 'guests',
+    type: 'Page',
+    title: 'Guests / CRM',
+    subtitle: 'Guest contacts and booking history',
+    path: '/guests',
+  },
+  {
+    id: 'reports',
+    type: 'Page',
+    title: 'Reports',
+    subtitle: 'Owner reports, exports, and performance summaries',
+    path: '/reports',
+  },
+  {
+    id: 'inventory',
+    type: 'Page',
+    title: 'Supplies / Inventory',
+    subtitle: 'Stock levels, vendors, and low-stock alerts',
+    path: '/inventory',
+  },
+  {
+    id: 'settings',
+    type: 'Page',
+    title: 'Settings',
+    subtitle: 'Workspace settings and team invites',
+    path: '/settings',
+  },
+  {
+    id: 'billing',
+    type: 'Page',
+    title: 'Billing',
+    subtitle: 'Subscription and Stripe readiness',
+    path: '/billing',
+  },
 ];
 
 function normalize(value) {
-  return String(value || '').toLowerCase().trim();
+  return String(value || '')
+    .toLowerCase()
+    .trim();
 }
 
 function includesQuery(values, query) {
@@ -28,12 +102,36 @@ function includesQuery(values, query) {
   return text.includes(query);
 }
 
-function getPropertyId(record) {
-  return record?.propertyId || record?.property_id;
-}
-
 function getGuestName(booking) {
   return booking.guestName || booking.guest_name || 'Guest booking';
+}
+
+function getContactName(contact) {
+  return contact.full_name || contact.fullName || contact.name || 'Contact';
+}
+
+function getSupplyName(supply) {
+  return supply.item_name || supply.itemName || 'Supply item';
+}
+
+function getReportTitle(report) {
+  return report.title || report.report_type || 'Owner report';
+}
+
+function uniqueAndLimit(results, limit = 8) {
+  const uniqueResults = [];
+  const seen = new Set();
+
+  results.forEach((result) => {
+    const key = `${result.type}-${result.id}`;
+
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueResults.push(result);
+    }
+  });
+
+  return uniqueResults.slice(0, limit);
 }
 
 function buildResults(data, query) {
@@ -61,8 +159,11 @@ function buildResults(data, query) {
           property.state,
           property.country,
           property.property_type,
+          property.propertyType,
           property.rental_type,
+          property.rentalType,
           property.status,
+          property.owner,
         ],
         q,
       )
@@ -71,24 +172,34 @@ function buildResults(data, query) {
         id: `property-${property.id}`,
         type: 'Property',
         title: property.name || 'Property',
-        subtitle: [property.address, property.city, property.country].filter(Boolean).join(', ') || 'Property profile',
+        subtitle:
+          [property.address, property.city, property.country].filter(Boolean).join(', ') ||
+          'Property profile',
         path: `/properties/${property.id}`,
       });
     }
   });
 
   (data.bookings || []).forEach((booking) => {
+    const guestName = getGuestName(booking);
+
     if (
       includesQuery(
         [
-          getGuestName(booking),
+          guestName,
           booking.guest_email,
           booking.guestEmail,
+          booking.guest_phone,
+          booking.guestPhone,
           booking.property,
           booking.source,
           booking.status,
           booking.payment_status,
           booking.paymentStatus,
+          booking.check_in,
+          booking.checkIn,
+          booking.check_out,
+          booking.checkOut,
         ],
         q,
       )
@@ -96,8 +207,10 @@ function buildResults(data, query) {
       results.push({
         id: `booking-${booking.id}`,
         type: 'Booking',
-        title: getGuestName(booking),
-        subtitle: `${booking.property || 'Unassigned property'} · ${booking.check_in || booking.checkIn || 'No check-in date'}`,
+        title: guestName,
+        subtitle: `${booking.property || 'Unassigned property'} · ${
+          booking.check_in || booking.checkIn || 'No check-in date'
+        }`,
         path: '/bookings',
       });
     }
@@ -111,11 +224,17 @@ function buildResults(data, query) {
           lease.tenantName,
           lease.tenant_email,
           lease.tenantEmail,
+          lease.tenant_phone,
+          lease.tenantPhone,
           lease.property,
           lease.lease_status,
           lease.leaseStatus,
           lease.rent_payment_status,
           lease.rentPaymentStatus,
+          lease.lease_start,
+          lease.leaseStart,
+          lease.lease_end,
+          lease.leaseEnd,
         ],
         q,
       )
@@ -124,7 +243,9 @@ function buildResults(data, query) {
         id: `lease-${lease.id}`,
         type: 'Lease',
         title: lease.tenant_name || lease.tenantName || 'Tenant lease',
-        subtitle: `${lease.property || 'Unassigned property'} · ${lease.lease_start || lease.leaseStart || 'No start date'}`,
+        subtitle: `${lease.property || 'Unassigned property'} · ${
+          lease.lease_start || lease.leaseStart || 'No start date'
+        }`,
         path: '/bookings',
       });
     }
@@ -138,6 +259,10 @@ function buildResults(data, query) {
           task.status,
           task.cleanerNotes,
           task.cleaner_notes,
+          task.scheduledFor,
+          task.scheduled_for,
+          task.assigned,
+          task.priority,
           Array.isArray(task.checklist) ? task.checklist.join(' ') : '',
           Array.isArray(task.checklist_items) ? task.checklist_items.join(' ') : '',
         ],
@@ -148,7 +273,9 @@ function buildResults(data, query) {
         id: `cleaning-${task.id}`,
         type: 'Cleaning',
         title: task.property || 'Cleaning task',
-        subtitle: `${task.status || 'scheduled'} · ${task.scheduledFor || task.scheduled_for || 'Not scheduled'}`,
+        subtitle: `${task.status || 'scheduled'} · ${
+          task.scheduledFor || task.scheduled_for || 'Not scheduled'
+        }`,
         path: '/cleaning',
       });
     }
@@ -160,12 +287,16 @@ function buildResults(data, query) {
         [
           workOrder.title,
           workOrder.description,
+          workOrder.issue_description,
+          workOrder.issueDescription,
           workOrder.property,
           workOrder.priority,
           workOrder.status,
           workOrder.partsNeeded,
           workOrder.parts_needed,
           workOrder.notes,
+          workOrder.due,
+          workOrder.due_date,
         ],
         q,
       )
@@ -174,47 +305,53 @@ function buildResults(data, query) {
         id: `maintenance-${workOrder.id}`,
         type: 'Maintenance',
         title: workOrder.title || 'Maintenance issue',
-        subtitle: `${workOrder.property || 'Unassigned property'} · ${workOrder.priority || 'medium'}`,
+        subtitle: `${workOrder.property || 'Unassigned property'} · ${
+          workOrder.priority || 'medium'
+        }`,
         path: '/maintenance',
       });
     }
   });
 
   (data.contacts || []).forEach((contact) => {
+    const contactName = getContactName(contact);
+    const contactType = contact.contact_type || contact.contactType;
+
     if (
       includesQuery(
         [
-          contact.full_name,
-          contact.fullName,
-          contact.name,
+          contactName,
           contact.email,
           contact.phone,
-          contact.contact_type,
-          contact.contactType,
+          contactType,
+          contact.notes,
         ],
         q,
       )
     ) {
       results.push({
         id: `contact-${contact.id}`,
-        type: 'Contact',
-        title: contact.full_name || contact.fullName || contact.name || 'Contact',
-        subtitle: contact.email || contact.phone || contact.contact_type || 'Contact record',
-        path: contact.contact_type === 'owner' || contact.contactType === 'owner' ? '/owners' : '/guests',
+        type: contactType === 'owner' ? 'Owner' : 'Contact',
+        title: contactName,
+        subtitle: contact.email || contact.phone || contactType || 'Contact record',
+        path: contactType === 'owner' ? '/owners' : '/guests',
       });
     }
   });
 
   (data.supplies || []).forEach((supply) => {
+    const supplyName = getSupplyName(supply);
+
     if (
       includesQuery(
         [
-          supply.item_name,
-          supply.itemName,
+          supplyName,
           supply.category,
+          supply.status,
           supply.supplier_name,
           supply.supplierName,
           supply.notes,
+          supply.property,
         ],
         q,
       )
@@ -222,22 +359,26 @@ function buildResults(data, query) {
       results.push({
         id: `supply-${supply.id}`,
         type: 'Supply',
-        title: supply.item_name || supply.itemName || 'Supply item',
-        subtitle: supply.category || 'Inventory item',
+        title: supplyName,
+        subtitle: supply.category || supply.status || 'Inventory item',
         path: '/inventory',
       });
     }
   });
 
   (data.ownerReports || []).forEach((report) => {
+    const reportTitle = getReportTitle(report);
+
     if (
       includesQuery(
         [
-          report.title,
+          reportTitle,
           report.report_type,
           report.status,
           report.period,
           report.created_at,
+          report.owner_name,
+          report.ownerName,
         ],
         q,
       )
@@ -245,26 +386,14 @@ function buildResults(data, query) {
       results.push({
         id: `report-${report.id}`,
         type: 'Report',
-        title: report.title || report.report_type || 'Owner report',
+        title: reportTitle,
         subtitle: report.period || report.status || 'Report record',
         path: '/reports',
       });
     }
   });
 
-  const uniqueResults = [];
-  const seen = new Set();
-
-  results.forEach((result) => {
-    const key = `${result.type}-${result.id}`;
-
-    if (!seen.has(key)) {
-      seen.add(key);
-      uniqueResults.push(result);
-    }
-  });
-
-  return uniqueResults.slice(0, 8);
+  return uniqueAndLimit(results, 8);
 }
 
 export function SearchBox({
@@ -274,9 +403,14 @@ export function SearchBox({
 
   const [query, setQuery] = React.useState('');
   const [open, setOpen] = React.useState(false);
+  const [activeIndex, setActiveIndex] = React.useState(0);
   const searchRef = React.useRef(null);
 
   const results = React.useMemo(() => buildResults(data || {}, query), [data, query]);
+
+  React.useEffect(() => {
+    setActiveIndex(0);
+  }, [query, results.length]);
 
   React.useEffect(() => {
     const closeOnOutsideClick = (event) => {
@@ -293,9 +427,18 @@ export function SearchBox({
   }, []);
 
   const goToResult = (result) => {
+    if (!result?.path) return;
+
     setQuery('');
     setOpen(false);
+    setActiveIndex(0);
     navigate(result.path);
+  };
+
+  const clearSearch = () => {
+    setQuery('');
+    setOpen(false);
+    setActiveIndex(0);
   };
 
   const handleKeyDown = (event) => {
@@ -304,16 +447,30 @@ export function SearchBox({
       return;
     }
 
-    if (event.key === 'Enter' && results[0]) {
+    if (event.key === 'ArrowDown') {
       event.preventDefault();
-      goToResult(results[0]);
+      setOpen(true);
+      setActiveIndex((current) => Math.min(current + 1, Math.max(results.length - 1, 0)));
+      return;
+    }
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setOpen(true);
+      setActiveIndex((current) => Math.max(current - 1, 0));
+      return;
+    }
+
+    if (event.key === 'Enter' && results[activeIndex]) {
+      event.preventDefault();
+      goToResult(results[activeIndex]);
     }
   };
 
   return (
     <div className="global-search" ref={searchRef}>
       <label className="search-box">
-        <Search size={16} />
+        <Search size={16} aria-hidden="true" />
 
         <input
           placeholder={placeholder}
@@ -325,17 +482,18 @@ export function SearchBox({
           onFocus={() => setOpen(true)}
           onKeyDown={handleKeyDown}
           aria-label="Search PropFlow"
+          aria-expanded={open}
+          aria-controls="propflow-global-search-results"
+          autoComplete="off"
         />
 
         {query && (
           <button
             type="button"
             className="search-clear"
-            onClick={() => {
-              setQuery('');
-              setOpen(false);
-            }}
+            onClick={clearSearch}
             aria-label="Clear search"
+            data-skip-create-action="true"
           >
             <X size={14} />
           </button>
@@ -343,10 +501,24 @@ export function SearchBox({
       </label>
 
       {open && (
-        <div className="global-search-results">
+        <div
+          id="propflow-global-search-results"
+          className="global-search-results"
+          role="listbox"
+          aria-label="Search results"
+        >
           {results.length ? (
-            results.map((result) => (
-              <button type="button" key={`${result.type}-${result.id}`} onClick={() => goToResult(result)}>
+            results.map((result, index) => (
+              <button
+                type="button"
+                key={`${result.type}-${result.id}`}
+                className={index === activeIndex ? 'active' : ''}
+                onMouseEnter={() => setActiveIndex(index)}
+                onClick={() => goToResult(result)}
+                data-skip-create-action="true"
+                role="option"
+                aria-selected={index === activeIndex}
+              >
                 <span>
                   <strong>{result.title}</strong>
                   <small>{result.subtitle}</small>
@@ -355,9 +527,7 @@ export function SearchBox({
               </button>
             ))
           ) : (
-            <div className="global-search-empty">
-              No matching records found.
-            </div>
+            <div className="global-search-empty">No matching records found.</div>
           )}
         </div>
       )}
