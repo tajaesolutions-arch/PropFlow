@@ -164,8 +164,17 @@ makeWorkspaceQuery('owner reports', 'ownerReports', supabase.from('owner_reports
     return { ok: true, warnings: [] };
   };
 
-  const loadAccount = async (activeSession = session) => {
-    if (!supabase || !activeSession?.user) { setAuthLoading(false); return null; }
+ const loadAccount = async (activeSession = session) => {
+  if (!supabase || !activeSession?.user) {
+    setSession(null);
+    setCurrentUser(null);
+    setMemberships([]);
+    setWorkspaces([]);
+    setCurrentWorkspaceState(null);
+    setData(emptyData);
+    setAuthLoading(false);
+    return null;
+  }
     setAuthLoading(true);
     setError('');
 
@@ -264,7 +273,13 @@ makeWorkspaceQuery('owner reports', 'ownerReports', supabase.from('owner_reports
         console.error('[PropFlow] Session load failed', sessionError);
         if (mounted) { setError(formatSupabaseError(sessionError, 'Could not check your session.')); setAuthLoading(false); }
       });
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event, nextSession) => { if (mounted) loadAccount(nextSession); });
+ const { data: subscription } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+  if (!mounted) return;
+
+  window.setTimeout(() => {
+    if (mounted) loadAccount(nextSession);
+  }, 0);
+});
     return () => { mounted = false; subscription?.subscription?.unsubscribe?.(); };
   }, []);
 
@@ -279,12 +294,24 @@ makeWorkspaceQuery('owner reports', 'ownerReports', supabase.from('owner_reports
   };
 
   const signIn = async (email, password) => {
-    const client = requireSupabase();
-    const { data: authData, error: authError } = await client.auth.signInWithPassword({ email, password });
-    if (authError) throw new Error(formatSupabaseError(authError, 'Login failed.'));
-    await loadAccount(authData.session);
-    return authData;
+  const client = requireSupabase();
+
+  const { data: authData, error: authError } = await client.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (authError) {
+    throw new Error(formatSupabaseError(authError, 'Login failed.'));
+  }
+
+  const accountState = authData.session ? await loadAccount(authData.session) : null;
+
+  return {
+    ...authData,
+    accountState,
   };
+};
 
   const signUp = async ({ email, password, fullName }) => {
     const client = requireSupabase();
