@@ -3472,3 +3472,192 @@ label {
     grid-column: auto;
   }
 }
+/* Guests / CRM page polish */
+
+.guests-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.guests-toolbar h3 {
+  margin-bottom: 4px;
+}
+
+.guests-toolbar p {
+  margin-bottom: 0;
+}
+
+.guests-toolbar-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.guests-filters {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.5fr) repeat(3, minmax(145px, 0.7fr)) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.guests-filters label {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.guests-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 0 12px;
+  box-shadow: var(--shadow-sm);
+  color: var(--muted);
+}
+
+.guests-search input {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.guests-search input:focus {
+  box-shadow: none;
+}
+
+.guests-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.guest-card {
+  display: grid;
+  gap: 16px;
+}
+
+.guest-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.guest-avatar {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: linear-gradient(135deg, var(--accent), var(--info));
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+}
+
+.guest-card h3 {
+  margin-bottom: 4px;
+}
+
+.guest-card p {
+  margin-bottom: 0;
+}
+
+.guest-card-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.guest-card-meta span {
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+  min-width: 0;
+}
+
+.guest-card-meta strong,
+.guest-card-meta small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.guest-card-meta strong {
+  color: var(--text);
+}
+
+.guest-card-contact {
+  display: grid;
+  gap: 8px;
+}
+
+.guest-card-contact span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.guest-card-contact span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.guest-card-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.guest-card-actions button {
+  flex: 1 1 auto;
+}
+
+@media (max-width: 1200px) {
+  .guests-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .guests-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .guests-search {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .guests-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .guests-toolbar-actions,
+  .guests-filters,
+  .guests-card-grid,
+  .guest-card-meta {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .guests-search {
+    grid-column: auto;
+  }
+}
