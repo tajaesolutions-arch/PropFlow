@@ -1,5 +1,16 @@
 import React from 'react';
-import { Bell, Mail, MessageSquare, Smartphone } from 'lucide-react';
+import {
+  Bell,
+  CalendarCheck,
+  CreditCard,
+  Mail,
+  MessageSquare,
+  ShieldCheck,
+  Smartphone,
+  Users,
+  Wrench,
+} from 'lucide-react';
+
 import { AppLayout } from '../components/layout/AppLayout.jsx';
 import { EmptyState } from '../components/EmptyState.jsx';
 import { StatCard } from '../components/StatCard.jsx';
@@ -13,6 +24,8 @@ const preferenceGroups = [
   'payment_alerts',
   'owner_reports',
   'team_invites',
+  'inventory_alerts',
+  'workspace_activity',
 ];
 
 function labelize(value) {
@@ -21,6 +34,17 @@ function labelize(value) {
 
 export function NotificationSettingsPage() {
   const { currentWorkspace, currentUser } = useApp();
+
+  const [channels, setChannels] = React.useState({
+    inApp: true,
+    email: true,
+    sms: false,
+    whatsapp: false,
+  });
+
+  const [preferences, setPreferences] = React.useState(
+    preferenceGroups.reduce((acc, item) => ({ ...acc, [item]: true }), {}),
+  );
 
   if (!currentWorkspace) {
     return (
@@ -39,68 +63,205 @@ export function NotificationSettingsPage() {
     whatsapp: false,
   };
 
+  const toggleChannel = (key) => {
+    setChannels((value) => ({
+      ...value,
+      [key]: !value[key],
+    }));
+  };
+
+  const togglePreference = (key) => {
+    setPreferences((value) => ({
+      ...value,
+      [key]: !value[key],
+    }));
+  };
+
   return (
-    <AppLayout title="Notification Settings">
-      <div className="stats-grid compact">
-        <StatCard label="Email" value={providerConfigured.resend ? 'Configured' : 'Not configured'} icon={Mail} />
-        <StatCard label="SMS" value={providerConfigured.sms ? 'Configured' : 'Not configured'} icon={Smartphone} />
-        <StatCard label="WhatsApp" value={providerConfigured.whatsapp ? 'Configured' : 'Not configured'} icon={MessageSquare} />
+    <AppLayout
+      title="Notification Settings"
+      subtitle="Configure in-app, email, SMS, and WhatsApp notification preferences"
+    >
+      <div className="stat-grid dense">
+        <StatCard
+          label="In-app"
+          value={channels.inApp ? 'Enabled' : 'Disabled'}
+          icon={Bell}
+        />
+
+        <StatCard
+          label="Email"
+          value={providerConfigured.resend ? 'Configured' : 'Not configured'}
+          icon={Mail}
+          tone="warning"
+        />
+
+        <StatCard
+          label="SMS"
+          value={providerConfigured.sms ? 'Configured' : 'Not configured'}
+          icon={Smartphone}
+          tone="warning"
+        />
+
+        <StatCard
+          label="WhatsApp"
+          value={providerConfigured.whatsapp ? 'Configured' : 'Not configured'}
+          icon={MessageSquare}
+          tone="warning"
+        />
       </div>
 
       <section className="card">
         <div className="card-header">
           <div>
             <h3>Provider setup status</h3>
-            <p>Configure providers securely on the backend before enabling production messaging.</p>
+            <p>
+              Configure notification providers securely on the backend before enabling production
+              messaging.
+            </p>
           </div>
+          <ShieldCheck size={20} />
         </div>
 
-        <div className="detail-grid">
-          <div>
-            <strong>Resend Email</strong>
-            <p><StatusBadge tone="warning">not configured</StatusBadge></p>
-          </div>
-          <div>
-            <strong>Twilio SMS</strong>
-            <p><StatusBadge tone="warning">not configured</StatusBadge></p>
-          </div>
-          <div>
-            <strong>Twilio WhatsApp</strong>
-            <p><StatusBadge tone="warning">not configured</StatusBadge></p>
-          </div>
+        <div className="metadata-grid">
+          <span>
+            <Mail size={16} />
+            Resend Email
+          </span>
+          <span>
+            <StatusBadge tone="warning">not configured</StatusBadge>
+          </span>
+          <span>
+            <Smartphone size={16} />
+            Twilio SMS
+          </span>
+          <span>
+            <StatusBadge tone="warning">not configured</StatusBadge>
+          </span>
+          <span>
+            <MessageSquare size={16} />
+            Twilio WhatsApp
+          </span>
+          <span>
+            <StatusBadge tone="warning">not configured</StatusBadge>
+          </span>
+        </div>
+
+        <div className="helper">
+          Resend, Twilio SMS, and Twilio WhatsApp should be configured server-side only. Do not
+          expose provider secrets in frontend code.
         </div>
       </section>
 
-      <section className="card">
-        <div className="card-header">
-          <div>
-            <h3>Notification channels</h3>
-            <p>Workspace and user delivery preferences.</p>
+      <div className="panel-grid two">
+        <section className="card">
+          <div className="card-header">
+            <div>
+              <h3>Notification channels</h3>
+              <p>Workspace and user delivery preferences.</p>
+            </div>
           </div>
-        </div>
 
-        <div className="settings-grid">
-          <label><input type="checkbox" defaultChecked /> In-app notifications</label>
-          <label><input type="checkbox" defaultChecked /> Email notifications</label>
-          <label><input type="checkbox" /> SMS notifications</label>
-          <label><input type="checkbox" /> WhatsApp notifications</label>
-        </div>
-      </section>
-
-      <section className="card">
-        <div className="card-header">
-          <div>
-            <h3>Event preferences</h3>
-            <p>Notification categories for {currentUser?.name || 'current user'}.</p>
-          </div>
-        </div>
-
-        <div className="settings-grid">
-          {preferenceGroups.map((item) => (
-            <label key={item}>
-              <input type="checkbox" defaultChecked /> {labelize(item)}
+          <div className="settings-grid">
+            <label className="inline-check">
+              <input
+                type="checkbox"
+                checked={channels.inApp}
+                onChange={() => toggleChannel('inApp')}
+              />
+              In-app notifications
             </label>
-          ))}
+
+            <label className="inline-check">
+              <input
+                type="checkbox"
+                checked={channels.email}
+                onChange={() => toggleChannel('email')}
+              />
+              Email notifications
+            </label>
+
+            <label className="inline-check">
+              <input
+                type="checkbox"
+                checked={channels.sms}
+                onChange={() => toggleChannel('sms')}
+              />
+              SMS notifications
+            </label>
+
+            <label className="inline-check">
+              <input
+                type="checkbox"
+                checked={channels.whatsapp}
+                onChange={() => toggleChannel('whatsapp')}
+              />
+              WhatsApp notifications
+            </label>
+          </div>
+
+          <div className="helper">
+            Channel preferences are local UI state for now. Persist these to a Supabase notification
+            preferences table in the backend notification phase.
+          </div>
+        </section>
+
+        <section className="card">
+          <div className="card-header">
+            <div>
+              <h3>Event preferences</h3>
+              <p>Notification categories for {currentUser?.name || 'current user'}.</p>
+            </div>
+          </div>
+
+          <div className="settings-grid">
+            {preferenceGroups.map((item) => (
+              <label className="inline-check" key={item}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(preferences[item])}
+                  onChange={() => togglePreference(item)}
+                />
+                {labelize(item)}
+              </label>
+            ))}
+          </div>
+        </section>
+      </div>
+
+      <section className="card">
+        <div className="card-header">
+          <div>
+            <h3>Launch notification events</h3>
+            <p>These are the core notification events PropFlow should support in the MVP.</p>
+          </div>
+        </div>
+
+        <div className="metadata-grid">
+          <span>
+            <CalendarCheck size={16} />
+            Booking reminders
+          </span>
+          <span>
+            <CalendarCheck size={16} />
+            Cleaning assignments
+          </span>
+          <span>
+            <Wrench size={16} />
+            Maintenance assignments
+          </span>
+          <span>
+            <CreditCard size={16} />
+            Payment alerts
+          </span>
+          <span>
+            <Bell size={16} />
+            Owner reports
+          </span>
+          <span>
+            <Users size={16} />
+            Team invites
+          </span>
         </div>
       </section>
 
