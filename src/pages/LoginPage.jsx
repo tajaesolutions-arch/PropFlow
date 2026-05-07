@@ -1,6 +1,7 @@
 import React from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { useApp } from '../lib/AppContext.jsx';
+import { getPostLoginPath } from '../lib/auth.js';
 import { navigate } from '../routes/AppRouter.jsx';
 
 export function LoginPage() {
@@ -23,14 +24,23 @@ export function LoginPage() {
     setBusy(true);
     setMessage('');
 
-    try {
-      await signIn(email, password);
-      navigate('/login/redirect');
-    } catch (error) {
-      setMessage(error.message || 'Login failed.');
-    } finally {
-      setBusy(false);
-    }
+   try {
+  const result = await signIn(email, password);
+  const nextUser = result?.accountState?.currentUser;
+
+  if (!nextUser) {
+    setMessage(
+      'Login succeeded, but your workspace profile did not finish loading. Refresh the page or check your Supabase workspace membership record.',
+    );
+    return;
+  }
+
+  navigate(getPostLoginPath(nextUser));
+} catch (error) {
+  setMessage(error.message || 'Login failed.');
+} finally {
+  setBusy(false);
+}
   };
 
   return (
