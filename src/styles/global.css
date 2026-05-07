@@ -189,3 +189,29 @@ textarea{font:inherit;border:1px solid var(--border);border-radius:10px;padding:
     width: auto;
   }
 }
+/* Mobile navigation backdrop */
+
+.sidebar-scrim {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .sidebar-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 9;
+    display: block;
+    border: 0;
+    border-radius: 0;
+    background: rgba(15, 23, 42, 0.42);
+    padding: 0;
+  }
+
+  .sidebar.mobile-open {
+    z-index: 10;
+  }
+
+  .app-shell.nav-open {
+    overflow: hidden;
+  }
+}
