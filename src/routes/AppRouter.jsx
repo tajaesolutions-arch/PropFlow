@@ -60,8 +60,22 @@ const publicRoutes = {
   '/book': { Page: PublicBookingPage },
 };
 
+const operationalRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
+const allWorkspaceRoles = [
+  roles.OWNER_ADMIN,
+  roles.PROPERTY_MANAGER,
+  roles.HOST,
+  roles.ACCOUNTANT,
+  roles.OWNER,
+  roles.CLEANER,
+  roles.MAINTENANCE,
+];
+const ownerVisibleRoles = [...operationalRoles, roles.OWNER, roles.ACCOUNTANT];
+const staffOperationsRoles = [...operationalRoles, roles.CLEANER, roles.MAINTENANCE];
+const financeRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
+
 const dashboardAccess = {
-  '/dashboard': [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
+  '/dashboard': operationalRoles,
   '/owner-dashboard': [roles.OWNER],
   '/cleaner-dashboard': [roles.CLEANER],
   '/maintenance-dashboard': [roles.MAINTENANCE],
@@ -70,40 +84,42 @@ const dashboardAccess = {
 
 const protectedRoutes = {
   '/workspace-setup': { Page: JoinWorkspacePage },
-  '/dashboard': { Page: DashboardPage },
-  '/properties': { Page: PropertiesPage },
-  '/bookings': { Page: BookingsPage },
-  '/calendar': { Page: CalendarPage },
-  '/cleaning': { Page: CleaningPage },
-  '/maintenance': { Page: MaintenancePage },
-  '/owners': { Page: OwnersPage },
-  '/guests': { Page: GuestsPage },
-  '/reports': { Page: ReportsPage },
-  '/notifications': { Page: NotificationsPage },
-  '/notification-settings': { Page: NotificationSettingsPage },
-  '/settings': { Page: SettingsPage },
+  '/dashboard': { Page: DashboardPage, access: operationalRoles },
+  '/properties': { Page: PropertiesPage, access: ownerVisibleRoles },
+  '/bookings': { Page: BookingsPage, access: [...operationalRoles, roles.OWNER, roles.ACCOUNTANT] },
+  '/calendar': { Page: CalendarPage, access: allWorkspaceRoles },
+  '/cleaning': { Page: CleaningPage, access: [...operationalRoles, roles.CLEANER] },
+  '/maintenance': { Page: MaintenancePage, access: staffOperationsRoles },
+  '/owners': { Page: OwnersPage, access: financeRoles },
+  '/guests': { Page: GuestsPage, access: operationalRoles },
+  '/reports': { Page: ReportsPage, access: [...operationalRoles, roles.OWNER, roles.ACCOUNTANT] },
+  '/notifications': { Page: NotificationsPage, access: [roles.ADMIN, ...allWorkspaceRoles] },
+  '/notification-settings': { Page: NotificationSettingsPage, access: [roles.ADMIN, ...operationalRoles] },
+  '/settings': { Page: SettingsPage, access: operationalRoles },
   '/account': { Page: AccountSettingsPage },
-  '/admin': { Page: AdminDashboardPage },
-  '/owner-dashboard': { Page: OwnerDashboardPage },
-  '/cleaner-dashboard': { Page: CleanerDashboardPage },
-  '/maintenance-dashboard': { Page: MaintenanceDashboardPage },
-  '/accountant-dashboard': { Page: AccountantDashboardPage },
-  '/inventory': { Page: InventoryPage },
-  '/team': { Page: SettingsPage },
-  '/billing': { Page: BillingPage },
+  '/admin': { Page: AdminDashboardPage, access: [roles.ADMIN] },
+  '/owner-dashboard': { Page: OwnerDashboardPage, access: [roles.OWNER] },
+  '/cleaner-dashboard': { Page: CleanerDashboardPage, access: [roles.CLEANER] },
+  '/maintenance-dashboard': { Page: MaintenanceDashboardPage, access: [roles.MAINTENANCE] },
+  '/accountant-dashboard': { Page: AccountantDashboardPage, access: [roles.ACCOUNTANT] },
+  '/inventory': { Page: InventoryPage, access: [...operationalRoles, roles.ACCOUNTANT, roles.CLEANER] },
+  '/team': { Page: SettingsPage, access: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER] },
+  '/billing': { Page: BillingPage, access: [roles.ADMIN, roles.OWNER_ADMIN, roles.ACCOUNTANT] },
   '/smart-tools': {
     Page: ComingSoonPage,
     props: { title: 'Smart Tools / AI Tools' },
+    access: operationalRoles,
   },
   '/help': {
     Page: ComingSoonPage,
     props: { title: 'Help / Support' },
+    access: [roles.ADMIN, ...allWorkspaceRoles],
   },
 };
 
 export const routeAccess = {
   admin: [roles.ADMIN],
-  operations: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
+  operations: operationalRoles,
   owner: [roles.OWNER, roles.OWNER_ADMIN],
   cleaner: [roles.CLEANER],
   maintenance: [roles.MAINTENANCE],
@@ -134,7 +150,7 @@ function LoadingScreen() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <h1>Loading PropFlow…</h1>
+        <h1>Loading PropFlow...</h1>
         <p>Checking your secure session and workspace access.</p>
       </div>
     </div>
@@ -242,6 +258,11 @@ function getPropertyIdFromPath(path) {
   return propertyId || null;
 }
 
+function userCanAccessRoute(user, route) {
+  if (!route?.access?.length) return true;
+  return hasAnyRole(user, route.access);
+}
+
 export function AppRouter() {
   const [, forceRender] = React.useReducer((x) => x + 1, 0);
   const { authLoading, currentUser, currentWorkspace } = useApp();
@@ -301,17 +322,7 @@ export function AppRouter() {
 
   if (propertyId) {
     return (
-      <RoleGuard
-        allowed={[
-          roles.OWNER_ADMIN,
-          roles.PROPERTY_MANAGER,
-          roles.HOST,
-          roles.OWNER,
-          roles.ACCOUNTANT,
-          roles.CLEANER,
-          roles.MAINTENANCE,
-        ]}
-      >
+      <RoleGuard allowed={[...allWorkspaceRoles]}>
         {renderRoute(PropertyDetailPage, { propertyId })}
       </RoleGuard>
     );
@@ -321,6 +332,10 @@ export function AppRouter() {
 
   if (!route) {
     return <NotFoundPage />;
+  }
+
+  if (!userCanAccessRoute(currentUser, route)) {
+    return renderRoute(SuspendedPage, { variant: 'denied' });
   }
 
   return renderRoute(route.Page, route.props);
