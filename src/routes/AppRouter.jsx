@@ -1,14 +1,22 @@
 import React from 'react';
+
 import { getPostLoginPath, hasAnyRole } from '../lib/auth.js';
 import { useApp } from '../lib/AppContext.jsx';
 import { roles } from '../data/constants.js';
 
 function lazyPage(importer, exportName) {
-  return React.lazy(() =>
-    importer().then((module) => ({
-      default: module[exportName],
-    })),
-  );
+  return React.lazy(async () => {
+    const module = await importer();
+    const Page = module[exportName];
+
+    if (!Page) {
+      throw new Error(
+        `Page export "${exportName}" was not found. Check that the page file exports "${exportName}".`,
+      );
+    }
+
+    return { default: Page };
+  });
 }
 
 const LandingPage = lazyPage(() => import('../pages/LandingPage.jsx'), 'LandingPage');
@@ -34,10 +42,22 @@ const NotificationSettingsPage = lazyPage(
 );
 const InventoryPage = lazyPage(() => import('../pages/InventoryPage.jsx'), 'InventoryPage');
 const SettingsPage = lazyPage(() => import('../pages/SettingsPage.jsx'), 'SettingsPage');
-const AccountSettingsPage = lazyPage(() => import('../pages/AccountSettingsPage.jsx'), 'AccountSettingsPage');
-const AdminDashboardPage = lazyPage(() => import('../pages/AdminDashboardPage.jsx'), 'AdminDashboardPage');
-const OwnerDashboardPage = lazyPage(() => import('../pages/OwnerDashboardPage.jsx'), 'OwnerDashboardPage');
-const CleanerDashboardPage = lazyPage(() => import('../pages/CleanerDashboardPage.jsx'), 'CleanerDashboardPage');
+const AccountSettingsPage = lazyPage(
+  () => import('../pages/AccountSettingsPage.jsx'),
+  'AccountSettingsPage',
+);
+const AdminDashboardPage = lazyPage(
+  () => import('../pages/AdminDashboardPage.jsx'),
+  'AdminDashboardPage',
+);
+const OwnerDashboardPage = lazyPage(
+  () => import('../pages/OwnerDashboardPage.jsx'),
+  'OwnerDashboardPage',
+);
+const CleanerDashboardPage = lazyPage(
+  () => import('../pages/CleanerDashboardPage.jsx'),
+  'CleanerDashboardPage',
+);
 const MaintenanceDashboardPage = lazyPage(
   () => import('../pages/MaintenanceDashboardPage.jsx'),
   'MaintenanceDashboardPage',
@@ -61,6 +81,7 @@ const publicRoutes = {
 };
 
 const operationalRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
+
 const allWorkspaceRoles = [
   roles.OWNER_ADMIN,
   roles.PROPERTY_MANAGER,
@@ -70,6 +91,7 @@ const allWorkspaceRoles = [
   roles.CLEANER,
   roles.MAINTENANCE,
 ];
+
 const ownerVisibleRoles = [...operationalRoles, roles.OWNER, roles.ACCOUNTANT];
 const staffOperationsRoles = [...operationalRoles, roles.CLEANER, roles.MAINTENANCE];
 const financeRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
@@ -86,15 +108,27 @@ const protectedRoutes = {
   '/workspace-setup': { Page: JoinWorkspacePage },
   '/dashboard': { Page: DashboardPage, access: operationalRoles },
   '/properties': { Page: PropertiesPage, access: ownerVisibleRoles },
-  '/bookings': { Page: BookingsPage, access: [...operationalRoles, roles.OWNER, roles.ACCOUNTANT] },
+  '/bookings': {
+    Page: BookingsPage,
+    access: [...operationalRoles, roles.OWNER, roles.ACCOUNTANT],
+  },
   '/calendar': { Page: CalendarPage, access: allWorkspaceRoles },
   '/cleaning': { Page: CleaningPage, access: [...operationalRoles, roles.CLEANER] },
   '/maintenance': { Page: MaintenancePage, access: staffOperationsRoles },
   '/owners': { Page: OwnersPage, access: financeRoles },
   '/guests': { Page: GuestsPage, access: operationalRoles },
-  '/reports': { Page: ReportsPage, access: [...operationalRoles, roles.OWNER, roles.ACCOUNTANT] },
-  '/notifications': { Page: NotificationsPage, access: [roles.ADMIN, ...allWorkspaceRoles] },
-  '/notification-settings': { Page: NotificationSettingsPage, access: [roles.ADMIN, ...operationalRoles] },
+  '/reports': {
+    Page: ReportsPage,
+    access: [...operationalRoles, roles.OWNER, roles.ACCOUNTANT],
+  },
+  '/notifications': {
+    Page: NotificationsPage,
+    access: [roles.ADMIN, ...allWorkspaceRoles],
+  },
+  '/notification-settings': {
+    Page: NotificationSettingsPage,
+    access: [roles.ADMIN, ...operationalRoles],
+  },
   '/settings': { Page: SettingsPage, access: operationalRoles },
   '/account': { Page: AccountSettingsPage },
   '/admin': { Page: AdminDashboardPage, access: [roles.ADMIN] },
@@ -102,7 +136,10 @@ const protectedRoutes = {
   '/cleaner-dashboard': { Page: CleanerDashboardPage, access: [roles.CLEANER] },
   '/maintenance-dashboard': { Page: MaintenanceDashboardPage, access: [roles.MAINTENANCE] },
   '/accountant-dashboard': { Page: AccountantDashboardPage, access: [roles.ACCOUNTANT] },
-  '/inventory': { Page: InventoryPage, access: [...operationalRoles, roles.ACCOUNTANT, roles.CLEANER] },
+  '/inventory': {
+    Page: InventoryPage,
+    access: [...operationalRoles, roles.ACCOUNTANT, roles.CLEANER],
+  },
   '/team': { Page: SettingsPage, access: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER] },
   '/billing': { Page: BillingPage, access: [roles.ADMIN, roles.OWNER_ADMIN, roles.ACCOUNTANT] },
   '/smart-tools': {
@@ -126,10 +163,20 @@ export const routeAccess = {
   accountant: [roles.ACCOUNTANT],
 };
 
-export function navigate(path) {
-  if (!path || window.location.pathname === path) return;
+function normalizePath(pathname) {
+  if (!pathname) return '/';
 
-  window.history.pushState({}, '', path);
+  const cleanPath = pathname === '/' ? '/' : pathname.replace(/\/+$/, '');
+  return cleanPath || '/';
+}
+
+export function navigate(path) {
+  const nextPath = normalizePath(path);
+  const currentPath = normalizePath(window.location.pathname);
+
+  if (!nextPath || currentPath === nextPath) return;
+
+  window.history.pushState({}, '', nextPath);
 
   if (typeof PopStateEvent === 'function') {
     window.dispatchEvent(new PopStateEvent('popstate'));
@@ -150,6 +197,7 @@ function LoadingScreen() {
   return (
     <div className="auth-page">
       <div className="auth-card">
+        <p className="eyebrow">PropFlow</p>
         <h1>Loading PropFlow...</h1>
         <p>Checking your secure session and workspace access.</p>
       </div>
@@ -164,8 +212,8 @@ function RuntimeErrorScreen({ error }) {
         <p className="eyebrow">Runtime error</p>
         <h1>PropFlow could not load this screen</h1>
         <p>
-          A page failed while loading. This screen is shown instead of a blank white page so the
-          error can be fixed.
+          A page failed while loading. This fallback prevents a blank white page and shows the
+          actual error so the file can be fixed.
         </p>
 
         <div className="helper error-helper">
@@ -196,6 +244,12 @@ class RouteErrorBoundary extends React.Component {
     return { error };
   }
 
+  componentDidUpdate(previousProps) {
+    if (previousProps.resetKey !== this.props.resetKey && this.state.error) {
+      this.setState({ error: null });
+    }
+  }
+
   componentDidCatch(error, info) {
     console.error('[PropFlow] Route render failed', error, info);
   }
@@ -209,9 +263,9 @@ class RouteErrorBoundary extends React.Component {
   }
 }
 
-function renderRoute(Page, props = {}) {
+function renderRoute(Page, props = {}, resetKey = window.location.pathname) {
   return (
-    <RouteErrorBoundary>
+    <RouteErrorBoundary resetKey={resetKey}>
       <React.Suspense fallback={<LoadingScreen />}>
         <Page {...props} />
       </React.Suspense>
@@ -219,14 +273,17 @@ function renderRoute(Page, props = {}) {
   );
 }
 
-function NotFoundPage() {
+function NotFoundPage({ currentUser }) {
+  const fallbackPath = currentUser ? getPostLoginPath(currentUser) : '/';
+
   return (
     <div className="auth-page">
       <div className="auth-card">
         <p className="eyebrow">404</p>
         <h1>Page not found</h1>
         <p>The page you are looking for does not exist or is not available for your role.</p>
-        <button className="primary" type="button" onClick={() => navigate('/dashboard')}>
+
+        <button className="primary" type="button" onClick={() => navigate(fallbackPath)}>
           Back to dashboard
         </button>
       </div>
@@ -248,19 +305,28 @@ function isWorkspaceSetupPath(path) {
 }
 
 function shouldBypassWorkspaceRequirement(path) {
-  return path === '/workspace-setup' || path === '/join' || path === '/account' || path === '/suspended';
+  return (
+    path === '/workspace-setup' ||
+    path === '/join' ||
+    path === '/account' ||
+    path === '/suspended'
+  );
 }
 
 function getPropertyIdFromPath(path) {
   if (!path.startsWith('/properties/')) return null;
 
   const propertyId = path.split('/').filter(Boolean)[1];
-  return propertyId || null;
+  return propertyId ? decodeURIComponent(propertyId) : null;
 }
 
 function userCanAccessRoute(user, route) {
   if (!route?.access?.length) return true;
   return hasAnyRole(user, route.access);
+}
+
+function isPropFlowAdminUser(user) {
+  return Boolean(user?.roles?.includes(roles.ADMIN));
 }
 
 export function AppRouter() {
@@ -269,10 +335,13 @@ export function AppRouter() {
 
   React.useEffect(() => {
     window.addEventListener('popstate', forceRender);
-    return () => window.removeEventListener('popstate', forceRender);
+
+    return () => {
+      window.removeEventListener('popstate', forceRender);
+    };
   }, []);
 
-  const path = window.location.pathname;
+  const path = normalizePath(window.location.pathname);
   const propertyId = getPropertyIdFromPath(path);
 
   if (authLoading) return <LoadingScreen />;
@@ -291,7 +360,7 @@ export function AppRouter() {
     }
 
     const route = getPublicRoute(path);
-    return renderRoute(route.Page, route.props);
+    return renderRoute(route.Page, route.props, path);
   }
 
   if (!currentUser) {
@@ -302,7 +371,7 @@ export function AppRouter() {
     return <RedirectTo to="/suspended" />;
   }
 
-  const isPropFlowAdmin = currentUser.roles?.includes(roles.ADMIN);
+  const isPropFlowAdmin = isPropFlowAdminUser(currentUser);
 
   if (!currentWorkspace && !isPropFlowAdmin && !shouldBypassWorkspaceRequirement(path)) {
     return <RedirectTo to="/workspace-setup" />;
@@ -313,7 +382,7 @@ export function AppRouter() {
   }
 
   if (path === '/admin' && !isPropFlowAdmin) {
-    return renderRoute(SuspendedPage, { variant: 'denied' });
+    return renderRoute(SuspendedPage, { variant: 'denied' }, path);
   }
 
   if (dashboardAccess[path] && !hasAnyRole(currentUser, dashboardAccess[path])) {
@@ -322,8 +391,8 @@ export function AppRouter() {
 
   if (propertyId) {
     return (
-      <RoleGuard allowed={[...allWorkspaceRoles]}>
-        {renderRoute(PropertyDetailPage, { propertyId })}
+      <RoleGuard allowed={allWorkspaceRoles}>
+        {renderRoute(PropertyDetailPage, { propertyId }, path)}
       </RoleGuard>
     );
   }
@@ -331,14 +400,14 @@ export function AppRouter() {
   const route = protectedRoutes[path];
 
   if (!route) {
-    return <NotFoundPage />;
+    return <NotFoundPage currentUser={currentUser} />;
   }
 
   if (!userCanAccessRoute(currentUser, route)) {
-    return renderRoute(SuspendedPage, { variant: 'denied' });
+    return renderRoute(SuspendedPage, { variant: 'denied' }, path);
   }
 
-  return renderRoute(route.Page, route.props);
+  return renderRoute(route.Page, route.props, path);
 }
 
 export function RoleGuard({ allowed, children }) {
