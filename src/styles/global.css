@@ -2022,3 +2022,11 @@ label {
     white-space: normal;
   }
 }
+.global-search-results button.active {
+  background: var(--surface-2);
+}
+
+.global-search-results button.active em {
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
