@@ -80,7 +80,8 @@ function validate(form) {
 }
 
 function SupplyForm({ initial, properties, workspace, onSubmit, onCancel, submitting, submitError }) {
-  const [form, setForm] = React.useState(() => toForm(initial, workspace?.defaultCurrency));
+ const currency = currentWorkspace?.defaultCurrency || currentWorkspace?.default_currency || 'USD';
+const [form, setForm] = React.useState(() => toForm(initial, fallbackCurrency));
   const [errors, setErrors] = React.useState([]);
   const set = (key) => (event) => setForm((value) => ({ ...value, [key]: event.target.value }));
 
@@ -121,7 +122,17 @@ function SupplyForm({ initial, properties, workspace, onSubmit, onCancel, submit
             <label>Supplier contact<input value={form.supplier_contact} onChange={set('supplier_contact')} placeholder="Email, phone, or URL" /></label>
             <label>Estimated unit cost<input value={form.estimated_unit_cost} onChange={set('estimated_unit_cost')} type="number" min="0" step="0.01" /></label>
             <label>Currency<input value={form.currency} onChange={set('currency')} required /></label>
-            <label className="full">Notes<textarea value={form.notes} onChange={set('notes')} /></label>
+            <label>
+  <span className="sr-only">Search supplies</span>
+  <div className="search-box">
+    <Search size={16} />
+    <input
+      value={filters.search}
+      onChange={set('search')}
+      placeholder="Search item, category, supplier"
+    />
+  </div>
+</label>
           </div>
         </div>
         <footer className="modal-actions">
