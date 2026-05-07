@@ -5,22 +5,52 @@ import {
   CreditCard,
   LogOut,
   Settings as SettingsIcon,
+  Shield,
   UserRound,
 } from 'lucide-react';
 
 import { useApp } from '../lib/AppContext.jsx';
-import { roleLabels } from '../data/constants.js';
+import { roleLabels, roles } from '../data/constants.js';
 import { navigate } from '../routes/AppRouter.jsx';
 import { resolvePrimaryRole } from '../lib/auth.js';
+
+function getInitials(value) {
+  return String(value || 'PF')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('');
+}
+
+function getAccountPath(currentUser) {
+  if (currentUser?.roles?.includes(roles.ADMIN)) return '/admin';
+  return '/account';
+}
+
+function shouldShowWorkspaceSettings(currentUser) {
+  const primaryRole = resolvePrimaryRole(currentUser);
+
+  return [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST].includes(primaryRole);
+}
+
+function shouldShowBilling(currentUser) {
+  const primaryRole = resolvePrimaryRole(currentUser);
+
+  return [roles.ADMIN, roles.OWNER_ADMIN, roles.ACCOUNTANT].includes(primaryRole);
+}
 
 export function AccountMenu() {
   const { currentUser, signOut } = useApp();
   const [open, setOpen] = React.useState(false);
+  const [signingOut, setSigningOut] = React.useState(false);
   const menuRef = React.useRef(null);
 
   const primaryRole = resolvePrimaryRole(currentUser);
   const roleLabel = roleLabels[primaryRole] || 'No workspace role';
   const displayName = currentUser?.name || currentUser?.email || 'Account';
+  const email = currentUser?.email || 'No email available';
+  const initials = getInitials(displayName);
 
   React.useEffect(() => {
     const closeOnOutsideClick = (event) => {
@@ -29,10 +59,18 @@ export function AccountMenu() {
       }
     };
 
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') {
+        setOpen(false);
+      }
+    };
+
     document.addEventListener('mousedown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
 
     return () => {
       document.removeEventListener('mousedown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
     };
   }, []);
 
@@ -42,9 +80,16 @@ export function AccountMenu() {
   };
 
   const handleSignOut = async () => {
+    setSigningOut(true);
     setOpen(false);
-    await signOut();
-    navigate('/login');
+
+    try {
+      await signOut();
+      navigate('/login');
+    } catch (error) {
+      console.error('[PropFlow] Sign out failed', error);
+      setSigningOut(false);
+    }
   };
 
   return (
@@ -55,47 +100,100 @@ export function AccountMenu() {
         onClick={() => setOpen((value) => !value)}
         aria-haspopup="menu"
         aria-expanded={open}
+        data-skip-create-action="true"
       >
-        <UserRound size={18} />
+        <span className="account-avatar" aria-hidden="true">
+          {initials || 'PF'}
+        </span>
 
-        <span>
-          {displayName}
+        <span className="account-menu-copy">
+          <strong>{displayName}</strong>
           <small>{roleLabel}</small>
         </span>
 
-        <ChevronDown size={16} />
+        <ChevronDown className={open ? 'account-chevron open' : 'account-chevron'} size={16} />
       </button>
 
       {open && (
         <div className="account-dropdown" role="menu">
           <div className="account-dropdown-header">
-            <strong>{displayName}</strong>
-            <small>{currentUser?.email || roleLabel}</small>
+            <span className="account-dropdown-avatar" aria-hidden="true">
+              {initials || 'PF'}
+            </span>
+
+            <span>
+              <strong>{displayName}</strong>
+              <small>{email}</small>
+              <small>{roleLabel}</small>
+            </span>
           </div>
 
-          <button type="button" onClick={() => goTo('/account')} role="menuitem">
+          {currentUser?.roles?.includes(roles.ADMIN) && (
+            <button
+              type="button"
+              onClick={() => goTo('/admin')}
+              role="menuitem"
+              data-skip-create-action="true"
+            >
+              <Shield size={16} />
+              PropFlow admin
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => goTo(getAccountPath(currentUser))}
+            role="menuitem"
+            data-skip-create-action="true"
+          >
             <UserRound size={16} />
             Account settings
           </button>
 
-          <button type="button" onClick={() => goTo('/notifications')} role="menuitem">
+          <button
+            type="button"
+            onClick={() => goTo('/notifications')}
+            role="menuitem"
+            data-skip-create-action="true"
+          >
             <Bell size={16} />
             Notifications
           </button>
 
-          <button type="button" onClick={() => goTo('/billing')} role="menuitem">
-            <CreditCard size={16} />
-            Billing
-          </button>
+          {shouldShowBilling(currentUser) && (
+            <button
+              type="button"
+              onClick={() => goTo('/billing')}
+              role="menuitem"
+              data-skip-create-action="true"
+            >
+              <CreditCard size={16} />
+              Billing
+            </button>
+          )}
 
-          <button type="button" onClick={() => goTo('/settings')} role="menuitem">
-            <SettingsIcon size={16} />
-            Workspace settings
-          </button>
+          {shouldShowWorkspaceSettings(currentUser) && (
+            <button
+              type="button"
+              onClick={() => goTo('/settings')}
+              role="menuitem"
+              data-skip-create-action="true"
+            >
+              <SettingsIcon size={16} />
+              Workspace settings
+            </button>
+          )}
 
-          <button type="button" className="danger-menu-item" onClick={handleSignOut} role="menuitem">
+          <button
+            type="button"
+            className="danger-menu-item"
+            onClick={handleSignOut}
+            role="menuitem"
+            disabled={signingOut}
+            data-skip-create-action="true"
+          >
             <LogOut size={16} />
-            Sign out
+            {signingOut ? 'Signing out…' : 'Sign out'}
           </button>
         </div>
       )}
