@@ -515,6 +515,28 @@ makeWorkspaceQuery('owner reports', 'ownerReports', supabase.from('owner_reports
     return task;
   };
 
+  const createMaintenanceWorkOrder = async (payload) => {
+  const client = requireSupabase();
+  requireWorkspaceSession(currentWorkspace, session);
+
+  const { data: work, error: workError } = await client
+    .from('maintenance_work_orders')
+    .insert({
+      ...payload,
+      workspace_id: currentWorkspace.id,
+      created_by: session.user.id,
+    })
+    .select('*')
+    .single();
+
+  if (workError) {
+    throw new Error(formatSupabaseError(workError, 'Maintenance work order creation failed.'));
+  }
+
+  await refreshWorkspaceData();
+  return work;
+};
+  
  const updateCleaningTask = async (id, payload) => {
   const client = requireSupabase();
   requireWorkspaceSession(currentWorkspace, session);
