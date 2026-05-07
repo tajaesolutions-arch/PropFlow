@@ -608,12 +608,12 @@ export function AppProvider({ children }) {
     return workspace;
   };
 
-  const createInvite = async ({
-    email,
-    roles: inviteRoles,
-    assignedPropertyIds = [],
-    expiresAt = null,
-    message = '',
+ await app.createInvite({
+  email: form.email.trim(),
+  roles: [form.role],
+  expiresAt: form.expires_at || null,
+  message: form.message.trim() || null,
+});
     permissionLevel = 'standard',
   }) => {
     const client = requireSupabase();
