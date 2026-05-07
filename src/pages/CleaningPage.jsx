@@ -8,6 +8,8 @@ import {
   Home,
   Plus,
   Search,
+  Sparkles,
+  X,
 } from 'lucide-react';
 
 import { AppLayout } from '../components/layout/AppLayout.jsx';
@@ -27,25 +29,15 @@ const statuses = [
   'guest_ready',
 ];
 
-const defaultChecklist = [
-  'Strip beds',
-  'Clean bathrooms',
-  'Restock supplies',
-  'Wipe kitchen',
-  'Take before/after photos',
-  'Confirm guest-ready',
-];
-
-const initialForm = {
-  property_id: '',
-  scheduled_for: '',
-  status: 'scheduled',
-  checklist_items: defaultChecklist.join(', '),
-  cleaner_notes: '',
-  supplies_used: '',
-};
-
 const closedStatuses = new Set(['completed', 'guest_ready']);
+
+function dateOnly(value) {
+  return value ? String(value).slice(0, 10) : '';
+}
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
 
 function formatDateTime(value) {
   if (!value) return 'Not scheduled';
@@ -64,12 +56,8 @@ function formatDateTime(value) {
   });
 }
 
-function dateOnly(value) {
-  return value ? String(value).slice(0, 10) : '';
-}
-
-function today() {
-  return new Date().toISOString().slice(0, 10);
+function formatLabel(value) {
+  return String(value || 'unknown').replaceAll('_', ' ');
 }
 
 function isDueToday(task) {
@@ -78,6 +66,7 @@ function isDueToday(task) {
 
 function isOverdue(task) {
   const scheduledDate = dateOnly(task.scheduledFor || task.scheduled_for);
+
   return Boolean(scheduledDate && scheduledDate < today() && !closedStatuses.has(task.status));
 }
 
@@ -85,9 +74,17 @@ function getTaskPropertyId(task) {
   return task.propertyId || task.property_id;
 }
 
+function getTaskPropertyName(task, properties = []) {
+  const propertyId = getTaskPropertyId(task);
+  const property = properties.find((item) => item.id === propertyId);
+
+  return task.property || property?.name || 'Unassigned property';
+}
+
 function getTaskChecklist(task) {
   if (Array.isArray(task.checklist)) return task.checklist;
   if (Array.isArray(task.checklist_items)) return task.checklist_items;
+
   return [];
 }
 
@@ -95,31 +92,216 @@ function getTaskNotes(task) {
   return task.cleanerNotes || task.cleaner_notes || '';
 }
 
+function getTaskSuppliesUsed(task) {
+  return task.suppliesUsed || task.supplies_used || '';
+}
+
 function canUpdateCleaningTask(currentUser) {
   return hasAnyRole(currentUser, [...taskManagerRoles, roles.CLEANER]);
+}
+
+function statusTone(status) {
+  if (['missed', 'overdue'].includes(status)) return 'error';
+  if (['scheduled', 'needs_inspection'].includes(status)) return 'warning';
+  if (['completed', 'guest_ready'].includes(status)) return 'success';
+  return 'info';
+}
+
+function matchesSearch(task, properties, query) {
+  const normalizedQuery = String(query || '').trim().toLowerCase();
+  if (!normalizedQuery) return true;
+
+  const searchText = [
+    getTaskPropertyName(task, properties),
+    getTaskNotes(task),
+    getTaskSuppliesUsed(task),
+    task.status,
+    getTaskChecklist(task).join(' '),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  return searchText.includes(normalizedQuery);
+}
+
+function TaskActionButton({ task, status, label, onClick, disabled }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onClick(task, status)}
+      disabled={disabled}
+      data-skip-create-action="true"
+    >
+      {label}
+    </button>
+  );
+}
+
+function CleaningTaskCard({
+  task,
+  properties,
+  canUpdate,
+  uploading,
+  onStatusChange,
+  onIssueChange,
+  onNotesSave,
+  onUpload,
+}) {
+  const propertyName = getTaskPropertyName(task, properties);
+  const checklist = getTaskChecklist(task);
+  const notes = getTaskNotes(task);
+  const suppliesUsed = getTaskSuppliesUsed(task);
+  const overdue = isOverdue(task);
+  const dueToday = isDueToday(task);
+  const status = task.status || 'scheduled';
+
+  return (
+    <article className={`card cleaning-task-card ${overdue ? 'urgent' : ''}`}>
+      <div className="cleaning-task-top">
+        <div>
+          <p className="eyebrow">{overdue ? 'Overdue cleaning' : dueToday ? 'Due today' : 'Cleaning task'}</p>
+          <h3>{propertyName}</h3>
+          <p>{formatDateTime(task.scheduledFor || task.scheduled_for)}</p>
+        </div>
+
+        <StatusBadge tone={overdue ? 'error' : statusTone(status)}>{overdue ? 'overdue' : status}</StatusBadge>
+      </div>
+
+      <div className="cleaning-task-meta">
+        <span>
+          <Clock size={16} />
+          <strong>{formatDateTime(task.started_at) || '—'}</strong>
+          <small>Started</small>
+        </span>
+
+        <span>
+          <CheckCircle2 size={16} />
+          <strong>{formatDateTime(task.completed_at) || '—'}</strong>
+          <small>Completed</small>
+        </span>
+
+        <span>
+          <AlertTriangle size={16} />
+          <strong>{task.issue_reported ? 'Yes' : 'No'}</strong>
+          <small>Issue reported</small>
+        </span>
+      </div>
+
+      <div className="cleaning-task-section">
+        <h4>Checklist</h4>
+
+        {checklist.length ? (
+          <ul className="checklist cleaning-checklist">
+            {checklist.map((item) => (
+              <li key={item}>
+                <CheckCircle2 size={15} />
+                {item}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p>No checklist items saved.</p>
+        )}
+      </div>
+
+      {suppliesUsed && (
+        <div className="cleaning-task-section">
+          <h4>Supplies used</h4>
+          <p>{suppliesUsed}</p>
+        </div>
+      )}
+
+      <label className="cleaning-notes-field">
+        Cleaner notes
+        <textarea
+          defaultValue={notes}
+          rows={3}
+          disabled={!canUpdate}
+          onBlur={(event) => {
+            if (event.target.value !== notes) {
+              onNotesSave(task, event.target.value);
+            }
+          }}
+        />
+      </label>
+
+      <div className="cleaning-card-actions">
+        {canUpdate && (
+          <>
+            {status !== 'in_progress' && !closedStatuses.has(status) && (
+              <TaskActionButton
+                task={task}
+                status="in_progress"
+                label="Start cleaning"
+                onClick={onStatusChange}
+              />
+            )}
+
+            {!closedStatuses.has(status) && (
+              <TaskActionButton
+                task={task}
+                status="needs_inspection"
+                label="Needs inspection"
+                onClick={onStatusChange}
+              />
+            )}
+
+            {status !== 'guest_ready' && (
+              <TaskActionButton
+                task={task}
+                status="guest_ready"
+                label="Mark guest-ready"
+                onClick={onStatusChange}
+              />
+            )}
+
+            <button
+              type="button"
+              onClick={() => onIssueChange(task, !task.issue_reported)}
+              data-skip-create-action="true"
+            >
+              {task.issue_reported ? 'Clear issue' : 'Report issue'}
+            </button>
+
+            <label className="upload-button">
+              <Camera size={16} />
+              {uploading ? 'Uploading…' : 'Upload photo'}
+              <input
+                type="file"
+                accept="image/*"
+                disabled={uploading}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  onUpload(task, file);
+                  event.currentTarget.value = '';
+                }}
+              />
+            </label>
+          </>
+        )}
+      </div>
+    </article>
+  );
 }
 
 export function CleaningPage() {
   const {
     data,
-    createCleaningTask,
     updateCleaningTask,
     uploadWorkspaceFile,
     currentUser,
   } = useApp();
 
-  const [showForm, setShowForm] = React.useState(false);
   const [message, setMessage] = React.useState('');
-  const [saving, setSaving] = React.useState(false);
   const [uploadingTaskId, setUploadingTaskId] = React.useState('');
+  const [updatingTaskId, setUpdatingTaskId] = React.useState('');
   const [filters, setFilters] = React.useState({
     query: '',
     property: 'all',
     status: 'all',
     view: 'open',
   });
-
-  const [form, setForm] = React.useState(initialForm);
 
   const properties = data.properties || [];
   const activeProperties = properties.filter((property) => property.status !== 'archived');
@@ -128,13 +310,6 @@ export function CleaningPage() {
   const canCreate = hasAnyRole(currentUser, taskManagerRoles);
   const canUpdate = canUpdateCleaningTask(currentUser);
 
-  const set = (key) => (event) => {
-    setForm((value) => ({
-      ...value,
-      [key]: event.target.value,
-    }));
-  };
-
   const setFilter = (key) => (event) => {
     setFilters((value) => ({
       ...value,
@@ -142,41 +317,8 @@ export function CleaningPage() {
     }));
   };
 
-  const submit = async (event) => {
-    event.preventDefault();
-
-    if (!form.property_id) {
-      setMessage('Select a property before creating a cleaning task.');
-      return;
-    }
-
-    if (!form.scheduled_for) {
-      setMessage('Choose a scheduled date and time.');
-      return;
-    }
-
-    setSaving(true);
-    setMessage('');
-
-    try {
-      await createCleaningTask({
-        ...form,
-        checklist_items: form.checklist_items
-          .split(',')
-          .map((item) => item.trim())
-          .filter(Boolean),
-        cleaner_notes: form.cleaner_notes.trim() || null,
-        supplies_used: form.supplies_used.trim() || null,
-      });
-
-      setForm(initialForm);
-      setShowForm(false);
-      setMessage('Cleaning task created.');
-    } catch (error) {
-      setMessage(error.message || 'Could not create cleaning task.');
-    } finally {
-      setSaving(false);
-    }
+  const clearMessageSoon = () => {
+    window.setTimeout(() => setMessage(''), 3000);
   };
 
   const changeStatus = async (task, status) => {
@@ -185,6 +327,7 @@ export function CleaningPage() {
       return;
     }
 
+    setUpdatingTaskId(task.id);
     setMessage('');
 
     try {
@@ -194,26 +337,39 @@ export function CleaningPage() {
         completed_at: closedStatuses.has(status) ? new Date().toISOString() : task.completed_at,
       });
 
-      setMessage(`Cleaning task marked ${status.replaceAll('_', ' ')}.`);
+      setMessage(`Cleaning task marked ${formatLabel(status)}.`);
+      clearMessageSoon();
     } catch (error) {
-      setMessage(error.message || 'Could not update cleaning task.');
+      setMessage(error?.message || 'Could not update cleaning task.');
+    } finally {
+      setUpdatingTaskId('');
     }
   };
 
   const updateNotes = async (task, notes) => {
     if (!canUpdate) return;
 
+    setUpdatingTaskId(task.id);
+
     try {
       await updateCleaningTask(task.id, {
-        cleaner_notes: notes,
+        cleaner_notes: notes.trim() || null,
       });
+
+      setMessage('Cleaner notes saved.');
+      clearMessageSoon();
     } catch (error) {
-      setMessage(error.message || 'Could not save cleaner notes.');
+      setMessage(error?.message || 'Could not save cleaner notes.');
+    } finally {
+      setUpdatingTaskId('');
     }
   };
 
   const updateIssueReported = async (task, issueReported) => {
     if (!canUpdate) return;
+
+    setUpdatingTaskId(task.id);
+    setMessage('');
 
     try {
       await updateCleaningTask(task.id, {
@@ -221,8 +377,11 @@ export function CleaningPage() {
       });
 
       setMessage(issueReported ? 'Issue reported on cleaning task.' : 'Issue report cleared.');
+      clearMessageSoon();
     } catch (error) {
-      setMessage(error.message || 'Could not update issue status.');
+      setMessage(error?.message || 'Could not update issue status.');
+    } finally {
+      setUpdatingTaskId('');
     }
   };
 
@@ -247,8 +406,9 @@ export function CleaningPage() {
       });
 
       setMessage('Cleaning photo uploaded to private workspace storage.');
+      clearMessageSoon();
     } catch (error) {
-      setMessage(error.message || 'Cleaning photo upload failed.');
+      setMessage(error?.message || 'Cleaning photo upload failed.');
     } finally {
       setUploadingTaskId('');
     }
@@ -261,272 +421,243 @@ export function CleaningPage() {
       if (filters.view === 'open') return !closedStatuses.has(task.status);
       if (filters.view === 'today') return isDueToday(task);
       if (filters.view === 'overdue') return isOverdue(task);
+      if (filters.view === 'issues') return Boolean(task.issue_reported);
       return true;
     })
-    .filter((task) => {
-      const searchText = [
-        task.property,
-        getTaskNotes(task),
-        task.status,
-        getTaskChecklist(task).join(' '),
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-
-      return searchText.includes(filters.query.toLowerCase());
-    });
+    .filter((task) => matchesSearch(task, properties, filters.query));
 
   const openTasks = tasks.filter((task) => !closedStatuses.has(task.status));
   const todayTasks = tasks.filter(isDueToday);
   const overdueTasks = tasks.filter(isOverdue);
   const issueTasks = tasks.filter((task) => task.issue_reported);
+  const guestReadyTasks = tasks.filter((task) => task.status === 'guest_ready');
 
   return (
-    <AppLayout title="Cleaning tasks" subtitle="Schedule, track, and confirm guest-ready cleanings">
-      <div className="stat-grid dense">
+    <AppLayout
+      title="Cleaning"
+      subtitle="Schedule, track, inspect, and confirm guest-ready cleanings across assigned properties."
+    >
+      {message && (
+        <section
+          className={message.toLowerCase().includes('could not') || message.toLowerCase().includes('failed') ? 'helper error-helper' : 'helper'}
+          role="status"
+        >
+          {message}
+        </section>
+      )}
+
+      <section className="stat-grid dense">
         <StatCard label="Open cleanings" value={openTasks.length} icon={ClipboardCheck} />
         <StatCard label="Due today" value={todayTasks.length} icon={Clock} />
         <StatCard label="Overdue" value={overdueTasks.length} icon={AlertTriangle} tone="warning" />
-        <StatCard label="Issues reported" value={issueTasks.length} icon={AlertTriangle} tone="warning" />
-      </div>
+        <StatCard label="Guest-ready" value={guestReadyTasks.length} icon={CheckCircle2} />
+      </section>
 
-      <section className="card">
-        <div className="card-header">
-          <div>
-            <h3>Cleaning operations</h3>
-            <p>
-              Create cleaning tasks, update status, upload before/after photos, report issues, and
-              confirm when a property is guest-ready.
-            </p>
-          </div>
-
-          {canCreate && (
-            <button className="primary" type="button" onClick={() => setShowForm((value) => !value)}>
-              <Plus size={16} />
-              {showForm ? 'Close form' : 'Create cleaning task'}
-            </button>
-          )}
+      <section className="card cleaning-toolbar">
+        <div>
+          <h3>Cleaning operations</h3>
+          <p>
+            Track turnover tasks, checklist progress, issue reports, private photo uploads, and
+            guest-ready confirmations.
+          </p>
         </div>
 
-        {message && (
-          <p className={message.toLowerCase().includes('could not') ? 'helper error-helper' : 'helper'}>
-            {message}
-          </p>
-        )}
+        <div className="cleaning-toolbar-actions">
+          {canCreate && (
+            <button type="button" className="primary" data-create-action="cleaning">
+              <Plus size={16} />
+              Add Cleaning Task
+            </button>
+          )}
 
-        <div className="filter-bar booking-filter">
-          <label>
-            <span className="sr-only">Search cleaning tasks</span>
-            <div className="search-box">
-              <Search size={16} />
-              <input
-                placeholder="Search property, notes, checklist, or status"
-                value={filters.query}
-                onChange={setFilter('query')}
-              />
-            </div>
-          </label>
-
-          <select value={filters.property} onChange={setFilter('property')}>
-            <option value="all">All properties</option>
-            {properties.map((property) => (
-              <option key={property.id} value={property.id}>
-                {property.name}
-              </option>
-            ))}
-          </select>
-
-          <select value={filters.status} onChange={setFilter('status')}>
-            <option value="all">All statuses</option>
-            {statuses.map((status) => (
-              <option key={status} value={status}>
-                {status.replaceAll('_', ' ')}
-              </option>
-            ))}
-          </select>
-
-          <select value={filters.view} onChange={setFilter('view')}>
-            <option value="open">Open tasks</option>
-            <option value="today">Due today</option>
-            <option value="overdue">Overdue</option>
-            <option value="all">All tasks</option>
-          </select>
+          <button type="button" onClick={() => setFilters((current) => ({ ...current, view: 'today' }))} data-skip-create-action="true">
+            Today’s Cleanings
+          </button>
         </div>
       </section>
 
-      {showForm && (
-        <form className="card" onSubmit={submit}>
-          <div className="card-header">
-            <div>
-              <h3>Create cleaning task</h3>
-              <p>Assign a property, schedule the cleaning, and add checklist instructions.</p>
-            </div>
-          </div>
+      <section className="card">
+        <div className="cleaning-filters">
+          <label className="cleaning-search">
+            <Search size={16} />
+            <input
+              placeholder="Search property, notes, checklist, supplies, or status..."
+              value={filters.query}
+              onChange={setFilter('query')}
+              aria-label="Search cleaning tasks"
+            />
 
-          <div className="form-grid">
-            <label>
-              Property
-              <select value={form.property_id} onChange={set('property_id')} required>
-                <option value="">Select property</option>
-                {activeProperties.map((property) => (
-                  <option key={property.id} value={property.id}>
-                    {property.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {filters.query && (
+              <button
+                type="button"
+                className="search-clear"
+                onClick={() => setFilters((current) => ({ ...current, query: '' }))}
+                aria-label="Clear cleaning search"
+                data-skip-create-action="true"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </label>
 
-            <label>
-              Scheduled for
-              <input
-                type="datetime-local"
-                value={form.scheduled_for}
-                onChange={set('scheduled_for')}
-                required
-              />
-            </label>
+          <label>
+            Property
+            <select value={filters.property} onChange={setFilter('property')}>
+              <option value="all">All properties</option>
+              {activeProperties.map((property) => (
+                <option key={property.id} value={property.id}>
+                  {property.name}
+                </option>
+              ))}
+            </select>
+          </label>
 
-            <label>
-              Status
-              <select value={form.status} onChange={set('status')}>
-                {statuses.map((status) => (
-                  <option key={status}>{status}</option>
-                ))}
-              </select>
-            </label>
+          <label>
+            Status
+            <select value={filters.status} onChange={setFilter('status')}>
+              <option value="all">All statuses</option>
+              {statuses.map((status) => (
+                <option key={status} value={status}>
+                  {formatLabel(status)}
+                </option>
+              ))}
+            </select>
+          </label>
 
-            <label>
-              Supplies used
-              <input value={form.supplies_used} onChange={set('supplies_used')} />
-            </label>
-
-            <label className="full">
-              Checklist items comma-separated
-              <textarea value={form.checklist_items} onChange={set('checklist_items')} />
-            </label>
-
-            <label className="full">
-              Cleaner notes
-              <textarea value={form.cleaner_notes} onChange={set('cleaner_notes')} />
-            </label>
-          </div>
-
-          <div className="action-row">
-            <button className="primary" disabled={saving}>
-              {saving ? 'Saving…' : 'Save task'}
-            </button>
-            <button type="button" onClick={() => setShowForm(false)} disabled={saving}>
-              Cancel
-            </button>
-          </div>
-        </form>
-      )}
-
-      {filteredTasks.length ? (
-        <div className="task-grid">
-          {filteredTasks.map((task) => (
-            <section className={`card task-card ${isOverdue(task) ? 'urgent' : ''}`} key={task.id}>
-              <div className="card-header">
-                <div>
-                  <h3>{task.property || 'Unassigned property'}</h3>
-                  <p>Scheduled {formatDateTime(task.scheduledFor || task.scheduled_for)}</p>
-                </div>
-                <StatusBadge>{task.status || 'scheduled'}</StatusBadge>
-              </div>
-
-              <ul className="checklist">
-                {getTaskChecklist(task).length ? (
-                  getTaskChecklist(task).map((item) => (
-                    <li key={item}>
-                      <CheckCircle2 size={16} />
-                      {item}
-                    </li>
-                  ))
-                ) : (
-                  <li>
-                    <CheckCircle2 size={16} />
-                    No checklist items added
-                  </li>
-                )}
-              </ul>
-
-              <label>
-                Notes
-                <textarea
-                  defaultValue={getTaskNotes(task)}
-                  onBlur={(event) => updateNotes(task, event.target.value)}
-                  disabled={!canUpdate}
-                />
-              </label>
-
-              <div className="action-row">
-                <button
-                  type="button"
-                  onClick={() => changeStatus(task, 'in_progress')}
-                  disabled={!canUpdate || task.status === 'in_progress'}
-                >
-                  Start / in progress
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => changeStatus(task, 'completed')}
-                  disabled={!canUpdate || task.status === 'completed'}
-                >
-                  Mark completed
-                </button>
-
-                <button
-                  type="button"
-                  className="primary"
-                  onClick={() => changeStatus(task, 'guest_ready')}
-                  disabled={!canUpdate || task.status === 'guest_ready'}
-                >
-                  Mark guest-ready
-                </button>
-              </div>
-
-              <label className="upload-button">
-                <Camera size={16} />
-                {uploadingTaskId === task.id ? 'Uploading…' : 'Upload before/after photo'}
-                <input
-                  type="file"
-                  accept="image/*"
-                  disabled={!canUpdate || uploadingTaskId === task.id}
-                  onChange={(event) => handleUpload(task, event.target.files?.[0])}
-                />
-              </label>
-
-              <label className="inline-check">
-                <input
-                  type="checkbox"
-                  checked={Boolean(task.issue_reported)}
-                  disabled={!canUpdate}
-                  onChange={(event) => updateIssueReported(task, event.target.checked)}
-                />
-                Issue reported
-              </label>
-            </section>
-          ))}
+          <label>
+            View
+            <select value={filters.view} onChange={setFilter('view')}>
+              <option value="open">Open tasks</option>
+              <option value="today">Due today</option>
+              <option value="overdue">Overdue</option>
+              <option value="issues">Issues reported</option>
+              <option value="all">All tasks</option>
+            </select>
+          </label>
         </div>
-      ) : (
+      </section>
+
+      {!tasks.length ? (
         <EmptyState
-          title="No cleaning tasks found."
-          description={
-            tasks.length
-              ? 'No cleaning tasks match the current filters.'
-              : 'Create a cleaning task or add bookings to schedule cleanings after checkout.'
-          }
+          eyebrow="Cleaning"
+          icon={Sparkles}
+          title="No cleaning tasks yet"
+          description="Create the first cleaning task after adding a property or booking. Cleaning tasks should be tied to real workspace properties."
           action={
             canCreate ? (
-              <button className="primary" type="button" onClick={() => setShowForm(true)}>
-                Create cleaning task
+              <button type="button" className="primary" data-create-action="cleaning">
+                <Plus size={16} />
+                Add Cleaning Task
               </button>
             ) : null
           }
+          secondaryAction={
+            <button type="button" onClick={() => setFilters((current) => ({ ...current, view: 'all' }))} data-skip-create-action="true">
+              View all
+            </button>
+          }
+        />
+      ) : filteredTasks.length ? (
+        <section className="cleaning-task-grid">
+          {filteredTasks.map((task) => (
+            <CleaningTaskCard
+              key={task.id}
+              task={task}
+              properties={properties}
+              canUpdate={canUpdate}
+              uploading={uploadingTaskId === task.id}
+              updating={updatingTaskId === task.id}
+              onStatusChange={changeStatus}
+              onIssueChange={updateIssueReported}
+              onNotesSave={updateNotes}
+              onUpload={handleUpload}
+            />
+          ))}
+        </section>
+      ) : (
+        <EmptyState
+          eyebrow="Cleaning filters"
+          icon={ClipboardCheck}
+          title="No cleaning tasks match your filters"
+          description="Adjust the search, property, status, or view filter to find cleaning tasks."
+          action={
+            <button
+              type="button"
+              onClick={() =>
+                setFilters({
+                  query: '',
+                  property: 'all',
+                  status: 'all',
+                  view: 'open',
+                })
+              }
+              data-skip-create-action="true"
+            >
+              Clear filters
+            </button>
+          }
         />
       )}
+
+      <section className="panel-grid two">
+        <div className="card">
+          <div className="card-header">
+            <div>
+              <h3>Properties with active cleaning</h3>
+              <p>Quick view of properties that currently have open cleaning tasks.</p>
+            </div>
+            <Home size={20} className="muted" />
+          </div>
+
+          {openTasks.length ? (
+            openTasks.slice(0, 6).map((task) => (
+              <div className="list-row" key={`open-${task.id}`}>
+                <span>
+                  <strong>{getTaskPropertyName(task, properties)}</strong>
+                  <small>{formatDateTime(task.scheduledFor || task.scheduled_for)}</small>
+                </span>
+                <StatusBadge tone={statusTone(task.status)}>{task.status || 'scheduled'}</StatusBadge>
+              </div>
+            ))
+          ) : (
+            <EmptyState
+              compact
+              icon={CheckCircle2}
+              title="No active cleaning"
+              description="Open cleaning tasks will appear here."
+            />
+          )}
+        </div>
+
+        <div className="card">
+          <div className="card-header">
+            <div>
+              <h3>Issue reports</h3>
+              <p>Cleaning tasks where the cleaner reported a property issue.</p>
+            </div>
+            <AlertTriangle size={20} className="muted" />
+          </div>
+
+          {issueTasks.length ? (
+            issueTasks.slice(0, 6).map((task) => (
+              <div className="list-row" key={`issue-${task.id}`}>
+                <span>
+                  <strong>{getTaskPropertyName(task, properties)}</strong>
+                  <small>{getTaskNotes(task) || 'Issue reported during cleaning.'}</small>
+                </span>
+                <StatusBadge tone="warning">issue reported</StatusBadge>
+              </div>
+            ))
+          ) : (
+            <EmptyState
+              compact
+              icon={CheckCircle2}
+              title="No cleaning issues"
+              description="Reported cleaning issues will appear here."
+            />
+          )}
+        </div>
+      </section>
     </AppLayout>
   );
 }
