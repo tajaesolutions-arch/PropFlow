@@ -1,5 +1,79 @@
-export function formatCurrency(value, currency = 'USD') {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(value || 0);
+export function safeNumber(value, fallback = 0) {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return fallback;
+  }
+
+  return number;
 }
-export function formatPercent(value) { return `${Math.round(value || 0)}%`; }
-export function compactNumber(value) { return new Intl.NumberFormat('en-US', { notation: 'compact' }).format(value || 0); }
+
+export function formatCurrency(value, currency = 'USD', options = {}) {
+  const amount = safeNumber(value, 0);
+  const safeCurrency = String(currency || 'USD').toUpperCase();
+
+  const formatterOptions = {
+    style: 'currency',
+    currency: safeCurrency,
+    maximumFractionDigits: options.maximumFractionDigits ?? 0,
+    minimumFractionDigits: options.minimumFractionDigits ?? 0,
+  };
+
+  try {
+    return new Intl.NumberFormat(options.locale || 'en-US', formatterOptions).format(amount);
+  } catch (error) {
+    return new Intl.NumberFormat(options.locale || 'en-US', {
+      maximumFractionDigits: formatterOptions.maximumFractionDigits,
+      minimumFractionDigits: formatterOptions.minimumFractionDigits,
+    }).format(amount);
+  }
+}
+
+export function formatPercent(value, options = {}) {
+  const number = safeNumber(value, 0);
+
+  const percent = Math.abs(number) <= 1 && number !== 0 ? number * 100 : number;
+
+  return `${Math.round(percent)}%`;
+}
+
+export function compactNumber(value, options = {}) {
+  return new Intl.NumberFormat(options.locale || 'en-US', {
+    notation: 'compact',
+    maximumFractionDigits: options.maximumFractionDigits ?? 1,
+  }).format(safeNumber(value, 0));
+}
+
+export function formatDate(value, fallback = '—') {
+  if (!value) return fallback;
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return fallback;
+  }
+
+  return date.toLocaleDateString([], {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+export function formatDateTime(value, fallback = '—') {
+  if (!value) return fallback;
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return fallback;
+  }
+
+  return date.toLocaleString([], {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
