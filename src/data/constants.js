@@ -1,4 +1,4 @@
-export const currencies = ['USD', 'JMD', 'CAD', 'GBP', 'EUR'];
+export const currencies = ['USD', 'JMD', 'CAD', 'GBP', 'EUR', 'AUD', 'NZD', 'MXN'];
 
 export const roles = {
   ADMIN: 'propflow_admin',
