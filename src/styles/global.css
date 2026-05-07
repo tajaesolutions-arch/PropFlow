@@ -1950,3 +1950,75 @@ label {
     display: inline;
   }
 }
+/* Topbar polish */
+
+.topbar-title {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.topbar-title h1,
+.topbar-title p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-date-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 0 10px;
+  box-shadow: var(--shadow-sm);
+  color: var(--muted);
+}
+
+.topbar-date-filter .date-filter {
+  min-height: 38px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding-left: 0;
+  padding-right: 2px;
+  background: transparent;
+}
+
+.topbar-date-filter .date-filter:focus {
+  box-shadow: none;
+}
+
+.topbar-notification-btn {
+  position: relative;
+}
+
+.notification-dot {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--error);
+  border: 2px solid var(--surface);
+}
+
+@media (max-width: 1200px) {
+  .topbar-date-filter {
+    width: 100%;
+  }
+}
+
+@media (max-width: 760px) {
+  .topbar-title h1 {
+    font-size: 20px;
+  }
+
+  .topbar-title p {
+    white-space: normal;
+  }
+}
