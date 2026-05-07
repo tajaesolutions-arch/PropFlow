@@ -312,3 +312,28 @@ textarea{font:inherit;border:1px solid var(--border);border-radius:10px;padding:
     width: auto;
   }
 }
+/* Empty state polish */
+
+.empty-state-icon {
+  width: 48px;
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  background: #f1f5f9;
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+
+.compact-empty-state {
+  padding: 18px;
+}
+
+.empty-state .empty-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
