@@ -5,7 +5,6 @@ import {
   CalendarCheck,
   ClipboardList,
   DollarSign,
-  Home,
   Hotel,
   LineChart as LineChartIcon,
   Percent,
@@ -34,6 +33,14 @@ import { navigate } from '../routes/AppRouter.jsx';
 
 const completedStatuses = new Set(['completed', 'cancelled']);
 const cancelledStatuses = new Set(['cancelled', 'void', 'refunded']);
+const dateRangeOptions = [
+  { value: 'last_30_days', label: 'Last 30 days' },
+  { value: 'this_month', label: 'This month' },
+  { value: 'quarter_to_date', label: 'Quarter to date' },
+  { value: 'year_to_date', label: 'Year to date' },
+  { value: 'all_time', label: 'All time' },
+];
+const currencyOptions = ['USD', 'JMD', 'CAD', 'GBP', 'EUR'];
 
 function toNumber(value) {
   const numericValue = Number(value);
@@ -48,15 +55,33 @@ function getAmount(record, keys) {
 }
 
 function formatCurrency(value, currency = 'USD') {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-    maximumFractionDigits: 0,
-  }).format(toNumber(value));
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 0,
+    }).format(toNumber(value));
+  } catch {
+    return new Intl.NumberFormat('en-US', {
+      maximumFractionDigits: 0,
+    }).format(toNumber(value));
+  }
 }
 
 function formatPercent(value) {
   return `${Math.round(toNumber(value))}%`;
+}
+
+function formatDate(value, fallback = '—') {
+  const date = getDateValue(value);
+
+  if (!date) return fallback;
+
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 function getDateValue(value) {
@@ -64,22 +89,93 @@ function getDateValue(value) {
 
   const date = new Date(value);
 
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
+  if (Number.isNaN(date.getTime())) return null;
 
   return date;
+}
+
+function startOfDay(date) {
+  const nextDate = new Date(date);
+  nextDate.setHours(0, 0, 0, 0);
+  return nextDate;
+}
+
+function startOfMonth(date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function startOfQuarter(date) {
+  const quarterStartMonth = Math.floor(date.getMonth() / 3) * 3;
+  return new Date(date.getFullYear(), quarterStartMonth, 1);
+}
+
+function startOfYear(date) {
+  return new Date(date.getFullYear(), 0, 1);
+}
+
+function getDateRange(rangeKey) {
+  const today = startOfDay(new Date());
+  const end = new Date(today);
+  end.setHours(23, 59, 59, 999);
+
+  if (rangeKey === 'all_time') {
+    return { start: null, end: null };
+  }
+
+  if (rangeKey === 'this_month') {
+    return { start: startOfMonth(today), end };
+  }
+
+  if (rangeKey === 'quarter_to_date') {
+    return { start: startOfQuarter(today), end };
+  }
+
+  if (rangeKey === 'year_to_date') {
+    return { start: startOfYear(today), end };
+  }
+
+  const start = new Date(today);
+  start.setDate(start.getDate() - 29);
+  return { start, end };
+}
+
+function isDateInRange(value, range) {
+  if (!range?.start && !range?.end) return true;
+
+  const date = getDateValue(value);
+  if (!date) return false;
+
+  if (range.start && date < range.start) return false;
+  if (range.end && date > range.end) return false;
+
+  return true;
 }
 
 function daysBetween(start, end) {
   const startDate = getDateValue(start);
   const endDate = getDateValue(end);
 
-  if (!startDate || !endDate || endDate <= startDate) {
-    return 0;
-  }
+  if (!startDate || !endDate || endDate <= startDate) return 0;
 
   return Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+}
+
+function daysInRange(range) {
+  if (!range?.start || !range?.end) return 30;
+
+  return Math.max(daysBetween(range.start, range.end) + 1, 1);
+}
+
+function getBookingDate(booking) {
+  return booking.checkIn || booking.check_in || booking.created_at;
+}
+
+function getCleaningDate(task) {
+  return task.scheduledFor || task.scheduled_for || task.created_at;
+}
+
+function getMaintenanceDate(workOrder) {
+  return workOrder.due || workOrder.due_date || workOrder.created_at;
 }
 
 function getBookingNights(booking) {
@@ -109,56 +205,95 @@ function getPropertyName(record, properties = []) {
   return record?.property || property?.name || 'Unassigned property';
 }
 
+function matchesProperty(record, propertyId) {
+  return propertyId === 'all' || getPropertyId(record) === propertyId;
+}
+
 function isUpcomingDate(value) {
   const date = getDateValue(value);
-  const today = new Date();
-
-  today.setHours(0, 0, 0, 0);
+  const today = startOfDay(new Date());
 
   return Boolean(date && date >= today);
 }
 
-function getMonthLabel(value) {
+function monthKey(value) {
   const date = getDateValue(value);
+  if (!date) return null;
 
-  if (!date) return 'Unscheduled';
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
 
-  return date.toLocaleDateString('en-US', {
+function monthLabelFromKey(key) {
+  const [year, month] = key.split('-').map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString('en-US', {
     month: 'short',
   });
 }
 
-function buildMonthlyRevenue(bookings) {
+function getRecentMonthKeys(count = 6) {
+  const keys = [];
+  const date = new Date();
+  date.setDate(1);
+
+  for (let index = count - 1; index >= 0; index -= 1) {
+    const nextDate = new Date(date.getFullYear(), date.getMonth() - index, 1);
+    keys.push(`${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}`);
+  }
+
+  return keys;
+}
+
+function buildMonthlyRevenue(bookings, maintenanceWorkOrders, cleaningTasks) {
   const monthMap = new Map();
 
-  bookings.forEach((booking) => {
-    if (cancelledStatuses.has(booking.status)) return;
-
-    const label = getMonthLabel(booking.checkIn || booking.check_in || booking.created_at);
-    const current = monthMap.get(label) || {
-      month: label,
+  const ensureMonth = (key) => {
+    const current = monthMap.get(key) || {
+      key,
+      month: monthLabelFromKey(key),
       revenue: 0,
       expenses: 0,
     };
 
-    current.revenue += getBookingAmount(booking);
-    monthMap.set(label, current);
+    monthMap.set(key, current);
+    return current;
+  };
+
+  bookings.forEach((booking) => {
+    if (cancelledStatuses.has(booking.status)) return;
+
+    const key = monthKey(getBookingDate(booking));
+    if (!key) return;
+
+    ensureMonth(key).revenue += getBookingAmount(booking);
   });
 
-  const rows = Array.from(monthMap.values());
+  maintenanceWorkOrders.forEach((workOrder) => {
+    const key = monthKey(getMaintenanceDate(workOrder));
+    if (!key) return;
 
-  if (rows.length) {
-    return rows.slice(-6);
+    ensureMonth(key).expenses += getMaintenanceCost(workOrder);
+  });
+
+  cleaningTasks.forEach((task) => {
+    const key = monthKey(getCleaningDate(task));
+    if (!key) return;
+
+    ensureMonth(key).expenses += getCleaningCost(task);
+  });
+
+  if (!monthMap.size) {
+    return getRecentMonthKeys().map((key) => ({
+      key,
+      month: monthLabelFromKey(key),
+      revenue: 0,
+      expenses: 0,
+    }));
   }
 
-  return [
-    { month: 'Jan', revenue: 0, expenses: 0 },
-    { month: 'Feb', revenue: 0, expenses: 0 },
-    { month: 'Mar', revenue: 0, expenses: 0 },
-    { month: 'Apr', revenue: 0, expenses: 0 },
-    { month: 'May', revenue: 0, expenses: 0 },
-    { month: 'Jun', revenue: 0, expenses: 0 },
-  ];
+  return Array.from(monthMap.values())
+    .sort((a, b) => a.key.localeCompare(b.key))
+    .slice(-6)
+    .map(({ key, ...row }) => row);
 }
 
 function buildPropertyPerformance({ properties, bookings, maintenanceWorkOrders, cleaningTasks }) {
@@ -188,9 +323,28 @@ function buildPropertyPerformance({ properties, bookings, maintenanceWorkOrders,
   });
 }
 
+function filterRecords({ records, selectedPropertyId, dateRange, getRecordDate }) {
+  return records.filter((record) => matchesProperty(record, selectedPropertyId) && isDateInRange(getRecordDate(record), dateRange));
+}
+
 export function DashboardPage() {
   const { data, currentWorkspace } = useApp();
-  const currency = currentWorkspace?.defaultCurrency || currentWorkspace?.default_currency || 'USD';
+  const workspaceCurrency = currentWorkspace?.defaultCurrency || currentWorkspace?.default_currency || 'USD';
+  const [filters, setFilters] = React.useState({
+    propertyId: 'all',
+    dateRange: 'last_30_days',
+    currency: workspaceCurrency,
+  });
+
+  React.useEffect(() => {
+    setFilters((current) => ({
+      ...current,
+      currency: current.currency || workspaceCurrency,
+    }));
+  }, [workspaceCurrency]);
+
+  const selectedDateRange = getDateRange(filters.dateRange);
+  const displayCurrency = filters.currency || workspaceCurrency;
 
   const properties = data.properties || [];
   const bookings = data.bookings || [];
@@ -198,47 +352,72 @@ export function DashboardPage() {
   const maintenanceWorkOrders = data.maintenanceWorkOrders || [];
 
   const activeProperties = properties.filter((property) => property.status !== 'archived');
-  const activeBookings = bookings.filter((booking) => !cancelledStatuses.has(booking.status));
+  const filteredProperties = filters.propertyId === 'all'
+    ? activeProperties
+    : activeProperties.filter((property) => property.id === filters.propertyId);
 
-  const urgentMaintenance = maintenanceWorkOrders.filter(
+  const activeBookings = filterRecords({
+    records: bookings.filter((booking) => !cancelledStatuses.has(booking.status)),
+    selectedPropertyId: filters.propertyId,
+    dateRange: selectedDateRange,
+    getRecordDate: getBookingDate,
+  });
+
+  const filteredCleaningTasks = filterRecords({
+    records: cleaningTasks,
+    selectedPropertyId: filters.propertyId,
+    dateRange: selectedDateRange,
+    getRecordDate: getCleaningDate,
+  });
+
+  const filteredMaintenanceWorkOrders = filterRecords({
+    records: maintenanceWorkOrders,
+    selectedPropertyId: filters.propertyId,
+    dateRange: selectedDateRange,
+    getRecordDate: getMaintenanceDate,
+  });
+
+  const urgentMaintenance = filteredMaintenanceWorkOrders.filter(
     (workOrder) => workOrder.priority === 'urgent' && !completedStatuses.has(workOrder.status),
   );
 
-  const openMaintenance = maintenanceWorkOrders.filter(
+  const openMaintenance = filteredMaintenanceWorkOrders.filter(
     (workOrder) => !completedStatuses.has(workOrder.status),
   );
 
-  const dueCleaningTasks = cleaningTasks.filter((task) => !completedStatuses.has(task.status));
+  const dueCleaningTasks = filteredCleaningTasks.filter((task) => !completedStatuses.has(task.status));
 
   const upcomingBookings = activeBookings
     .filter((booking) => isUpcomingDate(booking.checkIn || booking.check_in))
+    .sort((a, b) => getDateValue(getBookingDate(a)) - getDateValue(getBookingDate(b)))
     .slice(0, 5);
 
   const grossRevenue = activeBookings.reduce((total, booking) => total + getBookingAmount(booking), 0);
-  const cleaningCost = cleaningTasks.reduce((total, task) => total + getCleaningCost(task), 0);
-  const maintenanceCost = maintenanceWorkOrders.reduce(
+  const cleaningCost = filteredCleaningTasks.reduce((total, task) => total + getCleaningCost(task), 0);
+  const maintenanceCost = filteredMaintenanceWorkOrders.reduce(
     (total, workOrder) => total + getMaintenanceCost(workOrder),
     0,
   );
   const netProfit = grossRevenue - cleaningCost - maintenanceCost;
 
   const bookedNights = activeBookings.reduce((total, booking) => total + getBookingNights(booking), 0);
-  const availableNights = Math.max(activeProperties.length * 30, 1);
+  const availableNights = Math.max(filteredProperties.length * daysInRange(selectedDateRange), 1);
   const occupancyRate = Math.min((bookedNights / availableNights) * 100, 100);
 
   const issueCount = urgentMaintenance.length + openMaintenance.length + dueCleaningTasks.length;
   const operationsHealth = Math.max(100 - issueCount * 8, 0);
 
-  const revenueChartData = buildMonthlyRevenue(activeBookings).map((row) => ({
-    ...row,
-    expenses: Math.round((cleaningCost + maintenanceCost) / 6),
-  }));
+  const revenueChartData = buildMonthlyRevenue(
+    activeBookings,
+    filteredMaintenanceWorkOrders,
+    filteredCleaningTasks,
+  );
 
   const propertyPerformance = buildPropertyPerformance({
-    properties: activeProperties,
+    properties: filteredProperties,
     bookings: activeBookings,
-    maintenanceWorkOrders,
-    cleaningTasks,
+    maintenanceWorkOrders: filteredMaintenanceWorkOrders,
+    cleaningTasks: filteredCleaningTasks,
   }).sort((a, b) => b.revenue - a.revenue);
 
   const profitBreakdown = [
@@ -250,9 +429,24 @@ export function DashboardPage() {
 
   const hasWorkspaceData =
     activeProperties.length ||
-    activeBookings.length ||
+    bookings.length ||
     cleaningTasks.length ||
     maintenanceWorkOrders.length;
+
+  const filteredResultCount =
+    filteredProperties.length +
+    activeBookings.length +
+    filteredCleaningTasks.length +
+    filteredMaintenanceWorkOrders.length;
+
+  const selectedRangeLabel = dateRangeOptions.find((option) => option.value === filters.dateRange)?.label || 'Selected range';
+
+  const updateFilter = (key) => (event) => {
+    setFilters((current) => ({
+      ...current,
+      [key]: event.target.value,
+    }));
+  };
 
   return (
     <AppLayout
@@ -285,19 +479,78 @@ export function DashboardPage() {
         </section>
       )}
 
+      <section className="card compact">
+        <div className="card-header">
+          <div>
+            <h3>Dashboard filters</h3>
+            <p>
+              Showing {filteredResultCount} matching workspace records for {selectedRangeLabel.toLowerCase()}.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setFilters({ propertyId: 'all', dateRange: 'last_30_days', currency: workspaceCurrency })}
+          >
+            Reset filters
+          </button>
+        </div>
+
+        <div className="filter-bar booking-filter">
+          <select aria-label="Property filter" value={filters.propertyId} onChange={updateFilter('propertyId')}>
+            <option value="all">All properties</option>
+            {activeProperties.map((property) => (
+              <option key={property.id} value={property.id}>
+                {property.name}
+              </option>
+            ))}
+          </select>
+
+          <select aria-label="Date range filter" value={filters.dateRange} onChange={updateFilter('dateRange')}>
+            {dateRangeOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+
+          <select aria-label="Currency display filter" value={displayCurrency} onChange={updateFilter('currency')}>
+            {[...new Set([workspaceCurrency, ...currencyOptions])].map((currency) => (
+              <option key={currency} value={currency}>
+                {currency}
+              </option>
+            ))}
+          </select>
+
+          <button type="button" onClick={() => navigate('/properties')}>
+            <Building2 size={16} />
+            Add property
+          </button>
+
+          <button type="button" onClick={() => navigate('/bookings')}>
+            <CalendarCheck size={16} />
+            Add booking
+          </button>
+
+          <button type="button" onClick={() => navigate('/maintenance')}>
+            <Wrench size={16} />
+            Add work order
+          </button>
+        </div>
+      </section>
+
       <div className="stat-grid dense">
         <StatCard
           label="Gross revenue"
-          value={formatCurrency(grossRevenue, currency)}
+          value={formatCurrency(grossRevenue, displayCurrency)}
           icon={DollarSign}
-          trend={`${activeBookings.length} active bookings`}
+          trend={`${activeBookings.length} matching bookings`}
         />
 
         <StatCard
           label="Net profit"
-          value={formatCurrency(netProfit, currency)}
+          value={formatCurrency(netProfit, displayCurrency)}
           icon={TrendingUp}
-          trend={`${formatCurrency(cleaningCost + maintenanceCost, currency)} tracked expenses`}
+          trend={`${formatCurrency(cleaningCost + maintenanceCost, displayCurrency)} tracked expenses`}
           tone={netProfit >= 0 ? 'accent' : 'warning'}
         />
 
@@ -317,52 +570,20 @@ export function DashboardPage() {
         />
       </div>
 
-      <div className="filter-bar booking-filter">
-        <select aria-label="Property filter">
-          <option>All properties</option>
-          {activeProperties.map((property) => (
-            <option key={property.id}>{property.name}</option>
-          ))}
-        </select>
-
-        <select aria-label="Date range filter">
-          <option>Last 30 days</option>
-          <option>This month</option>
-          <option>Quarter to date</option>
-          <option>Year to date</option>
-        </select>
-
-        <select aria-label="Currency filter" defaultValue={currency}>
-          <option>{currency}</option>
-          <option>USD</option>
-          <option>JMD</option>
-          <option>CAD</option>
-          <option>GBP</option>
-          <option>EUR</option>
-        </select>
-
-        <button type="button" onClick={() => navigate('/properties')}>
-          <Building2 size={16} />
-          Add property
-        </button>
-
-        <button type="button" onClick={() => navigate('/bookings')}>
-          <CalendarCheck size={16} />
-          Add booking
-        </button>
-
-        <button type="button" onClick={() => navigate('/maintenance')}>
-          <Wrench size={16} />
-          Add work order
-        </button>
-      </div>
+      {!filteredResultCount && hasWorkspaceData && (
+        <EmptyState
+          title="No dashboard records match these filters"
+          description="Try another property, date range, or reset filters to see more workspace data."
+          compact
+        />
+      )}
 
       <div className="chart-grid">
         <section className="card">
           <div className="card-header">
             <div>
               <h3>Revenue vs expenses</h3>
-              <p>Monthly operating snapshot for the selected workspace.</p>
+              <p>Filtered monthly operating snapshot for the selected workspace.</p>
             </div>
             <LineChartIcon size={20} />
           </div>
@@ -373,7 +594,7 @@ export function DashboardPage() {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="month" />
                 <YAxis />
-                <Tooltip formatter={(value) => formatCurrency(value, currency)} />
+                <Tooltip formatter={(value) => formatCurrency(value, displayCurrency)} />
                 <Line type="monotone" dataKey="revenue" strokeWidth={2} dot={false} />
                 <Line type="monotone" dataKey="expenses" strokeWidth={2} dot={false} />
               </LineChart>
@@ -385,7 +606,7 @@ export function DashboardPage() {
           <div className="card-header">
             <div>
               <h3>Profit breakdown</h3>
-              <p>Revenue, tracked operating costs, and estimated profit.</p>
+              <p>Filtered revenue, expenses, and profit totals.</p>
             </div>
             <Banknote size={20} />
           </div>
@@ -396,7 +617,7 @@ export function DashboardPage() {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="label" />
                 <YAxis />
-                <Tooltip formatter={(value) => formatCurrency(value, currency)} />
+                <Tooltip formatter={(value) => formatCurrency(value, displayCurrency)} />
                 <Bar dataKey="value" radius={[8, 8, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -409,30 +630,31 @@ export function DashboardPage() {
           <div className="card-header">
             <div>
               <h3>Upcoming bookings</h3>
-              <p>Next arrivals and reservation activity.</p>
+              <p>Future check-ins matching the selected property and date range.</p>
             </div>
-            <button type="button" onClick={() => navigate('/bookings')}>
-              View all
-            </button>
+            <Hotel size={20} />
           </div>
 
           {upcomingBookings.length ? (
-            upcomingBookings.map((booking) => (
-              <div className="list-row" key={booking.id}>
-                <Hotel size={18} />
-                <span>
-                  {booking.guestName || booking.guest_name || 'Guest booking'}
-                  <small>
-                    {getPropertyName(booking, properties)} · {booking.checkIn || booking.check_in}
-                  </small>
-                </span>
-                <StatusBadge>{booking.status || 'confirmed'}</StatusBadge>
-              </div>
-            ))
+            <div className="stack-list">
+              {upcomingBookings.map((booking) => (
+                <div className="stack-item" key={booking.id}>
+                  <div>
+                    <strong>{booking.guestName || booking.guest_name || 'Guest booking'}</strong>
+                    <small>{getPropertyName(booking, properties)}</small>
+                  </div>
+                  <div className="right-detail">
+                    <span>{formatDate(booking.checkIn || booking.check_in)}</span>
+                    <StatusBadge>{booking.status || 'confirmed'}</StatusBadge>
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : (
             <EmptyState
-              title="No upcoming bookings yet."
-              description="Add bookings manually or connect direct booking tools later."
+              title="No upcoming bookings"
+              description="No future bookings match the active dashboard filters."
+              compact
             />
           )}
         </section>
@@ -440,35 +662,43 @@ export function DashboardPage() {
         <section className="card">
           <div className="card-header">
             <div>
-              <h3>Operations alerts</h3>
-              <p>Cleaning and maintenance items that need attention.</p>
+              <h3>Operational alerts</h3>
+              <p>Cleaning and maintenance items matching the dashboard filters.</p>
             </div>
-            <button type="button" onClick={() => navigate('/maintenance')}>
-              View work orders
-            </button>
+            <Wrench size={20} />
           </div>
 
-          {urgentMaintenance.length ? (
-            urgentMaintenance.slice(0, 5).map((workOrder) => (
-              <div className="list-row" key={workOrder.id}>
-                <Wrench size={18} />
-                <span>
-                  {workOrder.title || 'Maintenance issue'}
-                  <small>{getPropertyName(workOrder, properties)}</small>
-                </span>
-                <StatusBadge>{workOrder.priority || 'urgent'}</StatusBadge>
+          <div className="stack-list">
+            <div className="stack-item">
+              <div>
+                <strong>Urgent maintenance</strong>
+                <small>{urgentMaintenance.length} urgent filtered work orders</small>
               </div>
-            ))
-          ) : (
-            <p>No urgent maintenance alerts.</p>
-          )}
-
-          {dueCleaningTasks.length > 0 && (
-            <div className="helper">
-              <ClipboardList size={16} />
-              {dueCleaningTasks.length} cleaning task{dueCleaningTasks.length === 1 ? '' : 's'} still open.
+              <StatusBadge tone={urgentMaintenance.length ? 'warning' : 'success'}>
+                {urgentMaintenance.length ? 'Needs attention' : 'Clear'}
+              </StatusBadge>
             </div>
-          )}
+
+            <div className="stack-item">
+              <div>
+                <strong>Open maintenance</strong>
+                <small>{openMaintenance.length} open filtered work orders</small>
+              </div>
+              <StatusBadge tone={openMaintenance.length ? 'warning' : 'success'}>
+                {openMaintenance.length ? 'Open' : 'Clear'}
+              </StatusBadge>
+            </div>
+
+            <div className="stack-item">
+              <div>
+                <strong>Cleaning due</strong>
+                <small>{dueCleaningTasks.length} filtered cleaning tasks not completed</small>
+              </div>
+              <StatusBadge tone={dueCleaningTasks.length ? 'warning' : 'success'}>
+                {dueCleaningTasks.length ? 'Due' : 'Clear'}
+              </StatusBadge>
+            </div>
+          </div>
         </section>
       </div>
 
@@ -476,135 +706,50 @@ export function DashboardPage() {
         <div className="card-header">
           <div>
             <h3>Property performance</h3>
-            <p>Revenue, expenses, bookings, and open maintenance by property.</p>
+            <p>Filtered performance table recalculated from local workspace data.</p>
           </div>
-          <button type="button" onClick={() => navigate('/properties')}>
-            Manage properties
-          </button>
         </div>
 
-        {propertyPerformance.length ? (
-          <DataTable
-            rows={propertyPerformance.slice(0, 8)}
-            columns={[
-              {
-                key: 'name',
-                label: 'Property',
-                render: (row) => (
-                  <button type="button" className="link" onClick={() => navigate(`/properties/${row.id}`)}>
-                    {row.name}
-                  </button>
-                ),
-              },
-              {
-                key: 'status',
-                label: 'Status',
-                render: (row) => <StatusBadge>{row.status || 'active'}</StatusBadge>,
-              },
-              {
-                key: 'bookings',
-                label: 'Bookings',
-              },
-              {
-                key: 'revenue',
-                label: 'Revenue',
-                render: (row) => formatCurrency(row.revenue, currency),
-              },
-              {
-                key: 'expenses',
-                label: 'Expenses',
-                render: (row) => formatCurrency(row.expenses, currency),
-              },
-              {
-                key: 'netProfit',
-                label: 'Net profit',
-                render: (row) => formatCurrency(row.netProfit, currency),
-              },
-              {
-                key: 'openMaintenance',
-                label: 'Open maintenance',
-              },
-            ]}
-          />
-        ) : (
-          <EmptyState
-            title="No properties added yet."
-            description="Add your first property to start tracking performance."
-          />
-        )}
+        <DataTable
+          compact
+          rows={propertyPerformance}
+          empty="No property performance records match the active filters."
+          columns={[
+            {
+              key: 'name',
+              label: 'Property',
+              render: (property) => (
+                <div>
+                  <strong>{property.name || 'Property'}</strong>
+                  <small>{property.city || property.country || property.propertyType || property.property_type || 'No location set'}</small>
+                </div>
+              ),
+            },
+            {
+              key: 'revenue',
+              label: 'Revenue',
+              render: (property) => formatCurrency(property.revenue, displayCurrency),
+            },
+            {
+              key: 'expenses',
+              label: 'Expenses',
+              render: (property) => formatCurrency(property.expenses, displayCurrency),
+            },
+            {
+              key: 'netProfit',
+              label: 'Net profit',
+              render: (property) => formatCurrency(property.netProfit, displayCurrency),
+            },
+            { key: 'bookings', label: 'Bookings' },
+            { key: 'openMaintenance', label: 'Open maintenance' },
+            {
+              key: 'status',
+              label: 'Status',
+              render: (property) => <StatusBadge>{property.status || 'active'}</StatusBadge>,
+            },
+          ]}
+        />
       </section>
-
-      <div className="panel-grid two">
-        <section className="card">
-          <div className="card-header">
-            <div>
-              <h3>Setup checklist</h3>
-              <p>Complete these steps before launch.</p>
-            </div>
-          </div>
-
-          <ul className="checklist">
-            <li>
-              <input type="checkbox" checked={activeProperties.length > 0} readOnly />
-              Add first property
-            </li>
-            <li>
-              <input type="checkbox" checked={bookings.length > 0} readOnly />
-              Add first booking
-            </li>
-            <li>
-              <input type="checkbox" checked={cleaningTasks.length > 0} readOnly />
-              Add cleaning workflow
-            </li>
-            <li>
-              <input type="checkbox" checked={maintenanceWorkOrders.length > 0} readOnly />
-              Add maintenance workflow
-            </li>
-            <li>
-              <input type="checkbox" checked={Boolean(currentWorkspace?.defaultCurrency)} readOnly />
-              Confirm workspace currency
-            </li>
-          </ul>
-        </section>
-
-        <section className="card">
-          <div className="card-header">
-            <div>
-              <h3>Workspace snapshot</h3>
-              <p>{currentWorkspace?.name || 'No workspace selected'}</p>
-            </div>
-            <Home size={20} />
-          </div>
-
-          <div className="metadata-grid">
-            <span>
-              <Building2 size={16} />
-              {activeProperties.length} properties
-            </span>
-            <span>
-              <CalendarCheck size={16} />
-              {activeBookings.length} bookings
-            </span>
-            <span>
-              <ClipboardList size={16} />
-              {cleaningTasks.length} cleanings
-            </span>
-            <span>
-              <Wrench size={16} />
-              {openMaintenance.length} open repairs
-            </span>
-          </div>
-
-          <div className="action-row">
-            <button type="button" onClick={() => navigate('/reports')}>
-              View reports
-            </button>
-            <button type="button" onClick={() => navigate('/settings')}>
-              Workspace settings
-            </button>
-          </div>
-        </section>
-      </div>
     </AppLayout>
   );
 }
