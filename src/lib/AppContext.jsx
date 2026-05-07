@@ -4,6 +4,7 @@ import { resolvePrimaryRole } from './auth.js';
 import { isSupabaseConfigured, supabase } from './supabase.js';
 
 const AppContext = createContext(null);
+
 const emptyData = {
   properties: [],
   cleaningTasks: [],
@@ -18,6 +19,7 @@ const emptyData = {
   invites: [],
   members: [],
 };
+
 const customerAssignableRoles = new Set([
   roles.OWNER_ADMIN,
   roles.PROPERTY_MANAGER,
@@ -27,6 +29,7 @@ const customerAssignableRoles = new Set([
   roles.CLEANER,
   roles.MAINTENANCE,
 ]);
+
 const storageKey = 'propflow.currentWorkspaceId';
 
 function normalizeWorkspace(row) {
@@ -181,8 +184,13 @@ function formatSupabaseError(error, fallback = 'The database action failed.') {
 }
 
 function requireWorkspaceSession(workspace, activeSession) {
-  if (!workspace?.id) throw new Error('No workspace selected. Select or create a workspace before saving.');
-  if (!activeSession?.user?.id) throw new Error('Your session expired. Sign in again before saving.');
+  if (!workspace?.id) {
+    throw new Error('No workspace selected. Select or create a workspace before saving.');
+  }
+
+  if (!activeSession?.user?.id) {
+    throw new Error('Your session expired. Sign in again before saving.');
+  }
 }
 
 function cleanNumber(value) {
@@ -232,7 +240,11 @@ export function AppProvider({ children }) {
       makeWorkspaceQuery(
         'properties',
         'properties',
-        supabase.from('properties').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false }),
+        supabase
+          .from('properties')
+          .select('*')
+          .eq('workspace_id', workspace.id)
+          .order('created_at', { ascending: false }),
         (rows) => (rows || []).map(normalizeProperty),
         true,
       ),
@@ -249,57 +261,97 @@ export function AppProvider({ children }) {
       makeWorkspaceQuery(
         'bookings',
         'bookings',
-        supabase.from('bookings').select('*').eq('workspace_id', workspace.id).order('check_in', { ascending: true }),
+        supabase
+          .from('bookings')
+          .select('*')
+          .eq('workspace_id', workspace.id)
+          .order('check_in', { ascending: true }),
         (rows, props) => (rows || []).map((row) => normalizeBooking(row, props)),
       ),
       makeWorkspaceQuery(
         'leases',
         'leases',
-        supabase.from('leases').select('*').eq('workspace_id', workspace.id).order('lease_start', { ascending: true }),
+        supabase
+          .from('leases')
+          .select('*')
+          .eq('workspace_id', workspace.id)
+          .order('lease_start', { ascending: true }),
         (rows, props) => (rows || []).map((row) => normalizeLease(row, props)),
       ),
       makeWorkspaceQuery(
         'contacts',
         'contacts',
-        supabase.from('contacts').select('*').eq('workspace_id', workspace.id).order('updated_at', { ascending: false }),
+        supabase
+          .from('contacts')
+          .select('*')
+          .eq('workspace_id', workspace.id)
+          .order('updated_at', { ascending: false }),
       ),
       makeWorkspaceQuery(
         'cleaning tasks',
         'cleaningTasks',
-        supabase.from('cleaning_tasks').select('*').eq('workspace_id', workspace.id).order('scheduled_for', { ascending: true }),
+        supabase
+          .from('cleaning_tasks')
+          .select('*')
+          .eq('workspace_id', workspace.id)
+          .order('scheduled_for', { ascending: true }),
         (rows, props) => (rows || []).map((row) => normalizeCleaning(row, props)),
       ),
       makeWorkspaceQuery(
         'maintenance work orders',
         'maintenanceWorkOrders',
-        supabase.from('maintenance_work_orders').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false }),
+        supabase
+          .from('maintenance_work_orders')
+          .select('*')
+          .eq('workspace_id', workspace.id)
+          .order('created_at', { ascending: false }),
         (rows, props) => (rows || []).map((row) => normalizeMaintenance(row, props)),
       ),
       makeWorkspaceQuery(
         'supplies',
         'supplies',
-        supabase.from('supplies').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false }),
+        supabase
+          .from('supplies')
+          .select('*')
+          .eq('workspace_id', workspace.id)
+          .order('created_at', { ascending: false }),
         (rows, props) => (rows || []).map((row) => normalizeSupply(row, props)),
       ),
       makeWorkspaceQuery(
         'workspace invites',
         'invites',
-        supabase.from('workspace_invites').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false }),
+        supabase
+          .from('workspace_invites')
+          .select('*')
+          .eq('workspace_id', workspace.id)
+          .order('created_at', { ascending: false }),
       ),
       makeWorkspaceQuery(
         'file uploads',
         'fileUploads',
-        supabase.from('file_uploads').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false }),
+        supabase
+          .from('file_uploads')
+          .select('*')
+          .eq('workspace_id', workspace.id)
+          .order('created_at', { ascending: false }),
       ),
       makeWorkspaceQuery(
         'notifications',
         'notifications',
-        supabase.from('notifications').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false }),
+        supabase
+          .from('notifications')
+          .select('*')
+          .eq('workspace_id', workspace.id)
+          .order('created_at', { ascending: false }),
       ),
       makeWorkspaceQuery(
         'owner reports',
         'ownerReports',
-        supabase.from('owner_reports').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false }),
+        supabase
+          .from('owner_reports')
+          .select('*')
+          .eq('workspace_id', workspace.id)
+          .order('created_at', { ascending: false }),
       ),
     ];
 
@@ -376,8 +428,13 @@ export function AppProvider({ children }) {
         full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'PropFlow user',
       };
 
-      const { error: upsertError } = await supabase.from('profiles').upsert(profilePayload, { onConflict: 'id' });
-      if (upsertError) console.error('[PropFlow] Could not upsert profile during account load', upsertError);
+      const { error: upsertError } = await supabase.from('profiles').upsert(profilePayload, {
+        onConflict: 'id',
+      });
+
+      if (upsertError) {
+        console.error('[PropFlow] Could not upsert profile during account load', upsertError);
+      }
 
       const [profileResult, memberResult] = await Promise.allSettled([
         supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
@@ -388,8 +445,16 @@ export function AppProvider({ children }) {
           .order('created_at', { ascending: true }),
       ]);
 
-      const profileRes = profileResult.status === 'fulfilled' ? profileResult.value : { data: null, error: profileResult.reason };
-      const memberRes = memberResult.status === 'fulfilled' ? memberResult.value : { data: [], error: memberResult.reason };
+      const profileRes =
+        profileResult.status === 'fulfilled'
+          ? profileResult.value
+          : { data: null, error: profileResult.reason };
+
+      const memberRes =
+        memberResult.status === 'fulfilled'
+          ? memberResult.value
+          : { data: [], error: memberResult.reason };
+
       const accountErrors = [];
 
       if (profileRes.error) {
@@ -402,13 +467,20 @@ export function AppProvider({ children }) {
         accountErrors.push(`workspace membership: ${formatSupabaseError(memberRes.error)}`);
       }
 
-      const activeMemberships = memberRes.error ? [] : (memberRes.data || []).filter((m) => m.status !== 'revoked');
-      const normalizedWorkspaces = activeMemberships.map((m) => normalizeWorkspace(m.workspaces)).filter(Boolean);
+      const activeMemberships = memberRes.error
+        ? []
+        : (memberRes.data || []).filter((m) => m.status !== 'revoked');
+
+      const normalizedWorkspaces = activeMemberships
+        .map((m) => normalizeWorkspace(m.workspaces))
+        .filter(Boolean);
+
       const preferredId = localStorage.getItem(storageKey);
       const selectedMembership = activeMemberships.find((m) => m.workspace_id === preferredId) || activeMemberships[0];
       const profile = profileRes.data || profilePayload;
       const selectedWorkspace = normalizeWorkspace(selectedMembership?.workspaces);
       const userRoles = profile.is_propflow_admin ? [roles.ADMIN] : selectedMembership?.roles || [];
+
       const nextUser = {
         id: user.id,
         email: user.email,
@@ -433,7 +505,11 @@ export function AppProvider({ children }) {
       }
 
       if (accountErrors.length) {
-        setError(`We loaded your account, but some workspace data could not be loaded. Please refresh or contact support. (${accountErrors.join('; ')})`);
+        setError(
+          `We loaded your account, but some workspace data could not be loaded. Please refresh or contact support. (${accountErrors.join(
+            '; ',
+          )})`,
+        );
       }
 
       accountState = {
@@ -450,6 +526,7 @@ export function AppProvider({ children }) {
 
       if (activeSession?.user) {
         const user = activeSession.user;
+
         setSession(activeSession);
         setCurrentUser((existingUser) =>
           existingUser || {
@@ -600,6 +677,7 @@ export function AppProvider({ children }) {
     };
 
     const { data: rpcData, error: rpcError } = await client.rpc('create_workspace_with_owner', rpcPayload);
+
     if (rpcError) throw new Error(formatSupabaseError(rpcError, 'Workspace creation failed.'));
 
     const workspace = normalizeWorkspace(firstResult(rpcData));
@@ -608,12 +686,13 @@ export function AppProvider({ children }) {
     return workspace;
   };
 
- await app.createInvite({
-  email: form.email.trim(),
-  roles: [form.role],
-  expiresAt: form.expires_at || null,
-  message: form.message.trim() || null,
-});
+  const createInvite = async ({
+    email,
+    roles: inviteRoles,
+    assignedPropertyIds = [],
+    expiresAt = null,
+    expires_at = null,
+    message = '',
     permissionLevel = 'standard',
   }) => {
     const client = requireSupabase();
@@ -623,7 +702,9 @@ export function AppProvider({ children }) {
 
     if (!safeRoles.length) throw new Error('Choose at least one customer workspace role.');
 
+    const safeExpiresAt = expiresAt || expires_at || null;
     const token = inviteToken();
+
     const { data: invite, error: inviteError } = await client
       .from('workspace_invites')
       .insert({
@@ -631,7 +712,7 @@ export function AppProvider({ children }) {
         email: email.toLowerCase().trim(),
         roles: safeRoles,
         assigned_property_ids: assignedPropertyIds,
-        expires_at: expiresAt || null,
+        expires_at: safeExpiresAt,
         message,
         permission_level: permissionLevel,
         token,
@@ -651,7 +732,9 @@ export function AppProvider({ children }) {
     const client = requireSupabase();
     const activeSession = session || (await client.auth.getSession()).data.session;
 
-    if (!activeSession?.user?.email) throw new Error('Sign in with the invited email before joining a workspace.');
+    if (!activeSession?.user?.email) {
+      throw new Error('Sign in with the invited email before joining a workspace.');
+    }
 
     let query = client
       .from('workspace_invites')
@@ -664,7 +747,10 @@ export function AppProvider({ children }) {
     if (code) {
       const workspaceRes = await client.from('workspaces').select('id').eq('company_code', code.trim()).maybeSingle();
 
-      if (workspaceRes.error) throw new Error(formatSupabaseError(workspaceRes.error, 'Workspace code lookup failed.'));
+      if (workspaceRes.error) {
+        throw new Error(formatSupabaseError(workspaceRes.error, 'Workspace code lookup failed.'));
+      }
+
       if (!workspaceRes.data) throw new Error('No workspace found for that code.');
 
       query = query.eq('workspace_id', workspaceRes.data.id);
@@ -674,6 +760,7 @@ export function AppProvider({ children }) {
 
     if (inviteError) throw new Error(formatSupabaseError(inviteError, 'Invite lookup failed.'));
     if (!invite) throw new Error('No valid invite exists for this email. Ask the workspace owner to send you an invite.');
+
     if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
       throw new Error('This invite has expired. Ask the workspace owner for a new invite.');
     }
@@ -967,6 +1054,7 @@ export function AppProvider({ children }) {
     const quantity = cleanNumber(payload.current_quantity);
     const threshold = cleanNumber(payload.low_stock_threshold);
     const cost = cleanNumber(payload.estimated_unit_cost);
+
     const nextPayload = {
       property_id: payload.property_id || null,
       item_name: payload.item_name?.trim() || '',
@@ -993,7 +1081,11 @@ export function AppProvider({ children }) {
       workspace_id: currentWorkspace.id,
       actor_user_id: session.user.id,
       action,
-      metadata: { supply_id: supply.id, item_name: supply.item_name, status: supply.status },
+      metadata: {
+        supply_id: supply.id,
+        item_name: supply.item_name,
+        status: supply.status,
+      },
     });
 
     if (activityError) console.warn('[PropFlow] Could not record supply activity', activityError);
@@ -1014,7 +1106,11 @@ export function AppProvider({ children }) {
       recipient_user_id: session.user.id,
       type: 'inventory_alert',
       message: `${supply.item_name} is ${supply.status === 'out_of_stock' ? 'out of stock' : 'low on stock'}.`,
-      metadata: { supply_id: supply.id, item_name: supply.item_name, status: supply.status },
+      metadata: {
+        supply_id: supply.id,
+        item_name: supply.item_name,
+        status: supply.status,
+      },
     });
 
     if (notificationError) console.warn('[PropFlow] Could not create supply notification', notificationError);
@@ -1025,6 +1121,7 @@ export function AppProvider({ children }) {
     requireWorkspaceSession(currentWorkspace, session);
 
     const supplyPayload = cleanSupplyPayload(payload, null);
+
     const { data: supply, error: supplyError } = await client
       .from('supplies')
       .insert({ ...supplyPayload, workspace_id: currentWorkspace.id, created_by: session.user.id })
@@ -1036,6 +1133,7 @@ export function AppProvider({ children }) {
     await recordSupplyActivity(client, supply, 'supply_created');
     await maybeCreateSupplyNotification(client, supply);
     await refreshWorkspaceData();
+
     return normalizeSupply(supply, data.properties || []);
   };
 
@@ -1044,6 +1142,7 @@ export function AppProvider({ children }) {
     requireWorkspaceSession(currentWorkspace, session);
 
     const supplyPayload = cleanSupplyPayload(payload, payload.archived_at ?? null);
+
     const { data: supply, error: supplyError } = await client
       .from('supplies')
       .update(supplyPayload)
@@ -1057,6 +1156,7 @@ export function AppProvider({ children }) {
     await recordSupplyActivity(client, supply, 'supply_updated');
     await maybeCreateSupplyNotification(client, supply);
     await refreshWorkspaceData();
+
     return normalizeSupply(supply, data.properties || []);
   };
 
@@ -1065,6 +1165,7 @@ export function AppProvider({ children }) {
     requireWorkspaceSession(currentWorkspace, session);
 
     const archivedAt = archived ? new Date().toISOString() : null;
+
     const { data: existing, error: existingError } = await client
       .from('supplies')
       .select('*')
@@ -1076,6 +1177,7 @@ export function AppProvider({ children }) {
     if (!existing) throw new Error('Supply item was not found in the current workspace.');
 
     const nextStatus = archived ? 'archived' : computeSupplyStatus({ ...existing, archived_at: null });
+
     const { data: supply, error: supplyError } = await client
       .from('supplies')
       .update({ archived_at: archivedAt, status: nextStatus })
@@ -1091,6 +1193,7 @@ export function AppProvider({ children }) {
     await recordSupplyActivity(client, supply, archived ? 'supply_archived' : 'supply_restored');
     await maybeCreateSupplyNotification(client, supply);
     await refreshWorkspaceData();
+
     return normalizeSupply(supply, data.properties || []);
   };
 
@@ -1104,7 +1207,10 @@ export function AppProvider({ children }) {
     const uploadId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const path = `${currentWorkspace.id}/${category}/${uploadId}-${safeName}`;
 
-    const { error: uploadError } = await client.storage.from('propflow-private').upload(path, file, { upsert: false });
+    const { error: uploadError } = await client.storage.from('propflow-private').upload(path, file, {
+      upsert: false,
+    });
+
     if (uploadError) throw new Error(formatSupabaseError(uploadError, 'File upload failed.'));
 
     const { data: upload, error: metadataError } = await client
