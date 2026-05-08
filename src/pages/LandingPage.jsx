@@ -1,11 +1,13 @@
 import React from 'react';
 import {
   ArrowRight,
+  BarChart3,
   Building2,
   CalendarDays,
   CheckCircle2,
   ClipboardCheck,
   CreditCard,
+  FileText,
   Hotel,
   KeyRound,
   ShieldCheck,
@@ -19,33 +21,39 @@ import { navigate } from '../routes/AppRouter.jsx';
 const featureCards = [
   {
     title: 'Property portfolio',
-    description: 'Manage short-term rentals, long-term rentals, villas, apartments, homes, model units, and commercial spaces.',
+    description:
+      'Manage short-term rentals, long-term rentals, villas, apartments, homes, model units, guesthouses, and commercial spaces.',
     icon: Building2,
   },
   {
     title: 'Bookings and leases',
-    description: 'Track check-ins, check-outs, booking sources, payment status, lease periods, occupancy, and calendar activity.',
+    description:
+      'Track check-ins, check-outs, booking sources, payment status, lease periods, occupancy, and calendar activity.',
     icon: CalendarDays,
   },
   {
     title: 'Cleaning operations',
-    description: 'Assign cleanings, use checklists, upload before/after photos, track supplies, and confirm guest-ready status.',
+    description:
+      'Assign cleanings, use checklists, upload before/after photos, track supplies, and confirm guest-ready status.',
     icon: ClipboardCheck,
   },
   {
     title: 'Maintenance work orders',
-    description: 'Track urgent repairs, parts needed, estimated costs, actual costs, due dates, and completion photos.',
+    description:
+      'Track urgent repairs, parts needed, estimated costs, actual costs, due dates, and completion photos.',
     icon: Wrench,
   },
   {
     title: 'Owner dashboards',
-    description: 'Give property owners a limited view of assigned properties, revenue, expenses, payouts, and maintenance updates.',
+    description:
+      'Give property owners a limited view of assigned properties, revenue, expenses, payouts, and maintenance updates.',
     icon: Users,
   },
   {
     title: 'Reports and finance',
-    description: 'Prepare owner statements, revenue reports, expense reports, occupancy reports, and export-ready summaries.',
-    icon: CreditCard,
+    description:
+      'Prepare owner statements, revenue reports, expense reports, occupancy reports, and export-ready summaries.',
+    icon: FileText,
   },
 ];
 
@@ -59,26 +67,119 @@ const roleCards = [
   'Accountant / Bookkeeper',
 ];
 
+const operationsSteps = [
+  'Create a workspace',
+  'Add the first property',
+  'Add bookings or lease records',
+  'Assign cleaning and maintenance work',
+  'Invite owners, cleaners, maintenance crew, and accountants',
+  'Track reports, payouts, calendar activity, and notifications',
+];
+
+function LandingFeature({ feature }) {
+  const Icon = feature.icon;
+
+  return (
+    <article className="card landing-feature-card">
+      <div className="landing-feature-icon">
+        <Icon size={20} />
+      </div>
+
+      <div>
+        <h3>{feature.title}</h3>
+        <p>{feature.description}</p>
+      </div>
+    </article>
+  );
+}
+
+function LandingDashboardPreview() {
+  return (
+    <aside className="landing-dashboard-preview">
+      <div className="landing-preview-header">
+        <span>
+          <strong>PropFlow Command Center</strong>
+          <small>Workspace: Island Stay Management</small>
+        </span>
+
+        <span className="landing-live-pill">Live ops</span>
+      </div>
+
+      <div className="landing-preview-kpis">
+        <span>
+          <small>Gross revenue</small>
+          <strong>$24.8k</strong>
+        </span>
+
+        <span>
+          <small>Occupancy</small>
+          <strong>78%</strong>
+        </span>
+
+        <span>
+          <small>Open repairs</small>
+          <strong>6</strong>
+        </span>
+      </div>
+
+      <div className="landing-preview-list">
+        <div>
+          <ClipboardCheck size={16} />
+          <span>
+            <strong>Villa cleaning due today</strong>
+            <small>Cleaner assigned · guest-ready pending</small>
+          </span>
+        </div>
+
+        <div>
+          <Wrench size={16} />
+          <span>
+            <strong>Urgent AC repair</strong>
+            <small>Waiting for parts · estimated $220</small>
+          </span>
+        </div>
+
+        <div>
+          <CalendarDays size={16} />
+          <span>
+            <strong>Upcoming check-in</strong>
+            <small>Oceanview Condo · tomorrow</small>
+          </span>
+        </div>
+      </div>
+
+      <div className="landing-preview-footer">
+        <span>Owner report ready</span>
+        <button type="button" onClick={() => navigate('/signup')}>
+          Start setup
+        </button>
+      </div>
+    </aside>
+  );
+}
+
 export function LandingPage() {
   return (
-    <div className="public-page">
-      <nav className="public-nav">
+    <div className="public-page landing-page">
+      <nav className="public-nav landing-nav">
         <strong>PropFlow</strong>
 
         <div>
           <button type="button" onClick={() => navigate('/pricing')}>
             Pricing
           </button>
+
           <button type="button" onClick={() => navigate('/login')}>
             Login
           </button>
+
           <button className="primary" type="button" onClick={() => navigate('/signup')}>
             Start free
           </button>
         </div>
       </nav>
 
-      <section className="hero">
+      <section className="landing-hero">
         <div>
           <p className="eyebrow">Property operations, finances, and teams in one workspace</p>
 
@@ -86,8 +187,8 @@ export function LandingPage() {
 
           <p>
             PropFlow helps Airbnb hosts, landlords, property managers, homeowners, real estate teams,
-            cleaners, maintenance crews, and property owners manage rentals from one clean SaaS
-            command center.
+            cleaners, maintenance crews, accountants, and property owners manage rentals from one
+            clean SaaS command center.
           </p>
 
           <div className="hero-actions">
@@ -100,51 +201,29 @@ export function LandingPage() {
               View pricing
             </button>
           </div>
+
+          <div className="landing-trust-row">
+            <span>
+              <ShieldCheck size={16} />
+              Workspace-scoped data
+            </span>
+
+            <span>
+              <KeyRound size={16} />
+              Role-based dashboards
+            </span>
+
+            <span>
+              <CreditCard size={16} />
+              Stripe-ready billing
+            </span>
+          </div>
         </div>
 
-        <aside className="hero-panel">
-          <div className="mini-kpis">
-            <span>
-              <strong>Multi-role</strong>
-              <small>Owners, managers, hosts, cleaners</small>
-            </span>
-            <span>
-              <strong>Multi-property</strong>
-              <small>One workspace, many properties</small>
-            </span>
-            <span>
-              <strong>Multi-currency</strong>
-              <small>USD, JMD, CAD, GBP, EUR</small>
-            </span>
-          </div>
-
-          <div className="feature-row">
-            <Building2 size={20} />
-            <span>
-              <strong>Workspace-scoped property portfolio</strong>
-              <small>Each company keeps its data separated and role-protected.</small>
-            </span>
-          </div>
-
-          <div className="feature-row">
-            <ClipboardCheck size={20} />
-            <span>
-              <strong>Cleaner checklists and guest-ready updates</strong>
-              <small>Track cleaning progress, notes, issues, and photos.</small>
-            </span>
-          </div>
-
-          <div className="feature-row">
-            <Wrench size={20} />
-            <span>
-              <strong>Maintenance work orders and urgent alerts</strong>
-              <small>Manage repairs, priorities, costs, parts, and completion updates.</small>
-            </span>
-          </div>
-        </aside>
+        <LandingDashboardPreview />
       </section>
 
-      <section className="page-content">
+      <section className="landing-content">
         <div className="stat-grid dense">
           <div className="stat-card">
             <div>
@@ -183,38 +262,28 @@ export function LandingPage() {
           </div>
         </div>
 
-        <section className="card">
+        <section className="card landing-section-card">
           <div className="card-header">
             <div>
               <h3>One system for property operations</h3>
               <p>
                 PropFlow is designed to replace scattered spreadsheets, WhatsApp messages, manual
-                reminders, disconnected cleaners, and unclear owner updates.
+                reminders, disconnected cleaners, unclear maintenance status, and messy owner
+                updates.
               </p>
             </div>
-            <Sparkles size={22} />
+
+            <Sparkles size={22} className="muted" />
           </div>
 
-          <div className="panel-grid two">
-            {featureCards.map((feature) => {
-              const Icon = feature.icon;
-
-              return (
-                <section className="card compact" key={feature.title}>
-                  <div className="card-header">
-                    <div>
-                      <h3>{feature.title}</h3>
-                      <p>{feature.description}</p>
-                    </div>
-                    <Icon size={20} />
-                  </div>
-                </section>
-              );
-            })}
+          <div className="landing-feature-grid">
+            {featureCards.map((feature) => (
+              <LandingFeature key={feature.title} feature={feature} />
+            ))}
           </div>
         </section>
 
-        <div className="panel-grid two">
+        <section className="landing-split-grid">
           <section className="card">
             <div className="card-header">
               <div>
@@ -225,10 +294,11 @@ export function LandingPage() {
                   owner reports.
                 </p>
               </div>
-              <Users size={22} />
+
+              <Users size={22} className="muted" />
             </div>
 
-            <ul className="checklist">
+            <ul className="checklist landing-checklist-grid">
               {roleCards.map((role) => (
                 <li key={role}>
                   <CheckCircle2 size={16} />
@@ -248,74 +318,94 @@ export function LandingPage() {
                   workspace.
                 </p>
               </div>
-              <Building2 size={22} />
+
+              <Building2 size={22} className="muted" />
             </div>
 
             <ul className="checklist">
-              <li>
-                <CheckCircle2 size={16} />
-                Create a new workspace or join an existing workspace.
-              </li>
-              <li>
-                <CheckCircle2 size={16} />
-                Invite users by role and assign properties where needed.
-              </li>
-              <li>
-                <CheckCircle2 size={16} />
-                Route users to the correct dashboard after login.
-              </li>
-              <li>
-                <CheckCircle2 size={16} />
-                Keep customer data scoped by workspace.
-              </li>
-              <li>
-                <CheckCircle2 size={16} />
-                Support multiple currencies for global property operators.
-              </li>
+              {operationsSteps.map((step) => (
+                <li key={step}>
+                  <CheckCircle2 size={16} />
+                  {step}
+                </li>
+              ))}
             </ul>
           </section>
-        </div>
-
-        <section className="card">
-          <div className="card-header">
-            <div>
-              <h3>Direct booking foundation</h3>
-              <p>
-                PropFlow is being prepared for public property booking pages, guest inquiry forms,
-                manual approval, Stripe payments, and automatic booking creation.
-              </p>
-            </div>
-            <CalendarDays size={22} />
-          </div>
-
-          <div className="action-row">
-            <button className="primary" type="button" onClick={() => navigate('/book/demo-property')}>
-              Preview booking page
-            </button>
-
-            <button type="button" onClick={() => navigate('/pricing')}>
-              See launch plans
-            </button>
-          </div>
-
-          <div className="helper">
-            MVP default: booking requests should require manual approval unless instant booking and
-            payment are explicitly enabled for that property.
-          </div>
         </section>
 
-        <section className="card">
-          <div className="card-header">
-            <div>
-              <h3>Start building your property command center</h3>
-              <p>
-                Create a workspace, add your first property, invite your team, and start tracking
-                bookings, cleaning, maintenance, owners, reports, supplies, and calendar activity.
-              </p>
+        <section className="landing-split-grid">
+          <section className="card">
+            <div className="card-header">
+              <div>
+                <h3>Finance and owner reporting</h3>
+                <p>
+                  Keep revenue, owner payouts, cleaning costs, maintenance costs, net profit, and
+                  report exports in one finance-aware property system.
+                </p>
+              </div>
+
+              <BarChart3 size={22} className="muted" />
             </div>
+
+            <div className="landing-mini-metrics">
+              <span>
+                <strong>Revenue</strong>
+                <small>Bookings and direct booking records</small>
+              </span>
+
+              <span>
+                <strong>Expenses</strong>
+                <small>Cleaning, maintenance, supplies, and fees</small>
+              </span>
+
+              <span>
+                <strong>Owner reports</strong>
+                <small>Manual reports first, scheduled reports later</small>
+              </span>
+            </div>
+          </section>
+
+          <section className="card">
+            <div className="card-header">
+              <div>
+                <h3>Direct booking foundation</h3>
+                <p>
+                  PropFlow is being prepared for public property booking pages, guest inquiry forms,
+                  manual approval, Stripe payments, and automatic booking creation.
+                </p>
+              </div>
+
+              <CalendarDays size={22} className="muted" />
+            </div>
+
+            <div className="action-row">
+              <button className="primary" type="button" onClick={() => navigate('/book/demo-property')}>
+                Preview booking page
+              </button>
+
+              <button type="button" onClick={() => navigate('/pricing')}>
+                See launch plans
+              </button>
+            </div>
+
+            <div className="helper">
+              MVP default: booking requests should require manual approval unless instant booking and
+              payment are explicitly enabled for that property.
+            </div>
+          </section>
+        </section>
+
+        <section className="card landing-final-cta">
+          <div>
+            <p className="eyebrow">Start clean. Scale later.</p>
+            <h3>Build your property command center.</h3>
+            <p>
+              Create a workspace, add your first property, invite your team, and start tracking
+              bookings, cleaning, maintenance, owners, reports, supplies, and calendar activity.
+            </p>
           </div>
 
-          <div className="action-row">
+          <div className="landing-final-actions">
             <button className="primary large" type="button" onClick={() => navigate('/signup')}>
               Start free trial
               <ArrowRight size={18} />
