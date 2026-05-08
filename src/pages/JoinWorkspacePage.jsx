@@ -1,4 +1,18 @@
 import React from 'react';
+import {
+  AlertTriangle,
+  Building2,
+  CheckCircle2,
+  CreditCard,
+  Globe2,
+  KeyRound,
+  LogIn,
+  Plus,
+  ShieldCheck,
+  Sparkles,
+  Users,
+} from 'lucide-react';
+
 import { currencies } from '../data/constants.js';
 import { useApp } from '../lib/AppContext.jsx';
 import { navigate } from '../routes/AppRouter.jsx';
@@ -13,21 +27,88 @@ const businessTypes = [
   'Real estate company',
 ];
 
+const planOptions = [
+  {
+    label: 'Starter',
+    value: 'starter',
+    description: 'Best for a small host, landlord, or early property operation.',
+  },
+  {
+    label: 'Pro',
+    value: 'pro',
+    description: 'Best for growing hosts and property managers with teams.',
+  },
+  {
+    label: 'Business',
+    value: 'business',
+    description: 'Best for larger teams, agencies, and multi-property operators.',
+  },
+];
+
 function normalizeJoinInput(value) {
-  return value
+  return String(value || '')
     .trim()
     .replace(/^.*invite=/, '')
     .replace(/^.*code=/, '')
+    .replace(/[&#].*$/, '')
     .trim();
 }
 
-function getPlanValue(label) {
-  const normalized = label.toLowerCase();
+function cleanUrl(value) {
+  const text = String(value || '').trim();
 
-  if (normalized.includes('growth')) return 'growth';
-  if (normalized.includes('scale')) return 'scale';
+  if (!text) return '';
 
-  return 'starter';
+  if (text.startsWith('http://') || text.startsWith('https://')) {
+    return text;
+  }
+
+  return `https://${text}`;
+}
+
+function cleanNumber(value) {
+  if (value === '' || value === null || value === undefined) return null;
+
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function validateCreateForm(form) {
+  const errors = [];
+
+  if (!form.name.trim()) errors.push('Workspace/business name is required.');
+  if (!form.business_type) errors.push('Business type is required.');
+  if (!form.country.trim()) errors.push('Country is required.');
+  if (!form.default_currency) errors.push('Default currency is required.');
+  if (!form.business_email.trim()) errors.push('Business email is required.');
+  if (!form.phone.trim()) errors.push('Phone number is required.');
+
+  const propertyEstimate = cleanNumber(form.property_count_estimate);
+
+  if (
+    form.property_count_estimate !== '' &&
+    (propertyEstimate === null || propertyEstimate < 0)
+  ) {
+    errors.push('Number of properties managed must be 0 or more.');
+  }
+
+  return errors;
+}
+
+function getPlanDescription(planValue) {
+  return planOptions.find((plan) => plan.value === planValue)?.description || planOptions[0].description;
+}
+
+function WorkspaceSetupFeature({ icon: Icon, title, description }) {
+  return (
+    <article className="workspace-setup-feature">
+      <Icon size={18} />
+      <span>
+        <strong>{title}</strong>
+        <small>{description}</small>
+      </span>
+    </article>
+  );
 }
 
 export function JoinWorkspacePage() {
@@ -51,21 +132,26 @@ export function JoinWorkspacePage() {
     phone: '',
     website: '',
     property_count_estimate: '',
-    plan_placeholder: 'Starter',
+    plan: 'starter',
   });
 
   const [joinCode, setJoinCode] = React.useState(initialJoinCode);
   const [message, setMessage] = React.useState('');
+  const [errors, setErrors] = React.useState([]);
   const [busyAction, setBusyAction] = React.useState('');
 
   React.useEffect(() => {
-    if (!createForm.business_email && currentUser?.email) {
-      setCreateForm((form) => ({
+    if (!currentUser?.email) return;
+
+    setCreateForm((form) => {
+      if (form.business_email) return form;
+
+      return {
         ...form,
         business_email: currentUser.email,
-      }));
-    }
-  }, [currentUser?.email, createForm.business_email]);
+      };
+    });
+  }, [currentUser?.email]);
 
   const set = (key) => (event) => {
     setCreateForm((form) => ({
@@ -76,6 +162,14 @@ export function JoinWorkspacePage() {
 
   const submitCreate = async (event) => {
     event.preventDefault();
+
+    const nextErrors = validateCreateForm(createForm);
+    setErrors(nextErrors);
+
+    if (nextErrors.length) {
+      setMessage('Please fix the highlighted workspace setup details.');
+      return;
+    }
 
     if (!isSupabaseConfigured) {
       setMessage('Supabase is not configured. Workspace records require a connected Supabase project.');
@@ -94,7 +188,13 @@ export function JoinWorkspacePage() {
     try {
       const workspace = await createWorkspace({
         ...createForm,
-        plan: getPlanValue(createForm.plan_placeholder),
+        name: createForm.name.trim(),
+        country: createForm.country.trim(),
+        business_email: createForm.business_email.trim(),
+        phone: createForm.phone.trim(),
+        website: cleanUrl(createForm.website),
+        property_count_estimate: cleanNumber(createForm.property_count_estimate),
+        plan: createForm.plan,
       });
 
       if (workspace?.id) {
@@ -151,6 +251,7 @@ export function JoinWorkspacePage() {
 
     setBusyAction('join');
     setMessage('');
+    setErrors([]);
 
     try {
       await tryJoinWorkspace(cleanedCode);
@@ -167,38 +268,112 @@ export function JoinWorkspacePage() {
   const joinBusy = busyAction === 'join';
 
   return (
-    <div className="auth-page">
-      <div className="auth-card wide">
-        <h1>Create or join a workspace</h1>
-        <p>
-          New accounts can create a workspace immediately. Company codes only work when a valid
-          pending invite exists for your authenticated email.
-        </p>
+    <div className="auth-page workspace-setup-page">
+      <div className="auth-card workspace-setup-shell">
+        <section className="workspace-setup-hero">
+          <div>
+            <p className="eyebrow">PropFlow workspace setup</p>
+            <h1>Create or join a workspace</h1>
+            <p>
+              Create a new property operation or join an existing workspace with a valid invite
+              token, invite link, or company code.
+            </p>
+          </div>
 
-        {message && <div className="helper">{message}</div>}
+          <div className="workspace-setup-hero-card">
+            <Sparkles size={22} />
+            <strong>Workspace-first SaaS structure</strong>
+            <small>
+              Every property, booking, task, report, file, and team member should stay scoped to the
+              correct workspace.
+            </small>
+          </div>
+        </section>
+
+        {message && (
+          <div
+            className={
+              message.toLowerCase().includes('failed') ||
+              message.toLowerCase().includes('not configured') ||
+              message.toLowerCase().includes('fix') ||
+              message.toLowerCase().includes('could not')
+                ? 'helper error-helper'
+                : 'helper'
+            }
+            role="status"
+          >
+            {message}
+          </div>
+        )}
+
+        {errors.length > 0 && (
+          <div className="helper error-helper" role="alert">
+            <strong>Workspace setup needs attention:</strong>
+            <ul>
+              {errors.map((error) => (
+                <li key={error}>{error}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {!isSupabaseConfigured && (
           <div className="helper error-helper">
+            <AlertTriangle size={16} />
             Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY before
             using workspace setup.
           </div>
         )}
 
-        <div className="panel-grid two">
-          <form className="card compact" onSubmit={submitCreate}>
-            <h3>Create workspace</h3>
+        {!currentUser && (
+          <div className="workspace-setup-auth-warning">
+            <ShieldCheck size={18} />
+            <span>
+              <strong>Login required</strong>
+              <small>
+                You can view this page, but creating or joining a workspace requires a signed-in
+                PropFlow account.
+              </small>
+            </span>
+            <button type="button" onClick={() => navigate('/login')}>
+              <LogIn size={16} />
+              Login
+            </button>
+          </div>
+        )}
+
+        <section className="workspace-setup-grid">
+          <form className="card workspace-setup-card" onSubmit={submitCreate}>
+            <div className="card-header">
+              <div>
+                <h3>Create new workspace</h3>
+                <p>
+                  Use this when you are starting a new company, rental operation, or property
+                  management workspace.
+                </p>
+              </div>
+
+              <Building2 size={22} className="muted" />
+            </div>
 
             <div className="form-grid">
               <label>
                 Workspace/business name
-                <input value={createForm.name} onChange={set('name')} required />
+                <input
+                  value={createForm.name}
+                  onChange={set('name')}
+                  placeholder="Example: Island Stay Management"
+                  required
+                />
               </label>
 
               <label>
                 Business type
                 <select value={createForm.business_type} onChange={set('business_type')}>
                   {businessTypes.map((item) => (
-                    <option key={item}>{item}</option>
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
                   ))}
                 </select>
               </label>
@@ -212,7 +387,9 @@ export function JoinWorkspacePage() {
                 Default currency
                 <select value={createForm.default_currency} onChange={set('default_currency')}>
                   {currencies.map((currency) => (
-                    <option key={currency}>{currency}</option>
+                    <option key={currency} value={currency}>
+                      {currency}
+                    </option>
                   ))}
                 </select>
               </label>
@@ -223,18 +400,28 @@ export function JoinWorkspacePage() {
                   value={createForm.business_email}
                   onChange={set('business_email')}
                   type="email"
+                  placeholder="business@example.com"
                   required
                 />
               </label>
 
               <label>
                 Phone number
-                <input value={createForm.phone} onChange={set('phone')} required />
+                <input
+                  value={createForm.phone}
+                  onChange={set('phone')}
+                  placeholder="+1 876 000 0000"
+                  required
+                />
               </label>
 
               <label>
                 Website optional
-                <input value={createForm.website} onChange={set('website')} />
+                <input
+                  value={createForm.website}
+                  onChange={set('website')}
+                  placeholder="yourcompany.com"
+                />
               </label>
 
               <label>
@@ -244,30 +431,41 @@ export function JoinWorkspacePage() {
                   onChange={set('property_count_estimate')}
                   type="number"
                   min="0"
+                  placeholder="0"
                 />
               </label>
 
-              <label>
+              <label className="full">
                 Subscription plan
-                <select value={createForm.plan_placeholder} onChange={set('plan_placeholder')}>
-                  <option>Starter</option>
-                  <option>Growth</option>
-                  <option>Scale</option>
+                <select value={createForm.plan} onChange={set('plan')}>
+                  {planOptions.map((plan) => (
+                    <option key={plan.value} value={plan.value}>
+                      {plan.label}
+                    </option>
+                  ))}
                 </select>
+                <small>{getPlanDescription(createForm.plan)}</small>
               </label>
             </div>
 
-            <button className="primary" disabled={createBusy || joinBusy}>
-              {createBusy ? 'Saving…' : 'Create workspace'}
+            <button className="primary workspace-setup-submit" disabled={createBusy || joinBusy}>
+              <Plus size={16} />
+              {createBusy ? 'Creating workspace…' : 'Create workspace'}
             </button>
           </form>
 
-          <form className="card compact" onSubmit={submitJoin}>
-            <h3>Join workspace</h3>
-            <p>
-              Paste an invite token, invite link, or company code. PropFlow checks invite status,
-              expiration, and email match before adding access.
-            </p>
+          <form className="card workspace-setup-card" onSubmit={submitJoin}>
+            <div className="card-header">
+              <div>
+                <h3>Join existing workspace</h3>
+                <p>
+                  Use this when a Workspace Owner or Property Manager invited you to an existing
+                  PropFlow workspace.
+                </p>
+              </div>
+
+              <KeyRound size={22} className="muted" />
+            </div>
 
             <label>
               Invite link, invite token, or company code
@@ -279,11 +477,58 @@ export function JoinWorkspacePage() {
               />
             </label>
 
-            <button className="primary" disabled={createBusy || joinBusy}>
-              {joinBusy ? 'Joining…' : 'Join workspace'}
+            <div className="workspace-join-rules">
+              <WorkspaceSetupFeature
+                icon={ShieldCheck}
+                title="Email match required"
+                description="Company codes should only work when an invite exists for your signed-in email."
+              />
+
+              <WorkspaceSetupFeature
+                icon={KeyRound}
+                title="Invite validation"
+                description="PropFlow checks token/code, invite status, expiration, and workspace access."
+              />
+
+              <WorkspaceSetupFeature
+                icon={Users}
+                title="Role-based access"
+                description="Your dashboard is selected automatically from your saved workspace role."
+              />
+            </div>
+
+            <button className="primary workspace-setup-submit" disabled={createBusy || joinBusy}>
+              <LogIn size={16} />
+              {joinBusy ? 'Joining workspace…' : 'Join workspace'}
             </button>
           </form>
-        </div>
+        </section>
+
+        <section className="workspace-setup-feature-grid">
+          <WorkspaceSetupFeature
+            icon={Globe2}
+            title="Multi-country ready"
+            description="Workspace default currency and country are captured during setup."
+          />
+
+          <WorkspaceSetupFeature
+            icon={CreditCard}
+            title="Subscription prepared"
+            description="Plans are stored now and Stripe billing can be connected in the billing phase."
+          />
+
+          <WorkspaceSetupFeature
+            icon={Building2}
+            title="Multi-property ready"
+            description="Each workspace can manage many properties, bookings, staff, and reports."
+          />
+
+          <WorkspaceSetupFeature
+            icon={CheckCircle2}
+            title="No fake setup data"
+            description="New workspaces should start clean and use real customer-entered records only."
+          />
+        </section>
       </div>
     </div>
   );
