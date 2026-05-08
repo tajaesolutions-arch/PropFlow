@@ -3,6 +3,7 @@ import React from 'react';
 import { AuditSafetyNotice } from '../AuditSafetyNotice.jsx';
 import { BillingSafetyNotice } from '../BillingSafetyNotice.jsx';
 import { EnvironmentSetupNotice } from '../EnvironmentSetupNotice.jsx';
+import { OnboardingSetupNotice } from '../OnboardingSetupNotice.jsx';
 import { ReportsExportNotice } from '../ReportsExportNotice.jsx';
 import { UploadSafetyNotice } from '../UploadSafetyNotice.jsx';
 import { useApp } from '../../lib/AppContext.jsx';
@@ -13,6 +14,7 @@ const sidebarStorageKey = 'propflow.sidebarCollapsed';
 const setupNoticePaths = new Set(['/admin', '/settings', '/billing', '/notifications', '/notification-settings']);
 const uploadNoticePaths = new Set(['/properties', '/cleaning', '/maintenance', '/reports', '/billing']);
 const auditNoticePaths = new Set(['/admin', '/settings', '/notification-settings']);
+const onboardingNoticePaths = new Set(['/dashboard', '/workspace-setup']);
 
 function getInitialCollapsedState() {
   if (typeof window === 'undefined') return false;
@@ -48,6 +50,10 @@ function shouldShowAuditSafetyNotice() {
   return auditNoticePaths.has(getCurrentPath());
 }
 
+function shouldShowOnboardingSetupNotice() {
+  return onboardingNoticePaths.has(getCurrentPath());
+}
+
 export function AppLayout({
   title = 'Dashboard',
   subtitle = 'Workspace-scoped operational command center',
@@ -61,6 +67,7 @@ export function AppLayout({
   const showBillingSafetyNotice = shouldShowBillingSafetyNotice();
   const showUploadSafetyNotice = shouldShowUploadSafetyNotice();
   const showAuditSafetyNotice = shouldShowAuditSafetyNotice();
+  const showOnboardingSetupNotice = shouldShowOnboardingSetupNotice();
 
   React.useEffect(() => {
     window.localStorage.setItem(sidebarStorageKey, String(collapsed));
@@ -148,6 +155,7 @@ export function AppLayout({
           )}
 
           {showEnvironmentSetupNotice && <EnvironmentSetupNotice compact />}
+          {showOnboardingSetupNotice && <OnboardingSetupNotice />}
           {showAuditSafetyNotice && <AuditSafetyNotice />}
           {showUploadSafetyNotice && <UploadSafetyNotice />}
           {showBillingSafetyNotice && <BillingSafetyNotice />}
