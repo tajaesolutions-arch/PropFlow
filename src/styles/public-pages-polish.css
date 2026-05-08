@@ -1,0 +1,41 @@
+.public-mvp-notice {
+  border-color: rgba(27, 153, 139, 0.2);
+  background: linear-gradient(180deg, rgba(204, 251, 241, 0.22), rgba(255, 255, 255, 0.96)), var(--surface);
+}
+
+.public-page .hero-actions,
+.public-page .landing-final-actions,
+.public-page .action-row {
+  flex-wrap: wrap;
+}
+
+.public-page button {
+  min-height: 40px;
+}
+
+.public-page .pricing-card .todo,
+.public-page .helper {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .public-nav {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .public-nav > div,
+  .public-page .hero-actions,
+  .public-page .landing-final-actions,
+  .public-page .action-row {
+    width: 100%;
+  }
+
+  .public-nav button,
+  .public-page .hero-actions button,
+  .public-page .landing-final-actions button,
+  .public-page .action-row button {
+    width: 100%;
+  }
+}
