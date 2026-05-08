@@ -2,6 +2,7 @@ import React from 'react';
 
 import { AuditSafetyNotice } from '../AuditSafetyNotice.jsx';
 import { BillingSafetyNotice } from '../BillingSafetyNotice.jsx';
+import { CalendarScheduleSafetyNotice } from '../CalendarScheduleSafetyNotice.jsx';
 import { EnvironmentSetupNotice } from '../EnvironmentSetupNotice.jsx';
 import { OnboardingSetupNotice } from '../OnboardingSetupNotice.jsx';
 import { ReportsExportNotice } from '../ReportsExportNotice.jsx';
@@ -19,6 +20,13 @@ const auditNoticePaths = new Set(['/admin', '/settings', '/notification-settings
 const onboardingNoticePaths = new Set(['/dashboard', '/workspace-setup']);
 const teamWorkspaceNoticePaths = new Set(['/team', '/settings', '/admin']);
 const settingsAccountNoticePaths = new Set(['/account', '/settings', '/notification-settings']);
+const calendarScheduleNoticePaths = new Set([
+  '/calendar',
+  '/dashboard',
+  '/owner-dashboard',
+  '/cleaner-dashboard',
+  '/maintenance-dashboard',
+]);
 
 function getInitialCollapsedState() {
   if (typeof window === 'undefined') return false;
@@ -66,6 +74,10 @@ function shouldShowSettingsAccountSafetyNotice() {
   return settingsAccountNoticePaths.has(getCurrentPath());
 }
 
+function shouldShowCalendarScheduleSafetyNotice() {
+  return calendarScheduleNoticePaths.has(getCurrentPath());
+}
+
 export function AppLayout({
   title = 'Dashboard',
   subtitle = 'Workspace-scoped operational command center',
@@ -82,6 +94,7 @@ export function AppLayout({
   const showOnboardingSetupNotice = shouldShowOnboardingSetupNotice();
   const showTeamWorkspaceSafetyNotice = shouldShowTeamWorkspaceSafetyNotice();
   const showSettingsAccountSafetyNotice = shouldShowSettingsAccountSafetyNotice();
+  const showCalendarScheduleSafetyNotice = shouldShowCalendarScheduleSafetyNotice();
 
   React.useEffect(() => {
     window.localStorage.setItem(sidebarStorageKey, String(collapsed));
@@ -170,6 +183,7 @@ export function AppLayout({
 
           {showEnvironmentSetupNotice && <EnvironmentSetupNotice compact />}
           {showOnboardingSetupNotice && <OnboardingSetupNotice />}
+          {showCalendarScheduleSafetyNotice && <CalendarScheduleSafetyNotice />}
           {showSettingsAccountSafetyNotice && <SettingsAccountSafetyNotice />}
           {showTeamWorkspaceSafetyNotice && <TeamWorkspaceSafetyNotice />}
           {showAuditSafetyNotice && <AuditSafetyNotice />}
