@@ -1,0 +1,60 @@
+.calendar-schedule-safety-notice {
+  border-color: rgba(37, 99, 235, 0.18);
+  background: var(--surface);
+}
+
+.calendar-schedule-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.calendar-schedule-card {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.calendar-schedule-card svg {
+  color: var(--info);
+}
+
+.calendar-schedule-card span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.calendar-schedule-card strong,
+.calendar-schedule-card small {
+  overflow-wrap: anywhere;
+}
+
+.calendar-schedule-helper {
+  margin-top: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+@media (max-width: 1080px) {
+  .calendar-schedule-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .calendar-schedule-card {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+
+  .calendar-schedule-card .status-badge {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
