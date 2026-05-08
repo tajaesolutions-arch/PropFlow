@@ -4114,3 +4114,124 @@ label {
     flex-direction: column;
   }
 }
+/* Billing page polish */
+
+.billing-notice-card {
+  display: grid;
+  gap: 12px;
+}
+
+.billing-layout-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.billing-metadata-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.billing-metadata-grid span,
+.billing-usage-grid span {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 4px 8px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+
+.billing-metadata-grid strong {
+  color: var(--text);
+}
+
+.billing-metadata-grid small,
+.billing-metadata-grid .status-badge {
+  grid-column: 2;
+}
+
+.billing-usage-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.billing-usage-grid span {
+  grid-template-columns: 1fr;
+}
+
+.billing-usage-grid strong {
+  color: var(--text);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.billing-usage-grid small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.billing-plan-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.billing-plan-card {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+.billing-plan-card.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow-md);
+}
+
+.billing-plan-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.billing-plan-top h3 {
+  margin-bottom: 4px;
+}
+
+.billing-plan-top p {
+  margin-bottom: 0;
+}
+
+.billing-plan-price {
+  color: var(--text);
+  font-size: 28px;
+  letter-spacing: -0.05em;
+}
+
+@media (max-width: 1300px) {
+  .billing-plan-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .billing-layout-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .billing-plan-grid,
+  .billing-metadata-grid,
+  .billing-usage-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .billing-plan-top {
+    display: grid;
+  }
+}
