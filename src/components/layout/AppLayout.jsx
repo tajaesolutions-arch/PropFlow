@@ -1,15 +1,24 @@
 import React from 'react';
 
+import { EnvironmentSetupNotice } from '../EnvironmentSetupNotice.jsx';
 import { useApp } from '../../lib/AppContext.jsx';
 import { Sidebar } from './Sidebar.jsx';
 import { TopBar } from './TopBar.jsx';
 
 const sidebarStorageKey = 'propflow.sidebarCollapsed';
+const setupNoticePaths = new Set(['/admin', '/settings', '/billing', '/notification-settings']);
 
 function getInitialCollapsedState() {
   if (typeof window === 'undefined') return false;
 
   return window.localStorage.getItem(sidebarStorageKey) === 'true';
+}
+
+function shouldShowEnvironmentSetupNotice() {
+  if (typeof window === 'undefined') return false;
+
+  const path = window.location.pathname.replace(/\/+$/, '') || '/';
+  return setupNoticePaths.has(path);
 }
 
 export function AppLayout({
@@ -20,6 +29,7 @@ export function AppLayout({
   const [collapsed, setCollapsed] = React.useState(getInitialCollapsedState);
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const { error } = useApp();
+  const showEnvironmentSetupNotice = shouldShowEnvironmentSetupNotice();
 
   React.useEffect(() => {
     window.localStorage.setItem(sidebarStorageKey, String(collapsed));
@@ -105,6 +115,8 @@ export function AppLayout({
               <span>{error}</span>
             </section>
           )}
+
+          {showEnvironmentSetupNotice && <EnvironmentSetupNotice compact />}
 
           {children}
         </div>
