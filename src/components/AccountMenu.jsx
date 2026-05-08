@@ -23,20 +23,29 @@ function getInitials(value) {
     .join('');
 }
 
-function shouldShowWorkspaceSettings(currentUser) {
+function hasWorkspace(currentWorkspace) {
+  return Boolean(currentWorkspace?.id);
+}
+
+function shouldShowWorkspaceSettings(currentUser, currentWorkspace) {
+  if (!hasWorkspace(currentWorkspace)) return false;
+
   const primaryRole = resolvePrimaryRole(currentUser);
 
   return [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST].includes(primaryRole);
 }
 
-function shouldShowBilling(currentUser) {
+function shouldShowBilling(currentUser, currentWorkspace) {
   const primaryRole = resolvePrimaryRole(currentUser);
 
-  return [roles.ADMIN, roles.OWNER_ADMIN, roles.ACCOUNTANT].includes(primaryRole);
+  if (primaryRole === roles.ADMIN) return true;
+  if (!hasWorkspace(currentWorkspace)) return false;
+
+  return [roles.OWNER_ADMIN, roles.ACCOUNTANT].includes(primaryRole);
 }
 
 export function AccountMenu() {
-  const { currentUser, signOut } = useApp();
+  const { currentUser, currentWorkspace, signOut } = useApp();
   const [open, setOpen] = React.useState(false);
   const [signingOut, setSigningOut] = React.useState(false);
   const menuRef = React.useRef(null);
@@ -156,7 +165,7 @@ export function AccountMenu() {
             Notifications
           </button>
 
-          {shouldShowBilling(currentUser) && (
+          {shouldShowBilling(currentUser, currentWorkspace) && (
             <button
               type="button"
               onClick={() => goTo('/billing')}
@@ -168,7 +177,7 @@ export function AccountMenu() {
             </button>
           )}
 
-          {shouldShowWorkspaceSettings(currentUser) && (
+          {shouldShowWorkspaceSettings(currentUser, currentWorkspace) && (
             <button
               type="button"
               onClick={() => goTo('/settings')}
