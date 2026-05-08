@@ -1,5 +1,103 @@
 import React from 'react';
-import { Inbox } from 'lucide-react';
+import {
+  Building2,
+  CalendarPlus,
+  ClipboardCheck,
+  FileText,
+  Inbox,
+  Plus,
+  UserPlus,
+  Wrench,
+} from 'lucide-react';
+
+const smartActionRules = [
+  {
+    keywords: ['property', 'properties', 'portfolio', 'workspace setup'],
+    label: 'Add Property',
+    icon: Building2,
+    className: 'primary',
+  },
+  {
+    keywords: ['booking', 'bookings', 'reservation', 'reservations', 'check-in', 'check out', 'check-in'],
+    label: 'Add Booking',
+    icon: CalendarPlus,
+    className: 'primary',
+  },
+  {
+    keywords: ['cleaning', 'cleanings', 'turnover', 'guest ready', 'checklist'],
+    label: 'Add Cleaning Task',
+    icon: ClipboardCheck,
+    className: 'primary',
+  },
+  {
+    keywords: ['maintenance', 'work order', 'repair', 'repairs', 'issue', 'issues'],
+    label: 'Add Work Order',
+    icon: Wrench,
+    className: 'primary',
+  },
+  {
+    keywords: ['owner', 'owners', 'payout'],
+    label: 'Add Owner',
+    icon: UserPlus,
+    className: 'primary',
+  },
+  {
+    keywords: ['guest', 'guests', 'contact', 'contacts', 'crm'],
+    label: 'Add Guest',
+    icon: UserPlus,
+    className: 'primary',
+  },
+  {
+    keywords: ['report', 'reports', 'export', 'exports'],
+    label: 'Add Report',
+    icon: FileText,
+    className: 'primary',
+  },
+];
+
+function normalize(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getSmartActions({ title, description, eyebrow }) {
+  const text = normalize(`${eyebrow} ${title} ${description}`);
+
+  if (!text) return [];
+
+  const actions = [];
+  const seen = new Set();
+
+  smartActionRules.forEach((rule) => {
+    const matches = rule.keywords.some((keyword) => text.includes(keyword));
+
+    if (matches && !seen.has(rule.label)) {
+      seen.add(rule.label);
+      actions.push(rule);
+    }
+  });
+
+  if (actions.length) return actions.slice(0, 2);
+
+  if (text.includes('nothing here') || text.includes('no data') || text.includes('empty')) {
+    return [smartActionRules[0]];
+  }
+
+  return [];
+}
+
+function SmartActionButton({ action, index }) {
+  const Icon = action.icon || Plus;
+
+  return (
+    <button type="button" className={index === 0 ? action.className || 'primary' : 'secondary'}>
+      <Icon size={16} />
+      {action.label}
+    </button>
+  );
+}
 
 export function EmptyState({
   title = 'Nothing here yet',
@@ -9,7 +107,15 @@ export function EmptyState({
   icon: Icon = Inbox,
   eyebrow = '',
   compact = false,
+  suggestedActions = null,
 }) {
+  const smartActions = React.useMemo(() => {
+    if (action || secondaryAction) return [];
+    if (Array.isArray(suggestedActions)) return suggestedActions;
+
+    return getSmartActions({ title, description, eyebrow });
+  }, [action, secondaryAction, suggestedActions, title, description, eyebrow]);
+
   return (
     <div className={`empty-state ${compact ? 'compact-empty-state' : ''}`}>
       {Icon && (
@@ -23,10 +129,15 @@ export function EmptyState({
       <h3>{title}</h3>
       <p>{description}</p>
 
-      {(action || secondaryAction) && (
+      {(action || secondaryAction || smartActions.length > 0) && (
         <div className="empty-action">
           {action}
           {secondaryAction}
+          {!action &&
+            !secondaryAction &&
+            smartActions.map((item, index) => (
+              <SmartActionButton key={item.label} action={item} index={index} />
+            ))}
         </div>
       )}
     </div>
