@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { EnvironmentSetupNotice } from '../EnvironmentSetupNotice.jsx';
+import { ReportsExportNotice } from '../ReportsExportNotice.jsx';
 import { useApp } from '../../lib/AppContext.jsx';
 import { Sidebar } from './Sidebar.jsx';
 import { TopBar } from './TopBar.jsx';
@@ -14,11 +15,18 @@ function getInitialCollapsedState() {
   return window.localStorage.getItem(sidebarStorageKey) === 'true';
 }
 
-function shouldShowEnvironmentSetupNotice() {
-  if (typeof window === 'undefined') return false;
+function getCurrentPath() {
+  if (typeof window === 'undefined') return '/';
 
-  const path = window.location.pathname.replace(/\/+$/, '') || '/';
-  return setupNoticePaths.has(path);
+  return window.location.pathname.replace(/\/+$/, '') || '/';
+}
+
+function shouldShowEnvironmentSetupNotice() {
+  return setupNoticePaths.has(getCurrentPath());
+}
+
+function shouldShowReportsExportNotice() {
+  return getCurrentPath() === '/reports';
 }
 
 export function AppLayout({
@@ -30,6 +38,7 @@ export function AppLayout({
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const { error } = useApp();
   const showEnvironmentSetupNotice = shouldShowEnvironmentSetupNotice();
+  const showReportsExportNotice = shouldShowReportsExportNotice();
 
   React.useEffect(() => {
     window.localStorage.setItem(sidebarStorageKey, String(collapsed));
@@ -117,6 +126,7 @@ export function AppLayout({
           )}
 
           {showEnvironmentSetupNotice && <EnvironmentSetupNotice compact />}
+          {showReportsExportNotice && <ReportsExportNotice />}
 
           {children}
         </div>
