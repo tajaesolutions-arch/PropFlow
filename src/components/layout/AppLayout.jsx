@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { AuditSafetyNotice } from '../AuditSafetyNotice.jsx';
 import { BillingSafetyNotice } from '../BillingSafetyNotice.jsx';
 import { EnvironmentSetupNotice } from '../EnvironmentSetupNotice.jsx';
 import { ReportsExportNotice } from '../ReportsExportNotice.jsx';
@@ -11,6 +12,7 @@ import { TopBar } from './TopBar.jsx';
 const sidebarStorageKey = 'propflow.sidebarCollapsed';
 const setupNoticePaths = new Set(['/admin', '/settings', '/billing', '/notifications', '/notification-settings']);
 const uploadNoticePaths = new Set(['/properties', '/cleaning', '/maintenance', '/reports', '/billing']);
+const auditNoticePaths = new Set(['/admin', '/settings', '/notification-settings']);
 
 function getInitialCollapsedState() {
   if (typeof window === 'undefined') return false;
@@ -42,6 +44,10 @@ function shouldShowUploadSafetyNotice() {
   return uploadNoticePaths.has(path) || path.startsWith('/properties/');
 }
 
+function shouldShowAuditSafetyNotice() {
+  return auditNoticePaths.has(getCurrentPath());
+}
+
 export function AppLayout({
   title = 'Dashboard',
   subtitle = 'Workspace-scoped operational command center',
@@ -54,6 +60,7 @@ export function AppLayout({
   const showReportsExportNotice = shouldShowReportsExportNotice();
   const showBillingSafetyNotice = shouldShowBillingSafetyNotice();
   const showUploadSafetyNotice = shouldShowUploadSafetyNotice();
+  const showAuditSafetyNotice = shouldShowAuditSafetyNotice();
 
   React.useEffect(() => {
     window.localStorage.setItem(sidebarStorageKey, String(collapsed));
@@ -141,6 +148,7 @@ export function AppLayout({
           )}
 
           {showEnvironmentSetupNotice && <EnvironmentSetupNotice compact />}
+          {showAuditSafetyNotice && <AuditSafetyNotice />}
           {showUploadSafetyNotice && <UploadSafetyNotice />}
           {showBillingSafetyNotice && <BillingSafetyNotice />}
           {showReportsExportNotice && <ReportsExportNotice />}

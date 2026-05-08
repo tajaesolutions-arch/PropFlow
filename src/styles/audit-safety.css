@@ -1,0 +1,80 @@
+/* PropFlow audit/activity UI safety
+   Scope: safe placeholder and visibility messaging only.
+   No audit logging, schema changes, RLS changes, fake activity logs, or cross-workspace data exposure.
+*/
+
+.audit-safety-notice {
+  border-color: rgba(124, 58, 237, 0.18);
+  background:
+    linear-gradient(180deg, rgba(245, 243, 255, 0.54), rgba(255, 255, 255, 0.96)),
+    var(--surface);
+}
+
+.audit-safety-grid,
+.audit-visibility-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.audit-visibility-grid {
+  margin-top: 12px;
+}
+
+.audit-safety-card,
+.audit-visibility-card {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.audit-safety-card svg,
+.audit-visibility-card svg {
+  color: var(--purple);
+}
+
+.audit-safety-card span,
+.audit-visibility-card span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.audit-safety-card strong,
+.audit-visibility-card strong,
+.audit-safety-card small,
+.audit-visibility-card small {
+  overflow-wrap: anywhere;
+}
+
+.audit-safety-helper {
+  margin-top: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+@media (max-width: 1080px) {
+  .audit-safety-grid,
+  .audit-visibility-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .audit-safety-card,
+  .audit-visibility-card {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+
+  .audit-safety-card .status-badge,
+  .audit-visibility-card .status-badge {
+    grid-column: 2;
+    justify-self: start;
+  }
+}

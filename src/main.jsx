@@ -14,6 +14,7 @@ import './styles/notification-alerts.css';
 import './styles/reports-export.css';
 import './styles/billing-safety.css';
 import './styles/upload-safety.css';
+import './styles/audit-safety.css';
 
 const routeAliases = {
   '/accounting-dashboard': '/accountant-dashboard',
