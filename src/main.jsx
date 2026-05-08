@@ -7,6 +7,21 @@ import { AppProvider } from './lib/AppContext.jsx';
 import { AppRouter } from './routes/AppRouter.jsx';
 import './styles/global.css';
 
+const routeAliases = {
+  '/accounting-dashboard': '/accountant-dashboard',
+};
+
+function applyInitialRouteAlias() {
+  const currentPath = window.location.pathname.replace(/\/+$/, '') || '/';
+  const canonicalPath = routeAliases[currentPath];
+
+  if (!canonicalPath) return;
+
+  window.history.replaceState({}, '', `${canonicalPath}${window.location.search}${window.location.hash}`);
+}
+
+applyInitialRouteAlias();
+
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <AppProvider>
