@@ -1,0 +1,99 @@
+.table-wrap {
+  width: 100%;
+  min-width: 0;
+}
+
+.table-wrap:not(.empty-table-wrap) {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.data-table th,
+.data-table td {
+  vertical-align: middle;
+}
+
+.data-table th {
+  white-space: nowrap;
+}
+
+.data-table td {
+  max-width: 280px;
+  overflow-wrap: anywhere;
+}
+
+.data-table td:last-child {
+  white-space: nowrap;
+}
+
+.empty-table-wrap {
+  display: grid;
+  place-items: stretch;
+}
+
+.table-empty-state {
+  width: 100%;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  white-space: nowrap;
+  text-transform: capitalize;
+}
+
+.action-row,
+.table-actions,
+.row-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.action-row button,
+.table-actions button,
+.row-actions button {
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .data-table {
+    min-width: 680px;
+  }
+
+  .compact-table {
+    min-width: 560px;
+  }
+
+  .data-table th,
+  .data-table td {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .data-table td {
+    max-width: 220px;
+  }
+
+  .table-wrap::after {
+    content: 'Scroll sideways to view more columns';
+    display: block;
+    padding: 8px 12px 10px;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+
+  .empty-table-wrap::after {
+    display: none;
+  }
+}
