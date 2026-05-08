@@ -1,7 +1,10 @@
 import React from 'react';
 import {
   Building2,
+  Copy,
+  KeyRound,
   LogOut,
+  Mail,
   ShieldCheck,
   UserRound,
   Users,
@@ -42,7 +45,7 @@ function formatDate(value) {
 }
 
 function getWorkspaceName(workspace) {
-  return workspace?.name || workspace?.business_name || 'Workspace';
+  return workspace?.name || workspace?.business_name || workspace?.businessName || 'Workspace';
 }
 
 function getWorkspaceStatus(workspace) {
@@ -51,6 +54,98 @@ function getWorkspaceStatus(workspace) {
 
 function getWorkspaceCurrency(workspace) {
   return workspace?.defaultCurrency || workspace?.default_currency || 'USD';
+}
+
+function getWorkspaceCode(workspace) {
+  return workspace?.code || workspace?.company_code || '—';
+}
+
+function getUserName(currentUser) {
+  return currentUser?.name || currentUser?.full_name || currentUser?.email || 'Account user';
+}
+
+function getUserEmail(currentUser) {
+  return currentUser?.email || 'No email available';
+}
+
+function getUserStatus(currentUser) {
+  return currentUser?.status || 'active';
+}
+
+function getInitials(value) {
+  return String(value || 'PF')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('');
+}
+
+function statusTone(value) {
+  const status = String(value || '').toLowerCase();
+
+  if (['active', 'approved', 'ready'].includes(status)) return 'success';
+  if (['pending', 'invited', 'trialing'].includes(status)) return 'warning';
+  if (['suspended', 'restricted', 'blocked', 'revoked'].includes(status)) return 'error';
+
+  return 'info';
+}
+
+async function copyToClipboard(value) {
+  if (!value || !navigator.clipboard?.writeText) return false;
+
+  await navigator.clipboard.writeText(value);
+  return true;
+}
+
+function AccountProfileCard({ currentUser, primaryRoleLabel }) {
+  const displayName = getUserName(currentUser);
+  const email = getUserEmail(currentUser);
+
+  return (
+    <section className="card account-profile-card">
+      <div className="account-profile-header">
+        <div className="account-profile-avatar" aria-hidden="true">
+          {getInitials(displayName) || 'PF'}
+        </div>
+
+        <div>
+          <h3>{displayName}</h3>
+          <p>{email}</p>
+        </div>
+
+        <StatusBadge tone={statusTone(getUserStatus(currentUser))}>
+          {getUserStatus(currentUser)}
+        </StatusBadge>
+      </div>
+
+      <div className="account-profile-grid">
+        <span>
+          <UserRound size={16} />
+          <strong>{primaryRoleLabel}</strong>
+          <small>Primary role</small>
+        </span>
+
+        <span>
+          <ShieldCheck size={16} />
+          <strong>{roleList(currentUser?.roles)}</strong>
+          <small>Workspace roles</small>
+        </span>
+
+        <span>
+          <Mail size={16} />
+          <strong>{email}</strong>
+          <small>Email</small>
+        </span>
+
+        <span>
+          <KeyRound size={16} />
+          <strong>{currentUser?.id || '—'}</strong>
+          <small>User ID</small>
+        </span>
+      </div>
+    </section>
+  );
 }
 
 export function AccountSettingsPage() {
@@ -83,104 +178,171 @@ export function AccountSettingsPage() {
     }
   };
 
+  const copyWorkspaceCode = async () => {
+    const copied = await copyToClipboard(getWorkspaceCode(currentWorkspace));
+
+    setMessage(copied ? 'Workspace code copied.' : 'Workspace code could not be copied.');
+
+    window.setTimeout(() => setMessage(''), 3000);
+  };
+
   return (
-    <AppLayout title="Account settings" subtitle="Profile, role access, workspace membership, and session controls">
-      <div className="stat-grid dense">
-        <StatCard label="Account status" value={currentUser?.status || 'unknown'} icon={ShieldCheck} />
+    <AppLayout
+      title="Account settings"
+      subtitle="Profile, role access, workspace membership, and secure session controls."
+    >
+      {message && (
+        <section
+          className={message.toLowerCase().includes('could not') ? 'helper error-helper' : 'helper'}
+          role="status"
+        >
+          {message}
+        </section>
+      )}
+
+      <section className="stat-grid dense">
+        <StatCard
+          label="Account status"
+          value={getUserStatus(currentUser)}
+          icon={ShieldCheck}
+          tone={statusTone(getUserStatus(currentUser))}
+        />
+
         <StatCard label="Primary role" value={primaryRoleLabel} icon={UserRound} />
         <StatCard label="Workspaces" value={userWorkspaces.length} icon={Building2} />
         <StatCard label="Membership records" value={userMemberships.length} icon={Users} />
-      </div>
+      </section>
 
-      <section className="card">
+      <AccountProfileCard currentUser={currentUser} primaryRoleLabel={primaryRoleLabel} />
+
+      <section className="card account-session-card">
         <div className="card-header">
           <div>
-            <h3>Profile</h3>
-            <p>Your authenticated profile and current workspace role information.</p>
+            <h3>Session controls</h3>
+            <p>Sign out from the current browser session.</p>
           </div>
-          <UserRound size={20} />
+          <LogOut size={20} className="muted" />
         </div>
 
-        <div className="form-grid">
-          <label>
-            Name
-            <input value={currentUser?.name || ''} readOnly />
-          </label>
-
-          <label>
-            Email
-            <input value={currentUser?.email || ''} readOnly />
-          </label>
-
-          <label>
-            Status
-            <input value={currentUser?.status || 'unknown'} readOnly />
-          </label>
-
-          <label>
-            Primary role
-            <input value={primaryRoleLabel} readOnly />
-          </label>
-
-          <label className="full">
-            Roles in this workspace
-            <input value={roleList(currentUser?.roles)} readOnly />
-          </label>
-        </div>
-
-        {message && (
-          <p className={message.toLowerCase().includes('could not') ? 'helper error-helper' : 'helper'}>
-            {message}
-          </p>
-        )}
-
-        <div className="action-row">
-          <button className="danger" type="button" onClick={handleSignOut} disabled={busy}>
+        <div className="account-session-actions">
+          <button
+            className="danger"
+            type="button"
+            onClick={handleSignOut}
+            disabled={busy}
+            data-skip-create-action="true"
+          >
             <LogOut size={16} />
             {busy ? 'Logging out…' : 'Logout'}
           </button>
         </div>
       </section>
 
-      <section className="card">
-        <div className="card-header">
-          <div>
-            <h3>Current workspace</h3>
-            <p>The workspace currently loaded for this session.</p>
+      <section className="panel-grid two">
+        <section className="card">
+          <div className="card-header">
+            <div>
+              <h3>Current workspace</h3>
+              <p>The workspace currently loaded for this session.</p>
+            </div>
+            <Building2 size={20} className="muted" />
           </div>
-          <Building2 size={20} />
-        </div>
 
-        {currentWorkspace ? (
-          <div className="metadata-grid">
-            <span>
-              <Building2 size={16} />
-              {getWorkspaceName(currentWorkspace)}
-            </span>
+          {currentWorkspace ? (
+            <div className="account-workspace-grid">
+              <span>
+                <Building2 size={16} />
+                <strong>{getWorkspaceName(currentWorkspace)}</strong>
+                <small>Workspace name</small>
+              </span>
 
-            <span>
-              <StatusBadge>{getWorkspaceStatus(currentWorkspace)}</StatusBadge>
-            </span>
+              <span>
+                <ShieldCheck size={16} />
+                <strong>{getWorkspaceStatus(currentWorkspace)}</strong>
+                <small>Status</small>
+              </span>
 
-            <span>
-              Currency: {getWorkspaceCurrency(currentWorkspace)}
-            </span>
+              <span>
+                <KeyRound size={16} />
+                <strong>{getWorkspaceCurrency(currentWorkspace)}</strong>
+                <small>Default currency</small>
+              </span>
 
-            <span>
-              Code: {currentWorkspace.code || currentWorkspace.company_code || '—'}
-            </span>
-          </div>
-        ) : (
-          <EmptyState
-            title="No workspace selected."
-            description="Create or join a workspace to access PropFlow workspace features."
-            action={
-              <button type="button" onClick={() => navigate('/workspace-setup')}>
-                Create or join workspace
+              <span>
+                <Copy size={16} />
+                <strong>{getWorkspaceCode(currentWorkspace)}</strong>
+                <small>Company code</small>
+              </span>
+
+              <button
+                type="button"
+                onClick={copyWorkspaceCode}
+                disabled={!currentWorkspace}
+                data-skip-create-action="true"
+              >
+                <Copy size={16} />
+                Copy workspace code
               </button>
-            }
-          />
-        )}
+
+              <button
+                type="button"
+                onClick={() => navigate('/settings')}
+                data-skip-create-action="true"
+              >
+                Open workspace settings
+              </button>
+            </div>
+          ) : (
+            <EmptyState
+              compact
+              icon={Building2}
+              title="No workspace selected"
+              description="Create or join a workspace to access PropFlow workspace features."
+              action={
+                <button type="button" onClick={() => navigate('/workspace-setup')} data-skip-create-action="true">
+                  Create or join workspace
+                </button>
+              }
+            />
+          )}
+        </section>
+
+        <section className="card">
+          <div className="card-header">
+            <div>
+              <h3>Account security</h3>
+              <p>Security settings and profile editing are intentionally limited in the MVP.</p>
+            </div>
+            <ShieldCheck size={20} className="muted" />
+          </div>
+
+          <div className="account-security-list">
+            <span>
+              <strong>Password changes</strong>
+              <StatusBadge tone="info">Supabase Auth flow later</StatusBadge>
+            </span>
+
+            <span>
+              <strong>Profile editing</strong>
+              <StatusBadge tone="info">planned</StatusBadge>
+            </span>
+
+            <span>
+              <strong>MFA / 2FA</strong>
+              <StatusBadge tone="warning">not configured</StatusBadge>
+            </span>
+
+            <span>
+              <strong>Account deletion</strong>
+              <StatusBadge tone="info">admin-safe flow later</StatusBadge>
+            </span>
+          </div>
+
+          <div className="helper">
+            Password changes, profile editing, MFA, and account deletion should be added through
+            Supabase Auth-safe flows in a later account-management phase.
+          </div>
+        </section>
       </section>
 
       <section className="card">
@@ -189,6 +351,7 @@ export function AccountSettingsPage() {
             <h3>Workspace memberships</h3>
             <p>All workspace membership records available to this account.</p>
           </div>
+          <Users size={20} className="muted" />
         </div>
 
         {userMemberships.length ? (
@@ -211,7 +374,11 @@ export function AccountSettingsPage() {
               {
                 key: 'status',
                 label: 'Status',
-                render: (row) => <StatusBadge>{row.status || 'active'}</StatusBadge>,
+                render: (row) => (
+                  <StatusBadge tone={statusTone(row.status || 'active')}>
+                    {row.status || 'active'}
+                  </StatusBadge>
+                ),
               },
               {
                 key: 'created_at',
@@ -222,25 +389,12 @@ export function AccountSettingsPage() {
           />
         ) : (
           <EmptyState
-            title="No workspace memberships yet."
+            compact
+            icon={Users}
+            title="No workspace memberships yet"
             description="Create a workspace or join an existing workspace with a valid invite."
           />
         )}
-      </section>
-
-      <section className="card">
-        <div className="card-header">
-          <div>
-            <h3>Account security</h3>
-            <p>Security settings and profile editing are intentionally limited in the MVP.</p>
-          </div>
-          <ShieldCheck size={20} />
-        </div>
-
-        <div className="helper">
-          Password changes, profile editing, MFA, and account deletion should be added through
-          Supabase Auth-safe flows in a later account-management phase.
-        </div>
       </section>
     </AppLayout>
   );
