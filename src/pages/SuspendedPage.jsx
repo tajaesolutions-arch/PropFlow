@@ -2,10 +2,13 @@ import React from 'react';
 import {
   AlertTriangle,
   Ban,
+  Building2,
   CreditCard,
   Home,
+  KeyRound,
   LogIn,
   ShieldAlert,
+  ShieldCheck,
   UserRound,
 } from 'lucide-react';
 
@@ -23,6 +26,7 @@ function getContent(variant) {
       primaryPath: '/login/redirect',
       secondaryAction: 'Account settings',
       secondaryPath: '/account',
+      tone: 'warning',
     };
   }
 
@@ -37,6 +41,7 @@ function getContent(variant) {
       primaryPath: '/billing',
       secondaryAction: 'Account settings',
       secondaryPath: '/account',
+      tone: 'warning',
     };
   }
 
@@ -50,7 +55,20 @@ function getContent(variant) {
     primaryPath: '/account',
     secondaryAction: 'Back to login',
     secondaryPath: '/login',
+    tone: 'error',
   };
+}
+
+function RestrictionStep({ icon: Icon, title, description }) {
+  return (
+    <article className="restriction-step">
+      <Icon size={18} />
+      <span>
+        <strong>{title}</strong>
+        <small>{description}</small>
+      </span>
+    </article>
+  );
 }
 
 export function SuspendedPage({ variant }) {
@@ -58,21 +76,51 @@ export function SuspendedPage({ variant }) {
   const Icon = content.icon;
 
   return (
-    <div className="auth-page">
-      <div className="auth-card wide">
-        <Icon size={40} />
+    <div className={`auth-page restriction-page restriction-${content.tone}`}>
+      <section className="auth-card wide restriction-card">
+        <div className="restriction-icon">
+          <Icon size={36} />
+        </div>
 
-        <p className="eyebrow">{content.eyebrow}</p>
-        <h1>{content.title}</h1>
-        <p>{content.description}</p>
+        <div>
+          <p className="eyebrow">{content.eyebrow}</p>
+          <h1>{content.title}</h1>
+          <p>{content.description}</p>
+        </div>
 
-        <div className="helper">
+        <div className="helper restriction-helper">
           <AlertTriangle size={16} />
           PropFlow blocks restricted users from dashboards, properties, bookings, cleaning,
           maintenance, reports, team data, and workspace records until access is restored.
         </div>
 
-        <div className="action-row">
+        <div className="restriction-steps-grid">
+          <RestrictionStep
+            icon={ShieldCheck}
+            title="Workspace data protected"
+            description="Restricted users cannot view or edit operational records."
+          />
+
+          <RestrictionStep
+            icon={KeyRound}
+            title="Role checked"
+            description="PropFlow routes access based on saved database roles."
+          />
+
+          <RestrictionStep
+            icon={Building2}
+            title="Workspace scoped"
+            description="Restrictions apply to the current account, membership, or workspace."
+          />
+
+          <RestrictionStep
+            icon={CreditCard}
+            title="Billing safe"
+            description="Billing restrictions should allow owners to recover payment access."
+          />
+        </div>
+
+        <div className="action-row restriction-actions">
           <button
             className="primary"
             type="button"
@@ -91,7 +139,7 @@ export function SuspendedPage({ variant }) {
         <p className="page-note">
           Contact your Workspace Owner or PropFlow support if this restriction is unexpected.
         </p>
-      </div>
+      </section>
     </div>
   );
 }
