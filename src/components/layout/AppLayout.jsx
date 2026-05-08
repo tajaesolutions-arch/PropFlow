@@ -5,6 +5,7 @@ import { BillingSafetyNotice } from '../BillingSafetyNotice.jsx';
 import { EnvironmentSetupNotice } from '../EnvironmentSetupNotice.jsx';
 import { OnboardingSetupNotice } from '../OnboardingSetupNotice.jsx';
 import { ReportsExportNotice } from '../ReportsExportNotice.jsx';
+import { TeamWorkspaceSafetyNotice } from '../TeamWorkspaceSafetyNotice.jsx';
 import { UploadSafetyNotice } from '../UploadSafetyNotice.jsx';
 import { useApp } from '../../lib/AppContext.jsx';
 import { Sidebar } from './Sidebar.jsx';
@@ -15,6 +16,7 @@ const setupNoticePaths = new Set(['/admin', '/settings', '/billing', '/notificat
 const uploadNoticePaths = new Set(['/properties', '/cleaning', '/maintenance', '/reports', '/billing']);
 const auditNoticePaths = new Set(['/admin', '/settings', '/notification-settings']);
 const onboardingNoticePaths = new Set(['/dashboard', '/workspace-setup']);
+const teamWorkspaceNoticePaths = new Set(['/team', '/settings', '/admin']);
 
 function getInitialCollapsedState() {
   if (typeof window === 'undefined') return false;
@@ -54,6 +56,10 @@ function shouldShowOnboardingSetupNotice() {
   return onboardingNoticePaths.has(getCurrentPath());
 }
 
+function shouldShowTeamWorkspaceSafetyNotice() {
+  return teamWorkspaceNoticePaths.has(getCurrentPath());
+}
+
 export function AppLayout({
   title = 'Dashboard',
   subtitle = 'Workspace-scoped operational command center',
@@ -68,6 +74,7 @@ export function AppLayout({
   const showUploadSafetyNotice = shouldShowUploadSafetyNotice();
   const showAuditSafetyNotice = shouldShowAuditSafetyNotice();
   const showOnboardingSetupNotice = shouldShowOnboardingSetupNotice();
+  const showTeamWorkspaceSafetyNotice = shouldShowTeamWorkspaceSafetyNotice();
 
   React.useEffect(() => {
     window.localStorage.setItem(sidebarStorageKey, String(collapsed));
@@ -156,6 +163,7 @@ export function AppLayout({
 
           {showEnvironmentSetupNotice && <EnvironmentSetupNotice compact />}
           {showOnboardingSetupNotice && <OnboardingSetupNotice />}
+          {showTeamWorkspaceSafetyNotice && <TeamWorkspaceSafetyNotice />}
           {showAuditSafetyNotice && <AuditSafetyNotice />}
           {showUploadSafetyNotice && <UploadSafetyNotice />}
           {showBillingSafetyNotice && <BillingSafetyNotice />}
