@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { BillingSafetyNotice } from '../BillingSafetyNotice.jsx';
 import { EnvironmentSetupNotice } from '../EnvironmentSetupNotice.jsx';
 import { ReportsExportNotice } from '../ReportsExportNotice.jsx';
 import { useApp } from '../../lib/AppContext.jsx';
@@ -29,6 +30,10 @@ function shouldShowReportsExportNotice() {
   return getCurrentPath() === '/reports';
 }
 
+function shouldShowBillingSafetyNotice() {
+  return getCurrentPath() === '/billing';
+}
+
 export function AppLayout({
   title = 'Dashboard',
   subtitle = 'Workspace-scoped operational command center',
@@ -39,6 +44,7 @@ export function AppLayout({
   const { error } = useApp();
   const showEnvironmentSetupNotice = shouldShowEnvironmentSetupNotice();
   const showReportsExportNotice = shouldShowReportsExportNotice();
+  const showBillingSafetyNotice = shouldShowBillingSafetyNotice();
 
   React.useEffect(() => {
     window.localStorage.setItem(sidebarStorageKey, String(collapsed));
@@ -126,6 +132,7 @@ export function AppLayout({
           )}
 
           {showEnvironmentSetupNotice && <EnvironmentSetupNotice compact />}
+          {showBillingSafetyNotice && <BillingSafetyNotice />}
           {showReportsExportNotice && <ReportsExportNotice />}
 
           {children}
