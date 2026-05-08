@@ -2,11 +2,14 @@ import React from 'react';
 import {
   AlertTriangle,
   Archive,
+  Building2,
   DollarSign,
   Edit3,
   PackagePlus,
+  Plus,
   RotateCcw,
   Search,
+  Truck,
   X,
   XCircle,
 } from 'lucide-react';
@@ -16,9 +19,14 @@ import { EmptyState } from '../components/EmptyState.jsx';
 import { StatCard } from '../components/StatCard.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
 import { useApp } from '../lib/AppContext.jsx';
+import { hasAnyRole } from '../lib/auth.js';
+import { roles } from '../data/constants.js';
 import { formatCurrency } from '../lib/formatters.js';
 
+const inventoryManagerRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
+
 const statusOptions = ['in_stock', 'low_stock', 'out_of_stock', 'archived'];
+
 const defaultForm = {
   item_name: '',
   property_id: '',
@@ -70,6 +78,38 @@ function getWorkspaceCurrency(workspace) {
   return workspace?.defaultCurrency || workspace?.default_currency || 'USD';
 }
 
+function getItemName(item) {
+  return item.item_name || item.itemName || 'Supply item';
+}
+
+function getItemPropertyId(item) {
+  return item.property_id || item.propertyId || '';
+}
+
+function getItemQuantity(item) {
+  return Number(item.current_quantity ?? item.currentQuantity ?? 0);
+}
+
+function getItemThreshold(item) {
+  return Number(item.low_stock_threshold ?? item.lowStockThreshold ?? 0);
+}
+
+function getItemUnitCost(item) {
+  return Number(item.estimated_unit_cost ?? item.estimatedUnitCost ?? 0);
+}
+
+function getItemUnit(item) {
+  return item.unit || 'unit';
+}
+
+function getSupplierName(item) {
+  return item.supplier_name || item.supplierName || '';
+}
+
+function getSupplierContact(item) {
+  return item.supplier_contact || item.supplierContact || '';
+}
+
 function toForm(item, fallbackCurrency) {
   if (!item?.id) return { ...defaultForm, currency: fallbackCurrency || 'USD' };
 
@@ -92,21 +132,46 @@ function validate(form) {
   const errors = [];
 
   if (!form.item_name.trim()) errors.push('Item name is required.');
+
   if (numberValue(form.current_quantity) === null || numberValue(form.current_quantity) < 0) {
     errors.push('Current quantity must be 0 or more.');
   }
+
   if (numberValue(form.low_stock_threshold) === null || numberValue(form.low_stock_threshold) < 0) {
     errors.push('Low-stock threshold must be 0 or more.');
   }
+
   if (
     form.estimated_unit_cost !== '' &&
     (numberValue(form.estimated_unit_cost) === null || numberValue(form.estimated_unit_cost) < 0)
   ) {
     errors.push('Estimated unit cost must be 0 or more when provided.');
   }
+
   if (!form.currency.trim()) errors.push('Currency is required.');
 
   return errors;
+}
+
+function matchesSearch(item, properties, query) {
+  const term = String(query || '').toLowerCase().trim();
+
+  if (!term) return true;
+
+  const text = [
+    getItemName(item),
+    item.category,
+    propertyName(properties, getItemPropertyId(item)),
+    getSupplierName(item),
+    getSupplierContact(item),
+    item.notes,
+    statusFor(item),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  return text.includes(term);
 }
 
 function SupplyForm({ initial, properties, workspace, onSubmit, onCancel, submitting, submitError }) {
@@ -114,6 +179,23 @@ function SupplyForm({ initial, properties, workspace, onSubmit, onCancel, submit
   const isEditing = Boolean(initial?.id);
   const [form, setForm] = React.useState(() => toForm(initial, fallbackCurrency));
   const [errors, setErrors] = React.useState([]);
+
+  React.useEffect(() => {
+    setForm(toForm(initial, fallbackCurrency));
+    setErrors([]);
+  }, [initial?.id, fallbackCurrency]);
+
+  React.useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape' && !submitting) onCancel();
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [onCancel, submitting]);
 
   const set = (key) => (event) => {
     setForm((value) => ({ ...value, [key]: event.target.value }));
@@ -129,9 +211,14 @@ function SupplyForm({ initial, properties, workspace, onSubmit, onCancel, submit
 
     onSubmit({
       ...form,
+      item_name: form.item_name.trim(),
       property_id: form.property_id || null,
+      category: form.category.trim() || null,
       current_quantity: numberValue(form.current_quantity) ?? 0,
       low_stock_threshold: numberValue(form.low_stock_threshold) ?? 0,
+      unit: form.unit.trim() || 'unit',
+      supplier_name: form.supplier_name.trim() || null,
+      supplier_contact: form.supplier_contact.trim() || null,
       estimated_unit_cost: form.estimated_unit_cost === '' ? null : numberValue(form.estimated_unit_cost),
       currency: form.currency.trim().toUpperCase(),
       notes: form.notes.trim() || null,
@@ -151,9 +238,17 @@ function SupplyForm({ initial, properties, workspace, onSubmit, onCancel, submit
         <header className="modal-header">
           <div>
             <h3 id="supply-modal-title">{isEditing ? 'Edit supply' : 'Add supply'}</h3>
-            <p>Track real stock levels, vendors, and low-stock thresholds for the selected workspace.</p>
+            <p>Track real stock levels, vendors, low-stock thresholds, and property-specific inventory.</p>
           </div>
-          <button type="button" className="icon-btn" aria-label="Close modal" onClick={onCancel} disabled={submitting}>
+
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Close modal"
+            onClick={onCancel}
+            disabled={submitting}
+            data-skip-create-action="true"
+          >
             <X size={18} />
           </button>
         </header>
@@ -197,7 +292,11 @@ function SupplyForm({ initial, properties, workspace, onSubmit, onCancel, submit
 
               <label>
                 Category
-                <input value={form.category} onChange={set('category')} placeholder="Linens, toiletries, cleaning..." />
+                <input
+                  value={form.category}
+                  onChange={set('category')}
+                  placeholder="Linens, toiletries, cleaning..."
+                />
               </label>
 
               <label>
@@ -236,7 +335,11 @@ function SupplyForm({ initial, properties, workspace, onSubmit, onCancel, submit
 
               <label>
                 Supplier contact
-                <input value={form.supplier_contact} onChange={set('supplier_contact')} placeholder="Email, phone, or URL" />
+                <input
+                  value={form.supplier_contact}
+                  onChange={set('supplier_contact')}
+                  placeholder="Email, phone, or URL"
+                />
               </label>
 
               <label>
@@ -254,25 +357,36 @@ function SupplyForm({ initial, properties, workspace, onSubmit, onCancel, submit
                 Currency
                 <input value={form.currency} onChange={set('currency')} required />
               </label>
-            </div>
 
-            <label className="full-width">
-              Notes
-              <textarea
-                value={form.notes}
-                onChange={set('notes')}
-                placeholder="Optional notes about reorder rules, storage location, or supplier instructions."
-                rows={3}
-              />
-            </label>
+              <label className="full">
+                Notes
+                <textarea
+                  value={form.notes}
+                  onChange={set('notes')}
+                  placeholder="Optional notes about reorder rules, storage location, or supplier instructions."
+                  rows={3}
+                />
+              </label>
+            </div>
           </div>
 
           <footer className="modal-actions">
-            <button type="button" onClick={onCancel} disabled={submitting}>
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={submitting}
+              data-skip-create-action="true"
+            >
               Cancel
             </button>
-            <button type="submit" className="primary" disabled={submitting}>
-              {submitting ? 'Saving...' : 'Save supply'}
+
+            <button
+              type="submit"
+              className="primary"
+              disabled={submitting}
+              data-skip-create-action="true"
+            >
+              {submitting ? 'Saving…' : 'Save supply'}
             </button>
           </footer>
         </form>
@@ -281,31 +395,151 @@ function SupplyForm({ initial, properties, workspace, onSubmit, onCancel, submit
   );
 }
 
+function SupplyCard({ item, properties, canManage, submitting, onEdit, onArchiveToggle }) {
+  const status = statusFor(item);
+  const propertyId = getItemPropertyId(item);
+  const quantity = getItemQuantity(item);
+  const threshold = getItemThreshold(item);
+  const unitCost = getItemUnitCost(item);
+  const currency = item.currency || 'USD';
+  const totalValue = quantity * unitCost;
+
+  return (
+    <article className={`card supply-card ${status === 'low_stock' || status === 'out_of_stock' ? 'urgent' : ''}`}>
+      <div className="supply-card-top">
+        <div className="supply-icon">
+          <PackagePlus size={22} />
+        </div>
+
+        <StatusBadge tone={statusTone(status)}>{displayStatus(status)}</StatusBadge>
+      </div>
+
+      <div>
+        <h3>{getItemName(item)}</h3>
+        <p>{propertyName(properties, propertyId)}</p>
+      </div>
+
+      <div className="supply-card-meta">
+        <span>
+          <strong>
+            {quantity} {getItemUnit(item)}
+          </strong>
+          <small>Current stock</small>
+        </span>
+
+        <span>
+          <strong>{threshold}</strong>
+          <small>Low-stock threshold</small>
+        </span>
+
+        <span>
+          <strong>{formatCurrency(unitCost, currency)}</strong>
+          <small>Unit cost</small>
+        </span>
+
+        <span>
+          <strong>{formatCurrency(totalValue, currency)}</strong>
+          <small>Total value</small>
+        </span>
+      </div>
+
+      {(item.category || getSupplierName(item) || getSupplierContact(item)) && (
+        <div className="supply-card-details">
+          {item.category && (
+            <span>
+              <strong>Category</strong>
+              <small>{item.category}</small>
+            </span>
+          )}
+
+          {getSupplierName(item) && (
+            <span>
+              <strong>Supplier</strong>
+              <small>{getSupplierName(item)}</small>
+            </span>
+          )}
+
+          {getSupplierContact(item) && (
+            <span>
+              <strong>Contact</strong>
+              <small>{getSupplierContact(item)}</small>
+            </span>
+          )}
+        </div>
+      )}
+
+      {item.notes && (
+        <div className="supply-notes">
+          <strong>Notes</strong>
+          <p>{item.notes}</p>
+        </div>
+      )}
+
+      {canManage && (
+        <div className="supply-card-actions">
+          <button
+            type="button"
+            onClick={() => onEdit(item)}
+            disabled={submitting}
+            data-skip-create-action="true"
+          >
+            <Edit3 size={16} />
+            Edit
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onArchiveToggle(item, status !== 'archived')}
+            disabled={submitting}
+            data-skip-create-action="true"
+          >
+            {status === 'archived' ? <RotateCcw size={16} /> : <Archive size={16} />}
+            {status === 'archived' ? 'Restore' : 'Archive'}
+          </button>
+        </div>
+      )}
+    </article>
+  );
+}
+
 export function InventoryPage() {
-  const { data, currentWorkspace, createSupply, updateSupply, archiveSupply } = useApp();
+  const {
+    data,
+    currentWorkspace,
+    currentUser,
+    createSupply,
+    updateSupply,
+    archiveSupply,
+  } = useApp();
+
   const supplies = data.supplies || [];
   const properties = data.properties || [];
-  const [filters, setFilters] = React.useState({ search: '', property: 'all', status: 'active', category: 'all' });
+
+  const [filters, setFilters] = React.useState({
+    search: '',
+    property: 'all',
+    status: 'active',
+    category: 'all',
+  });
   const [editing, setEditing] = React.useState(null);
   const [submitting, setSubmitting] = React.useState(false);
   const [message, setMessage] = React.useState('');
   const [submitError, setSubmitError] = React.useState('');
+
+  const canManageInventory = hasAnyRole(currentUser, inventoryManagerRoles);
 
   const set = (key) => (event) => {
     setFilters((value) => ({ ...value, [key]: event.target.value }));
   };
 
   const categories = [...new Set(supplies.map((item) => item.category).filter(Boolean))].sort();
+
   const filtered = supplies.filter((item) => {
-    const term = filters.search.toLowerCase().trim();
     const status = statusFor(item);
-    const text = `${item.item_name || item.itemName || ''} ${item.category || ''} ${
-      item.supplier_name || item.supplierName || ''
-    }`.toLowerCase();
 
     return (
-      (!term || text.includes(term)) &&
-      (filters.property === 'all' || (item.property_id || item.propertyId || '') === filters.property) &&
+      matchesSearch(item, properties, filters.search) &&
+      (filters.property === 'all' || getItemPropertyId(item) === filters.property) &&
       (filters.status === 'all' || (filters.status === 'active' ? status !== 'archived' : status === filters.status)) &&
       (filters.category === 'all' || item.category === filters.category)
     );
@@ -314,22 +548,33 @@ export function InventoryPage() {
   const activeSupplies = supplies.filter((item) => statusFor(item) !== 'archived');
   const lowStock = activeSupplies.filter((item) => ['low_stock', 'out_of_stock'].includes(statusFor(item)));
   const outOfStock = activeSupplies.filter((item) => statusFor(item) === 'out_of_stock');
+  const archivedSupplies = supplies.filter((item) => statusFor(item) === 'archived');
+
   const totalValue = activeSupplies.reduce((sum, item) => {
-    const quantity = Number(item.current_quantity ?? item.currentQuantity ?? 0);
-    const cost = Number(item.estimated_unit_cost ?? item.estimatedUnitCost ?? 0);
+    const quantity = getItemQuantity(item);
+    const cost = getItemUnitCost(item);
     return sum + quantity * cost;
   }, 0);
+
   const currency = getWorkspaceCurrency(currentWorkspace);
 
   const openNewSupply = () => {
+    if (!canManageInventory) return;
+
     setMessage('');
     setSubmitError('');
     setEditing({ mode: 'create' });
   };
 
   const closeForm = () => {
+    if (submitting) return;
+
     setEditing(null);
     setSubmitError('');
+  };
+
+  const clearMessageSoon = () => {
+    window.setTimeout(() => setMessage(''), 3000);
   };
 
   const saveSupply = async (payload) => {
@@ -338,11 +583,16 @@ export function InventoryPage() {
     setMessage('');
 
     try {
-      if (editing?.id) await updateSupply(editing.id, payload);
-      else await createSupply(payload);
+      if (editing?.id) {
+        await updateSupply(editing.id, payload);
+        setMessage('Supply updated.');
+      } else {
+        await createSupply(payload);
+        setMessage('Supply created.');
+      }
 
-      setMessage(editing?.id ? 'Supply updated.' : 'Supply created.');
       setEditing(null);
+      clearMessageSoon();
     } catch (error) {
       setSubmitError(error.message || 'Supply could not be saved.');
     } finally {
@@ -351,6 +601,8 @@ export function InventoryPage() {
   };
 
   const toggleArchive = async (item, archived) => {
+    if (!canManageInventory) return;
+
     setSubmitting(true);
     setSubmitError('');
     setMessage('');
@@ -358,6 +610,7 @@ export function InventoryPage() {
     try {
       await archiveSupply(item.id, archived);
       setMessage(archived ? 'Supply archived.' : 'Supply restored.');
+      clearMessageSoon();
     } catch (error) {
       setSubmitError(error.message || 'Supply archive status could not be changed.');
     } finally {
@@ -365,193 +618,261 @@ export function InventoryPage() {
     }
   };
 
+  const clearFilters = () => {
+    setFilters({
+      search: '',
+      property: 'all',
+      status: 'active',
+      category: 'all',
+    });
+  };
+
   return (
-    <AppLayout title="Supplies / Inventory">
-      <div className="stat-grid dense">
-        <StatCard label="Tracked items" value={activeSupplies.length} icon={PackagePlus} />
-        <StatCard label="Low-stock alerts" value={lowStock.length} icon={AlertTriangle} tone="warning" />
-        <StatCard label="Out-of-stock items" value={outOfStock.length} icon={XCircle} tone="error" />
-        <StatCard label="Estimated inventory value" value={formatCurrency(totalValue, currency)} icon={DollarSign} />
-      </div>
-
-      <section className="card">
-        <div className="card-header">
-          <div>
-            <h3>Inventory controls</h3>
-            <p>Track property supplies, low-stock levels, vendors, and estimated replacement costs from real Supabase data.</p>
-          </div>
-          <button className="primary" type="button" onClick={openNewSupply}>
-            <PackagePlus size={16} /> Add supply
-          </button>
-        </div>
-
-        {message && <p className="helper">{message}</p>}
-        {submitError && (
-          <div className="modal-error" role="alert">
-            {submitError}
-          </div>
-        )}
-
-        <div className="filter-bar booking-filter">
-          <label className="search-input">
-            <Search size={16} />
-            <input value={filters.search} onChange={set('search')} placeholder="Search item, category, supplier" />
-          </label>
-
-          <select value={filters.property} onChange={set('property')}>
-            <option value="all">All properties</option>
-            <option value="">Workspace supplies</option>
-            {properties.map((property) => (
-              <option key={property.id} value={property.id}>
-                {property.name}
-              </option>
-            ))}
-          </select>
-
-          <select value={filters.category} onChange={set('category')}>
-            <option value="all">All categories</option>
-            {categories.map((category) => (
-              <option key={category} value={category}>
-                {category}
-              </option>
-            ))}
-          </select>
-
-          <select value={filters.status} onChange={set('status')}>
-            <option value="active">Active supplies</option>
-            <option value="all">All statuses</option>
-            {statusOptions.map((status) => (
-              <option key={status} value={status}>
-                {displayStatus(status)}
-              </option>
-            ))}
-          </select>
-        </div>
-      </section>
-
-      {lowStock.length > 0 && (
-        <section className="card detail-panel">
-          <div className="card-header">
-            <div>
-              <h3>Low-stock panel</h3>
-              <p>Supplies at or below threshold, including out-of-stock items.</p>
-            </div>
-          </div>
-          <div className="calendar-agenda">
-            {lowStock.map((item) => {
-              const status = statusFor(item);
-
-              return (
-                <div className={status === 'out_of_stock' ? 'calendar-event event-error' : 'calendar-event event-warning'} key={item.id}>
-                  <span>{displayStatus(status)}</span>
-                  <strong>{item.item_name || item.itemName}</strong>
-                  <small>
-                    {propertyName(properties, item.property_id || item.propertyId)} ·{' '}
-                    {Number(item.current_quantity ?? item.currentQuantity ?? 0)} {item.unit || 'unit'} left
-                  </small>
-                  <button type="button" onClick={() => setEditing(item)}>
-                    <Edit3 size={14} /> Update
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+    <AppLayout
+      title="Supplies / Inventory"
+      subtitle="Track workspace supplies, property stock levels, low-stock alerts, vendors, and estimated inventory value."
+    >
+      {message && (
+        <section className="helper" role="status">
+          {message}
         </section>
       )}
 
-      <section className="card">
-        <div className="card-header">
-          <div>
-            <h3>Inventory table</h3>
-            <p>{filtered.length} shown</p>
-          </div>
+      {submitError && (
+        <section className="helper error-helper" role="alert">
+          {submitError}
+        </section>
+      )}
+
+      <section className="stat-grid dense">
+        <StatCard label="Tracked items" value={activeSupplies.length} icon={PackagePlus} />
+        <StatCard label="Low-stock alerts" value={lowStock.length} icon={AlertTriangle} tone="warning" />
+        <StatCard label="Out-of-stock items" value={outOfStock.length} icon={XCircle} tone="error" />
+        <StatCard
+          label="Estimated inventory value"
+          value={formatCurrency(totalValue, currency)}
+          subtitle={`${archivedSupplies.length} archived`}
+          icon={DollarSign}
+        />
+      </section>
+
+      <section className="card inventory-toolbar">
+        <div>
+          <h3>Inventory management</h3>
+          <p>Monitor supplies for cleaning, guest readiness, maintenance, and property operations.</p>
         </div>
 
-        {supplies.length ? (
-          filtered.length ? (
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Item</th>
-                    <th>Property</th>
-                    <th>Category</th>
-                    <th>Quantity</th>
-                    <th>Threshold</th>
-                    <th>Status</th>
-                    <th>Supplier</th>
-                    <th>Estimated value</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((item) => {
-                    const quantity = Number(item.current_quantity ?? item.currentQuantity ?? 0);
-                    const cost = Number(item.estimated_unit_cost ?? item.estimatedUnitCost ?? 0);
-                    const status = statusFor(item);
-                    const itemCurrency = item.currency || currency;
+        <div className="inventory-toolbar-actions">
+          {canManageInventory && (
+            <button
+              type="button"
+              className="primary"
+              onClick={openNewSupply}
+              data-skip-create-action="true"
+            >
+              <Plus size={16} />
+              Add Supply
+            </button>
+          )}
 
-                    return (
-                      <tr key={item.id}>
-                        <td>
-                          <strong>{item.item_name || item.itemName}</strong>
-                          <small>{item.unit || 'unit'}</small>
-                        </td>
-                        <td>{propertyName(properties, item.property_id || item.propertyId)}</td>
-                        <td>{item.category || 'Uncategorized'}</td>
-                        <td>{quantity}</td>
-                        <td>{item.low_stock_threshold ?? item.lowStockThreshold ?? 0}</td>
-                        <td>
-                          <StatusBadge tone={statusTone(status)}>{displayStatus(status)}</StatusBadge>
-                        </td>
-                        <td>{item.supplier_name || item.supplierName || 'Not set'}</td>
-                        <td>{formatCurrency(quantity * cost, itemCurrency)}</td>
-                        <td>
-                          <div className="table-actions">
-                            <button type="button" onClick={() => setEditing(item)} disabled={submitting}>
-                              <Edit3 size={14} /> Edit
-                            </button>
-                            {status === 'archived' ? (
-                              <button type="button" onClick={() => toggleArchive(item, false)} disabled={submitting}>
-                                <RotateCcw size={14} /> Restore
-                              </button>
-                            ) : (
-                              <button type="button" onClick={() => toggleArchive(item, true)} disabled={submitting}>
-                                <Archive size={14} /> Archive
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+          <button
+            type="button"
+            onClick={() => setFilters((current) => ({ ...current, status: 'low_stock' }))}
+            data-skip-create-action="true"
+          >
+            View Low Stock
+          </button>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="inventory-filters">
+          <label className="inventory-search">
+            <Search size={16} />
+            <input
+              value={filters.search}
+              onChange={set('search')}
+              placeholder="Search item, category, property, supplier, contact, or status..."
+              aria-label="Search inventory"
+            />
+
+            {filters.search && (
+              <button
+                type="button"
+                className="search-clear"
+                onClick={() => setFilters((current) => ({ ...current, search: '' }))}
+                aria-label="Clear inventory search"
+                data-skip-create-action="true"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </label>
+
+          <label>
+            Property
+            <select value={filters.property} onChange={set('property')}>
+              <option value="all">All properties</option>
+              <option value="">Workspace supply</option>
+              {properties.map((property) => (
+                <option key={property.id} value={property.id}>
+                  {property.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Status
+            <select value={filters.status} onChange={set('status')}>
+              <option value="active">Active supplies</option>
+              <option value="all">All supplies</option>
+              {statusOptions.map((status) => (
+                <option key={status} value={status}>
+                  {displayStatus(status)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Category
+            <select value={filters.category} onChange={set('category')}>
+              <option value="all">All categories</option>
+              {categories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <button type="button" onClick={clearFilters} data-skip-create-action="true">
+            Clear filters
+          </button>
+        </div>
+      </section>
+
+      {!supplies.length ? (
+        <EmptyState
+          eyebrow="Inventory"
+          icon={PackagePlus}
+          title="No inventory items yet"
+          description="Add supplies such as linens, toiletries, cleaning products, maintenance parts, or guest-ready essentials."
+          action={
+            canManageInventory ? (
+              <button
+                type="button"
+                className="primary"
+                onClick={openNewSupply}
+                data-skip-create-action="true"
+              >
+                <Plus size={16} />
+                Add Supply
+              </button>
+            ) : null
+          }
+        />
+      ) : filtered.length ? (
+        <section className="inventory-card-grid">
+          {filtered.map((item) => (
+            <SupplyCard
+              key={item.id}
+              item={item}
+              properties={properties}
+              canManage={canManageInventory}
+              submitting={submitting}
+              onEdit={(supply) => {
+                setMessage('');
+                setSubmitError('');
+                setEditing(supply);
+              }}
+              onArchiveToggle={toggleArchive}
+            />
+          ))}
+        </section>
+      ) : (
+        <EmptyState
+          eyebrow="Inventory filters"
+          icon={PackagePlus}
+          title="No supplies match your filters"
+          description="Adjust the search, property, status, or category filters."
+          action={
+            <button type="button" onClick={clearFilters} data-skip-create-action="true">
+              Clear filters
+            </button>
+          }
+        />
+      )}
+
+      <section className="panel-grid two">
+        <section className="card">
+          <div className="card-header">
+            <div>
+              <h3>Low-stock alerts</h3>
+              <p>Items at or below their configured threshold.</p>
             </div>
+            <AlertTriangle size={20} className="muted" />
+          </div>
+
+          {lowStock.length ? (
+            lowStock.slice(0, 8).map((item) => (
+              <div className="list-row" key={`low-${item.id}`}>
+                <span>
+                  <strong>{getItemName(item)}</strong>
+                  <small>
+                    {propertyName(properties, getItemPropertyId(item))} · {getItemQuantity(item)} {getItemUnit(item)} left
+                  </small>
+                </span>
+                <StatusBadge tone={statusTone(statusFor(item))}>{displayStatus(statusFor(item))}</StatusBadge>
+              </div>
+            ))
           ) : (
             <EmptyState
-              title="No supplies match these filters"
-              description="Clear or adjust the filters to see more inventory records."
               compact
+              icon={PackagePlus}
+              title="No low-stock alerts"
+              description="Supplies below threshold will appear here."
             />
-          )
-        ) : (
-          <EmptyState
-            title="No supplies tracked yet"
-            description="Add your first supply item to track stock levels, vendors, and low-stock alerts."
-            icon={PackagePlus}
-            action={
-              <button className="primary" type="button" onClick={openNewSupply}>
-                Add first supply
-              </button>
-            }
-          />
-        )}
+          )}
+        </section>
+
+        <section className="card">
+          <div className="card-header">
+            <div>
+              <h3>Supplier snapshot</h3>
+              <p>Vendor details attached to inventory records.</p>
+            </div>
+            <Truck size={20} className="muted" />
+          </div>
+
+          {activeSupplies.filter((item) => getSupplierName(item) || getSupplierContact(item)).length ? (
+            activeSupplies
+              .filter((item) => getSupplierName(item) || getSupplierContact(item))
+              .slice(0, 8)
+              .map((item) => (
+                <div className="list-row" key={`supplier-${item.id}`}>
+                  <span>
+                    <strong>{getSupplierName(item) || 'Supplier not named'}</strong>
+                    <small>{getSupplierContact(item) || getItemName(item)}</small>
+                  </span>
+                  <StatusBadge tone={statusTone(statusFor(item))}>{getItemName(item)}</StatusBadge>
+                </div>
+              ))
+          ) : (
+            <EmptyState
+              compact
+              icon={Building2}
+              title="No supplier details yet"
+              description="Supplier names and contact details will appear here when added to supplies."
+            />
+          )}
+        </section>
       </section>
 
       {editing && (
         <SupplyForm
-          initial={editing}
+          initial={editing?.mode === 'create' ? null : editing}
           properties={properties}
           workspace={currentWorkspace}
           onSubmit={saveSupply}
