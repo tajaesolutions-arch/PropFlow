@@ -1,5 +1,7 @@
 import React from 'react';
 
+import { EmptyState } from './EmptyState.jsx';
+
 function getCellValue(row, column) {
   if (typeof column.render === 'function') {
     return column.render(row);
@@ -26,6 +28,43 @@ function getRowKey(row, index, rowKey) {
   return row?.id || row?.uuid || row?.key || `${index}-${JSON.stringify(row).slice(0, 40)}`;
 }
 
+function getEmptyCopy(empty) {
+  if (React.isValidElement(empty)) return { node: empty };
+
+  if (empty && typeof empty === 'object') {
+    return {
+      title: empty.title || 'No records yet',
+      description: empty.description || 'Records will appear here when they are added to this workspace.',
+      eyebrow: empty.eyebrow || 'Empty state',
+    };
+  }
+
+  const text = String(empty || 'No records found.').trim();
+
+  return {
+    title: text.replace(/[.]+$/, '') || 'No records yet',
+    description: 'Records will appear here when they are added to this workspace.',
+    eyebrow: 'Empty state',
+  };
+}
+
+function EmptyTableState({ empty }) {
+  const copy = getEmptyCopy(empty);
+
+  if (copy.node) return copy.node;
+
+  return (
+    <div className="table-empty-state">
+      <EmptyState
+        compact
+        eyebrow={copy.eyebrow}
+        title={copy.title}
+        description={copy.description}
+      />
+    </div>
+  );
+}
+
 export function DataTable({
   columns = [],
   rows = [],
@@ -39,7 +78,15 @@ export function DataTable({
   if (!safeColumns.length) {
     return (
       <div className="table-wrap">
-        <div className="empty-cell">{empty}</div>
+        <EmptyTableState empty="No table columns configured." />
+      </div>
+    );
+  }
+
+  if (!safeRows.length) {
+    return (
+      <div className={`table-wrap empty-table-wrap ${compact ? 'compact-table-wrap' : ''}`}>
+        <EmptyTableState empty={empty} />
       </div>
     );
   }
@@ -56,21 +103,13 @@ export function DataTable({
         </thead>
 
         <tbody>
-          {safeRows.length ? (
-            safeRows.map((row, rowIndex) => (
-              <tr key={getRowKey(row, rowIndex, rowKey)}>
-                {safeColumns.map((column) => (
-                  <td key={column.key || column.label}>{getCellValue(row, column)}</td>
-                ))}
-              </tr>
-            ))
-          ) : (
-            <tr>
-              <td colSpan={safeColumns.length} className="empty-cell">
-                {empty}
-              </td>
+          {safeRows.map((row, rowIndex) => (
+            <tr key={getRowKey(row, rowIndex, rowKey)}>
+              {safeColumns.map((column) => (
+                <td key={column.key || column.label}>{getCellValue(row, column)}</td>
+              ))}
             </tr>
-          )}
+          ))}
         </tbody>
       </table>
     </div>
