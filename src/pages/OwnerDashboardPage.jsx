@@ -3,8 +3,10 @@ import {
   Banknote,
   Building2,
   CalendarCheck,
+  Eye,
   FileText,
   Percent,
+  ShieldCheck,
   Wrench,
 } from 'lucide-react';
 
@@ -14,7 +16,7 @@ import { EmptyState } from '../components/EmptyState.jsx';
 import { StatCard } from '../components/StatCard.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
 import { useApp } from '../lib/AppContext.jsx';
-import { formatCurrency, formatPercent } from '../lib/formatters.js';
+import { formatCurrency, formatDate, formatPercent } from '../lib/formatters.js';
 import { roles } from '../data/constants.js';
 import { navigate } from '../routes/AppRouter.jsx';
 
@@ -30,8 +32,19 @@ function getPropertyId(record) {
   return record?.propertyId || record?.property_id;
 }
 
+function getPropertyName(record, properties = []) {
+  const propertyId = getPropertyId(record);
+  const property = properties.find((item) => item.id === propertyId);
+
+  return record?.property || property?.name || 'Assigned property';
+}
+
 function getBookingAmount(booking) {
   return toNumber(booking.totalAmount || booking.total_amount || booking.amount);
+}
+
+function getOwnerPayout(booking) {
+  return toNumber(booking.ownerPayout || booking.owner_payout);
 }
 
 function getMaintenanceCost(workOrder) {
@@ -81,22 +94,62 @@ function getBookingNights(booking) {
   return daysBetween(booking.checkIn || booking.check_in, booking.checkOut || booking.check_out);
 }
 
+function getBookingCheckIn(booking) {
+  return booking.checkIn || booking.check_in || '';
+}
+
+function getMaintenanceDue(workOrder) {
+  return workOrder.due || workOrder.due_date || workOrder.created_at || '';
+}
+
+function getCleaningDate(task) {
+  return task.scheduledFor || task.scheduled_for || task.created_at || '';
+}
+
 function isOwnerRole(currentUser) {
   return currentUser?.roles?.includes(roles.OWNER);
+}
+
+function getAssignedOwnerId(property) {
+  return (
+    property.assignedOwnerId ||
+    property.assigned_owner_id ||
+    property.ownerId ||
+    property.owner_id ||
+    ''
+  );
 }
 
 function isAssignedToCurrentOwner(property, currentUser) {
   if (!isOwnerRole(currentUser)) return true;
 
-  const assignedOwnerId =
-    property.assignedOwnerId ||
-    property.assigned_owner_id ||
-    property.ownerId ||
-    property.owner_id;
+  const assignedOwnerId = getAssignedOwnerId(property);
 
   if (!assignedOwnerId) return false;
 
   return assignedOwnerId === currentUser?.id;
+}
+
+function canOwnerSeeReport(report, assignedPropertyIds, currentUser) {
+  if (!isOwnerRole(currentUser)) return true;
+
+  const propertyId = getPropertyId(report);
+  const ownerId = report.owner_id || report.ownerId || report.contact_id || report.contactId;
+
+  if (propertyId) return assignedPropertyIds.has(propertyId);
+  if (ownerId) return ownerId === currentUser?.id;
+
+  return false;
+}
+
+function statusTone(value) {
+  const status = String(value || '').toLowerCase();
+
+  if (['cancelled', 'missed', 'urgent', 'overdue'].includes(status)) return 'error';
+  if (['pending', 'scheduled', 'reported', 'in_progress', 'waiting_parts'].includes(status)) return 'warning';
+  if (['active', 'confirmed', 'completed', 'guest_ready', 'ready'].includes(status)) return 'success';
+
+  return 'info';
 }
 
 function buildOwnerPropertyRows({ properties, bookings, maintenanceWorkOrders, cleaningTasks, currency }) {
@@ -108,6 +161,7 @@ function buildOwnerPropertyRows({ properties, bookings, maintenanceWorkOrders, c
     const propertyCleaning = cleaningTasks.filter((task) => getPropertyId(task) === property.id);
 
     const revenue = propertyBookings.reduce((sum, booking) => sum + getBookingAmount(booking), 0);
+    const ownerPayout = propertyBookings.reduce((sum, booking) => sum + getOwnerPayout(booking), 0);
     const maintenanceCost = propertyMaintenance.reduce(
       (sum, workOrder) => sum + getMaintenanceCost(workOrder),
       0,
@@ -125,15 +179,67 @@ function buildOwnerPropertyRows({ properties, bookings, maintenanceWorkOrders, c
       ...property,
       currency: property.currency || currency,
       revenue,
+      ownerPayout,
       expenses,
       netProfit,
       maintenanceCost,
       cleaningCost,
       openMaintenance,
       bookings: propertyBookings.length,
+      bookedNights,
       occupancy,
     };
   });
+}
+
+function OwnerPropertyCard({ property }) {
+  return (
+    <article className="card owner-dashboard-property-card">
+      <div className="owner-dashboard-property-top">
+        <div className="owner-dashboard-property-icon">
+          <Building2 size={22} />
+        </div>
+
+        <StatusBadge tone={statusTone(property.status || 'active')}>{property.status || 'active'}</StatusBadge>
+      </div>
+
+      <div>
+        <h3>{property.name || 'Assigned property'}</h3>
+        <p>{[property.city, property.state, property.country].filter(Boolean).join(', ') || property.address || 'No location saved'}</p>
+      </div>
+
+      <div className="owner-dashboard-property-meta">
+        <span>
+          <strong>{formatCurrency(property.revenue, property.currency)}</strong>
+          <small>Revenue</small>
+        </span>
+
+        <span>
+          <strong>{formatCurrency(property.ownerPayout, property.currency)}</strong>
+          <small>Owner payout</small>
+        </span>
+
+        <span>
+          <strong>{formatPercent(property.occupancy)}</strong>
+          <small>Occupancy</small>
+        </span>
+
+        <span>
+          <strong>{property.openMaintenance}</strong>
+          <small>Open repairs</small>
+        </span>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => navigate(`/properties/${property.id}`)}
+        data-skip-create-action="true"
+      >
+        <Eye size={16} />
+        View property
+      </button>
+    </article>
+  );
 }
 
 export function OwnerDashboardPage() {
@@ -159,10 +265,9 @@ export function OwnerDashboardPage() {
     assignedPropertyIds.has(getPropertyId(workOrder)),
   );
 
-  const assignedReports = (data.ownerReports || []).filter((report) => {
-    const propertyId = getPropertyId(report);
-    return !propertyId || assignedPropertyIds.has(propertyId);
-  });
+  const assignedReports = (data.ownerReports || []).filter((report) =>
+    canOwnerSeeReport(report, assignedPropertyIds, currentUser),
+  );
 
   const propertyRows = buildOwnerPropertyRows({
     properties: assignedProperties,
@@ -170,15 +275,12 @@ export function OwnerDashboardPage() {
     maintenanceWorkOrders: assignedMaintenance,
     cleaningTasks: assignedCleaningTasks,
     currency,
-  });
+  }).sort((a, b) => b.revenue - a.revenue);
 
   const grossRevenue = propertyRows.reduce((sum, property) => sum + property.revenue, 0);
   const totalExpenses = propertyRows.reduce((sum, property) => sum + property.expenses, 0);
   const netProfit = grossRevenue - totalExpenses;
-  const ownerPayout = assignedBookings.reduce(
-    (sum, booking) => sum + toNumber(booking.ownerPayout || booking.owner_payout),
-    0,
-  );
+  const ownerPayout = propertyRows.reduce((sum, property) => sum + property.ownerPayout, 0);
 
   const bookedNights = assignedBookings.reduce((sum, booking) => sum + getBookingNights(booking), 0);
   const availableNights = Math.max(assignedProperties.length * 30, 1);
@@ -192,19 +294,39 @@ export function OwnerDashboardPage() {
     ['completed', 'guest_ready'].includes(task.status),
   );
 
-  return (
-    <AppLayout title="Owner dashboard" subtitle="View-only property performance and owner updates">
-      <p className="page-note">
-        Property owners only see assigned properties, revenue, expenses, owner payout, maintenance
-        updates, cleaning history, reports, and property health information.
-      </p>
+  const upcomingBookings = assignedBookings
+    .filter((booking) => {
+      const checkIn = getDateValue(getBookingCheckIn(booking));
+      return checkIn && checkIn >= new Date();
+    })
+    .sort((a, b) => getDateValue(getBookingCheckIn(a)) - getDateValue(getBookingCheckIn(b)))
+    .slice(0, 6);
 
-      <div className="stat-grid dense">
-        <StatCard
-          label="Gross revenue"
-          value={formatCurrency(grossRevenue, currency)}
-          icon={Banknote}
-        />
+  return (
+    <AppLayout
+      title="Owner dashboard"
+      subtitle="View-only property performance, owner payout, reports, maintenance updates, and cleaning history."
+    >
+      <section className="card owner-dashboard-notice">
+        <div className="card-header">
+          <div>
+            <h3>Owner portal access</h3>
+            <p>
+              Property owners should only see assigned properties, revenue, expenses, owner payout,
+              maintenance updates, cleaning history, reports, and property health information.
+            </p>
+          </div>
+          <ShieldCheck size={22} className="muted" />
+        </div>
+
+        <div className="helper">
+          This page is intentionally view-only. Operational editing stays with Workspace Owners,
+          Property Managers, and permitted staff roles.
+        </div>
+      </section>
+
+      <section className="stat-grid dense">
+        <StatCard label="Gross revenue" value={formatCurrency(grossRevenue, currency)} icon={Banknote} />
 
         <StatCard
           label="Net profit"
@@ -213,21 +335,19 @@ export function OwnerDashboardPage() {
           tone={netProfit >= 0 ? 'accent' : 'warning'}
         />
 
-        <StatCard
-          label="Occupancy rate"
-          value={formatPercent(occupancyRate)}
-          icon={Percent}
-        />
+        <StatCard label="Occupancy rate" value={formatPercent(occupancyRate)} icon={Percent} />
 
-        <StatCard
-          label="Owner payout"
-          value={formatCurrency(ownerPayout, currency)}
-          icon={Banknote}
-        />
-      </div>
+        <StatCard label="Owner payout" value={formatCurrency(ownerPayout, currency)} icon={Banknote} />
+      </section>
 
       {assignedProperties.length ? (
         <>
+          <section className="owner-dashboard-property-grid">
+            {propertyRows.slice(0, 6).map((property) => (
+              <OwnerPropertyCard key={property.id} property={property} />
+            ))}
+          </section>
+
           <section className="card">
             <div className="card-header">
               <div>
@@ -247,6 +367,7 @@ export function OwnerDashboardPage() {
                       type="button"
                       className="link"
                       onClick={() => navigate(`/properties/${row.id}`)}
+                      data-skip-create-action="true"
                     >
                       {row.name}
                     </button>
@@ -255,7 +376,7 @@ export function OwnerDashboardPage() {
                 {
                   key: 'status',
                   label: 'Status',
-                  render: (row) => <StatusBadge>{row.status || 'active'}</StatusBadge>,
+                  render: (row) => <StatusBadge tone={statusTone(row.status || 'active')}>{row.status || 'active'}</StatusBadge>,
                 },
                 {
                   key: 'revenue',
@@ -273,6 +394,11 @@ export function OwnerDashboardPage() {
                   render: (row) => formatCurrency(row.netProfit, row.currency),
                 },
                 {
+                  key: 'ownerPayout',
+                  label: 'Owner payout',
+                  render: (row) => formatCurrency(row.ownerPayout, row.currency),
+                },
+                {
                   key: 'occupancy',
                   label: 'Occupancy',
                   render: (row) => formatPercent(row.occupancy),
@@ -280,119 +406,180 @@ export function OwnerDashboardPage() {
                 {
                   key: 'openMaintenance',
                   label: 'Open maintenance',
+                  render: (row) =>
+                    row.openMaintenance ? (
+                      <StatusBadge tone="warning">{row.openMaintenance} open</StatusBadge>
+                    ) : (
+                      <StatusBadge tone="success">clear</StatusBadge>
+                    ),
                 },
               ]}
             />
           </section>
 
-          <div className="panel-grid two">
+          <section className="panel-grid two">
+            <section className="card">
+              <div className="card-header">
+                <div>
+                  <h3>Upcoming bookings</h3>
+                  <p>Upcoming stays for assigned properties.</p>
+                </div>
+                <CalendarCheck size={20} className="muted" />
+              </div>
+
+              {upcomingBookings.length ? (
+                upcomingBookings.map((booking) => (
+                  <div className="list-row" key={booking.id}>
+                    <span>
+                      <strong>{booking.guestName || booking.guest_name || 'Guest booking'}</strong>
+                      <small>{getPropertyName(booking, assignedProperties)} · {formatDate(getBookingCheckIn(booking))}</small>
+                    </span>
+                    <StatusBadge tone={statusTone(booking.status || 'confirmed')}>{booking.status || 'confirmed'}</StatusBadge>
+                  </div>
+                ))
+              ) : (
+                <EmptyState
+                  compact
+                  icon={CalendarCheck}
+                  title="No upcoming bookings"
+                  description="Upcoming assigned-property bookings will appear here."
+                />
+              )}
+            </section>
+
             <section className="card">
               <div className="card-header">
                 <div>
                   <h3>Maintenance updates</h3>
                   <p>Open repairs and recent maintenance items.</p>
                 </div>
-                <Wrench size={20} />
+                <Wrench size={20} className="muted" />
               </div>
 
               {assignedMaintenance.length ? (
                 assignedMaintenance.slice(0, 6).map((workOrder) => (
                   <div className="list-row" key={workOrder.id}>
                     <span>
-                      {workOrder.title || 'Maintenance issue'}
-                      <small>{workOrder.property || 'Assigned property'}</small>
+                      <strong>{workOrder.title || 'Maintenance issue'}</strong>
+                      <small>{getPropertyName(workOrder, assignedProperties)} · {formatDate(getMaintenanceDue(workOrder))}</small>
                     </span>
-                    <StatusBadge>{workOrder.status || workOrder.priority || 'reported'}</StatusBadge>
+                    <StatusBadge tone={statusTone(workOrder.status || workOrder.priority || 'reported')}>
+                      {workOrder.status || workOrder.priority || 'reported'}
+                    </StatusBadge>
                   </div>
                 ))
               ) : (
-                <p>No maintenance updates yet.</p>
+                <EmptyState
+                  compact
+                  icon={Wrench}
+                  title="No maintenance updates"
+                  description="Maintenance updates for assigned properties will appear here."
+                />
               )}
             </section>
+          </section>
 
+          <section className="panel-grid two">
             <section className="card">
               <div className="card-header">
                 <div>
                   <h3>Cleaning history</h3>
                   <p>Completed and upcoming cleaning activity.</p>
                 </div>
-                <CalendarCheck size={20} />
+                <CalendarCheck size={20} className="muted" />
               </div>
 
               {assignedCleaningTasks.length ? (
                 assignedCleaningTasks.slice(0, 6).map((task) => (
                   <div className="list-row" key={task.id}>
                     <span>
-                      {task.property || 'Assigned property'}
-                      <small>{task.scheduledFor || task.scheduled_for || 'Not scheduled'}</small>
+                      <strong>{getPropertyName(task, assignedProperties)}</strong>
+                      <small>{formatDate(getCleaningDate(task))}</small>
                     </span>
-                    <StatusBadge>{task.status || 'scheduled'}</StatusBadge>
+                    <StatusBadge tone={statusTone(task.status || 'scheduled')}>{task.status || 'scheduled'}</StatusBadge>
                   </div>
                 ))
               ) : (
-                <p>No cleaning history yet.</p>
+                <EmptyState
+                  compact
+                  icon={CalendarCheck}
+                  title="No cleaning history"
+                  description="Cleaning history for assigned properties will appear here."
+                />
               )}
             </section>
-          </div>
 
-          <div className="panel-grid two">
             <section className="card">
               <div className="card-header">
                 <div>
                   <h3>Owner reports</h3>
                   <p>Reports prepared by the property manager.</p>
                 </div>
-                <FileText size={20} />
+                <FileText size={20} className="muted" />
               </div>
 
               {assignedReports.length ? (
                 assignedReports.slice(0, 6).map((report) => (
                   <div className="list-row" key={report.id}>
                     <span>
-                      {report.title || 'Owner report'}
-                      <small>{report.period || report.created_at || 'Report period not set'}</small>
+                      <strong>{report.title || 'Owner report'}</strong>
+                      <small>{report.period || formatDate(report.created_at) || 'Report period not set'}</small>
                     </span>
-                    <StatusBadge>{report.status || 'ready'}</StatusBadge>
+                    <StatusBadge tone={statusTone(report.status || 'ready')}>{report.status || 'ready'}</StatusBadge>
                   </div>
                 ))
               ) : (
-                <p>No owner reports published yet.</p>
+                <EmptyState
+                  compact
+                  icon={FileText}
+                  title="No owner reports"
+                  description="Published owner reports will appear here."
+                />
               )}
             </section>
+          </section>
 
-            <section className="card">
-              <div className="card-header">
-                <div>
-                  <h3>Property health</h3>
-                  <p>Simple view-only health indicators for assigned properties.</p>
-                </div>
-                <Building2 size={20} />
+          <section className="card">
+            <div className="card-header">
+              <div>
+                <h3>Property health</h3>
+                <p>Simple view-only health indicators for assigned properties.</p>
               </div>
+              <Building2 size={20} className="muted" />
+            </div>
 
-              <div className="metadata-grid">
-                <span>
-                  <Building2 size={16} />
-                  {assignedProperties.length} assigned properties
-                </span>
-                <span>
-                  <CalendarCheck size={16} />
-                  {completedCleaning.length} completed cleanings
-                </span>
-                <span>
-                  <Wrench size={16} />
-                  {openMaintenance.length} open repairs
-                </span>
-                <span>
-                  <Banknote size={16} />
-                  {formatCurrency(totalExpenses, currency)} expenses
-                </span>
-              </div>
-            </section>
-          </div>
+            <div className="metadata-grid owner-dashboard-health-grid">
+              <span>
+                <Building2 size={16} />
+                <strong>{assignedProperties.length}</strong>
+                <small>Assigned properties</small>
+              </span>
+
+              <span>
+                <CalendarCheck size={16} />
+                <strong>{completedCleaning.length}</strong>
+                <small>Completed cleanings</small>
+              </span>
+
+              <span>
+                <Wrench size={16} />
+                <strong>{openMaintenance.length}</strong>
+                <small>Open repairs</small>
+              </span>
+
+              <span>
+                <Banknote size={16} />
+                <strong>{formatCurrency(totalExpenses, currency)}</strong>
+                <small>Expenses</small>
+              </span>
+            </div>
+          </section>
         </>
       ) : (
         <EmptyState
-          title="No assigned properties yet."
+          eyebrow="Owner portal"
+          icon={Building2}
+          title="No assigned properties yet"
           description="Your property manager has not assigned properties to this owner account."
         />
       )}
