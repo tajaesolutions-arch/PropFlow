@@ -1,9 +1,11 @@
 import React from 'react';
 import {
+  AlertTriangle,
   CalendarDays,
   CheckCircle2,
   CreditCard,
   Home,
+  LockKeyhole,
   Mail,
   MapPin,
   ShieldCheck,
@@ -11,6 +13,7 @@ import {
 } from 'lucide-react';
 
 import { EmptyState } from '../components/EmptyState.jsx';
+import { StatusBadge } from '../components/StatusBadge.jsx';
 import { navigate } from '../routes/AppRouter.jsx';
 
 const initialForm = {
@@ -73,6 +76,46 @@ function PublicFeature({ icon: Icon, title, description }) {
   );
 }
 
+function PublicBookingSafetyNotice() {
+  return (
+    <section className="card public-booking-safety-notice">
+      <div className="card-header">
+        <div>
+          <p className="eyebrow">Direct booking safety</p>
+          <h3>Public booking is placeholder-safe</h3>
+          <p>
+            This page does not expose private workspace records, does not confirm availability, does not create a booking, and does not charge guests.
+          </p>
+        </div>
+        <LockKeyhole size={20} className="muted" />
+      </div>
+
+      <div className="public-booking-safety-grid">
+        <span>
+          <ShieldCheck size={16} />
+          <strong>Manual approval default</strong>
+          <small>Managers review requests before confirmation.</small>
+          <StatusBadge tone="warning">approval required</StatusBadge>
+        </span>
+
+        <span>
+          <CreditCard size={16} />
+          <strong>Stripe payment</strong>
+          <small>Checkout and payment links are not connected.</small>
+          <StatusBadge tone="warning">not connected</StatusBadge>
+        </span>
+
+        <span>
+          <AlertTriangle size={16} />
+          <strong>Deposit / full payment</strong>
+          <small>Payment rules are placeholders until backend billing is added.</small>
+          <StatusBadge tone="info">placeholder</StatusBadge>
+        </span>
+      </div>
+    </section>
+  );
+}
+
 function SubmittedView({ propertyName, onReset }) {
   return (
     <div className="public-page public-booking-page">
@@ -92,7 +135,7 @@ function SubmittedView({ propertyName, onReset }) {
             eyebrow="Request submitted"
             icon={CheckCircle2}
             title="Booking request submitted"
-            description={`Your request for ${propertyName} was captured in this frontend flow. The property manager will review the request and contact you with the next steps. Instant payment is not enabled yet.`}
+            description={`Your request for ${propertyName} was captured in this frontend-only flow. The property manager would review the request and contact you with next steps after backend request storage and notifications are connected. Instant payment is not enabled yet.`}
             action={
               <button type="button" className="primary" onClick={onReset}>
                 Submit another request
@@ -221,6 +264,8 @@ export function PublicBookingPage() {
       </section>
 
       <main className="page-content public-booking-content">
+        <PublicBookingSafetyNotice />
+
         <section className="panel-grid two">
           <section className="card public-booking-request-card" id="booking-request-form">
             <div className="card-header">
@@ -324,7 +369,7 @@ export function PublicBookingPage() {
 
               <div className="public-booking-form-actions">
                 <button className="primary" type="submit">
-                  Submit booking request
+                  Submit request placeholder
                 </button>
 
                 <small>
