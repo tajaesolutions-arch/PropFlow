@@ -40,13 +40,83 @@ function hasInvalidDateRange(checkIn, checkOut) {
   return Boolean(checkIn && checkOut && checkOut <= checkIn);
 }
 
+function validateForm(form) {
+  const errors = [];
+
+  if (!form.guestName.trim()) errors.push('Guest name is required.');
+  if (!form.email.trim()) errors.push('Email address is required.');
+  if (!form.checkIn) errors.push('Check-in date is required.');
+  if (!form.checkOut) errors.push('Check-out date is required.');
+
+  if (hasInvalidDateRange(form.checkIn, form.checkOut)) {
+    errors.push('Check-out must be after check-in.');
+  }
+
+  const guests = Number(form.guests);
+
+  if (!Number.isFinite(guests) || guests < 1) {
+    errors.push('Guests must be at least 1.');
+  }
+
+  return errors;
+}
+
+function PublicFeature({ icon: Icon, title, description }) {
+  return (
+    <article className="public-booking-feature">
+      <Icon size={18} />
+      <span>
+        <strong>{title}</strong>
+        <small>{description}</small>
+      </span>
+    </article>
+  );
+}
+
+function SubmittedView({ propertyName, onReset }) {
+  return (
+    <div className="public-page public-booking-page">
+      <nav className="public-nav public-booking-nav">
+        <strong>PropFlow</strong>
+
+        <div>
+          <button type="button" onClick={() => navigate('/')}>
+            Back to home
+          </button>
+        </div>
+      </nav>
+
+      <section className="public-booking-success-wrap">
+        <div className="auth-card wide public-booking-success-card">
+          <EmptyState
+            eyebrow="Request submitted"
+            icon={CheckCircle2}
+            title="Booking request submitted"
+            description={`Your request for ${propertyName} was captured in this frontend flow. The property manager will review the request and contact you with the next steps. Instant payment is not enabled yet.`}
+            action={
+              <button type="button" className="primary" onClick={onReset}>
+                Submit another request
+              </button>
+            }
+            secondaryAction={
+              <button type="button" onClick={() => navigate('/')}>
+                Back to PropFlow
+              </button>
+            }
+          />
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export function PublicBookingPage() {
   const propertySlug = getPropertySlugFromPath();
   const propertyName = formatPropertyName(propertySlug);
 
   const [form, setForm] = React.useState(initialForm);
   const [submitted, setSubmitted] = React.useState(false);
-  const [message, setMessage] = React.useState('');
+  const [errors, setErrors] = React.useState([]);
 
   const set = (key) => (event) => {
     setForm((value) => ({
@@ -57,131 +127,127 @@ export function PublicBookingPage() {
 
   function handleSubmit(event) {
     event.preventDefault();
-    setMessage('');
 
-    if (hasInvalidDateRange(form.checkIn, form.checkOut)) {
-      setMessage('Check-out must be after check-in.');
-      return;
-    }
+    const nextErrors = validateForm(form);
+    setErrors(nextErrors);
+
+    if (nextErrors.length) return;
 
     setSubmitted(true);
   }
 
   if (submitted) {
     return (
-      <div className="public-page">
-        <nav className="public-nav">
-          <strong>PropFlow</strong>
-          <div>
-            <button type="button" onClick={() => navigate('/')}>
-              Back to home
-            </button>
-          </div>
-        </nav>
-
-        <section className="auth-page">
-          <div className="auth-card wide">
-            <EmptyState
-              title="Booking request submitted"
-              description="The property manager will review your request and contact you with the next steps. Instant payment is not enabled on this direct booking page yet."
-              action={
-                <button type="button" className="primary" onClick={() => setSubmitted(false)}>
-                  Submit another request
-                </button>
-              }
-            />
-          </div>
-        </section>
-      </div>
+      <SubmittedView
+        propertyName={propertyName}
+        onReset={() => {
+          setForm(initialForm);
+          setErrors([]);
+          setSubmitted(false);
+        }}
+      />
     );
   }
 
   return (
-    <div className="public-page">
-      <nav className="public-nav">
+    <div className="public-page public-booking-page">
+      <nav className="public-nav public-booking-nav">
         <strong>PropFlow</strong>
 
         <div>
           <button type="button" onClick={() => navigate('/')}>
             Home
           </button>
+
           <button type="button" className="primary" onClick={() => navigate('/pricing')}>
             Pricing
           </button>
         </div>
       </nav>
 
-      <section className="hero">
+      <section className="public-booking-hero">
         <div>
           <p className="eyebrow">Direct booking request</p>
           <h1>{propertyName}</h1>
           <p>
             Submit a booking request directly to the property manager. Availability, pricing,
-            approval, and payment will be confirmed manually before the booking is finalized.
+            approval, and payment will be confirmed before the booking is finalized.
           </p>
 
           <div className="hero-actions">
-            <button type="button" className="primary" onClick={() => document.getElementById('booking-request-form')?.scrollIntoView({ behavior: 'smooth' })}>
+            <button
+              type="button"
+              className="primary"
+              onClick={() =>
+                document
+                  .getElementById('booking-request-form')
+                  ?.scrollIntoView({ behavior: 'smooth' })
+              }
+            >
               Request booking
             </button>
+
             <button type="button" onClick={() => navigate('/')}>
               Learn about PropFlow
             </button>
           </div>
         </div>
 
-        <aside className="hero-panel">
-          <div className="feature-row">
-            <MapPin size={18} />
-            <span>
-              <strong>Location</strong>
-              <small>Managed by host</small>
-            </span>
-          </div>
+        <aside className="public-booking-hero-panel">
+          <PublicFeature
+            icon={MapPin}
+            title="Location"
+            description="Public location details should come from approved property settings later."
+          />
 
-          <div className="feature-row">
-            <Users size={18} />
-            <span>
-              <strong>Guest details</strong>
-              <small>Collected before approval</small>
-            </span>
-          </div>
+          <PublicFeature
+            icon={Users}
+            title="Guest details"
+            description="Guest information is collected before manager approval."
+          />
 
-          <div className="feature-row">
-            <CalendarDays size={18} />
-            <span>
-              <strong>Availability</strong>
-              <small>Reviewed manually</small>
-            </span>
-          </div>
+          <PublicFeature
+            icon={CalendarDays}
+            title="Availability"
+            description="MVP default is manual approval unless instant booking is enabled."
+          />
 
-          <div className="feature-row">
-            <CreditCard size={18} />
-            <span>
-              <strong>Payment</strong>
-              <small>Stripe checkout prepared for future phase</small>
-            </span>
-          </div>
+          <PublicFeature
+            icon={CreditCard}
+            title="Payment"
+            description="Stripe checkout should be connected through secure backend endpoints."
+          />
         </aside>
       </section>
 
-      <section className="page-content">
-        <div className="panel-grid two">
-          <section className="card" id="booking-request-form">
+      <main className="page-content public-booking-content">
+        <section className="panel-grid two">
+          <section className="card public-booking-request-card" id="booking-request-form">
             <div className="card-header">
               <div>
                 <h3>Booking request</h3>
                 <p>
-                  This creates a request only. Full instant booking, deposit payments, and Stripe
-                  checkout should be connected in a later backend phase.
+                  This creates a request only. Full instant booking, deposit payments, Stripe
+                  checkout, and Supabase booking-request storage should be connected in a backend
+                  phase.
                 </p>
               </div>
-              <ShieldCheck size={20} />
+
+              <ShieldCheck size={20} className="muted" />
             </div>
 
-            {message && <div className="helper error-helper">{message}</div>}
+            {errors.length > 0 && (
+              <div className="helper error-helper" role="alert">
+                <strong>Please fix these fields:</strong>
+                <ul>
+                  {errors.map((error) => (
+                    <li key={error}>{error}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
-            <form onSubmit={handleSubmit}>
+            <form onSubmit={handleSubmit} noValidate>
               <div className="form-grid">
                 <label>
                   Guest name
@@ -251,19 +317,25 @@ export function PublicBookingPage() {
                     value={form.message}
                     onChange={set('message')}
                     placeholder="Questions, special requests, arrival time, or booking details"
+                    rows={4}
                   />
                 </label>
               </div>
 
-              <div className="action-row">
+              <div className="public-booking-form-actions">
                 <button className="primary" type="submit">
                   Submit booking request
                 </button>
+
+                <small>
+                  This page does not charge the guest yet. Payment should only be enabled after
+                  Stripe backend checkout is connected.
+                </small>
               </div>
             </form>
           </section>
 
-          <section className="card">
+          <section className="card public-booking-info-card">
             <div className="card-header">
               <div>
                 <h3>How direct booking works</h3>
@@ -295,20 +367,21 @@ export function PublicBookingPage() {
             </ul>
 
             <div className="helper">
-              This public page is a safe frontend foundation. It does not yet write to Supabase or
-              charge the guest.
+              Safe current behavior: this public page collects form input in the browser only. It
+              does not write to Supabase, create a booking, send email, or charge the guest.
             </div>
           </section>
-        </div>
+        </section>
 
-        <div className="panel-grid two">
+        <section className="panel-grid two">
           <section className="card">
             <div className="card-header">
               <div>
                 <h3>Guest communication</h3>
-                <p>Recommended next backend step for direct booking requests.</p>
+                <p>Recommended backend step for direct booking requests.</p>
               </div>
-              <Mail size={20} />
+
+              <Mail size={20} className="muted" />
             </div>
 
             <ul className="checklist">
@@ -337,30 +410,38 @@ export function PublicBookingPage() {
                 <h3>Property details</h3>
                 <p>Public property profile data should come from approved public property settings.</p>
               </div>
-              <Home size={20} />
+
+              <Home size={20} className="muted" />
             </div>
 
-            <div className="metadata-grid">
+            <div className="public-booking-metadata-grid">
               <span>
                 <MapPin size={16} />
-                Location: host managed
+                <strong>Location</strong>
+                <small>Host-managed public display</small>
               </span>
+
               <span>
                 <Users size={16} />
-                Guests: reviewed by host
+                <strong>Guests</strong>
+                <small>Reviewed by host</small>
               </span>
+
               <span>
                 <CalendarDays size={16} />
-                Availability: manual approval
+                <strong>Availability</strong>
+                <small>Manual approval</small>
               </span>
+
               <span>
                 <CreditCard size={16} />
-                Payment: pending backend setup
+                <strong>Payment</strong>
+                <small>Pending backend setup</small>
               </span>
             </div>
           </section>
-        </div>
-      </section>
+        </section>
+      </main>
     </div>
   );
 }
