@@ -85,7 +85,6 @@ function getMaintenanceDate(workOrder) {
 function getPropertyName(record, properties) {
   const propertyId = getPropertyId(record);
   const property = properties.find((item) => item.id === propertyId);
-
   return record.property || property?.name || 'Unassigned property';
 }
 
@@ -95,17 +94,13 @@ function getWorkspaceCurrency(currentWorkspace) {
 
 function getDateValue(value) {
   if (!value) return null;
-
   const date = new Date(value);
-
   if (Number.isNaN(date.getTime())) return null;
-
   return date;
 }
 
 function isInDateRange(value, start, end) {
   const date = getDateValue(value);
-
   if (!date) return !start && !end;
 
   if (start) {
@@ -140,9 +135,7 @@ function statusTone(value) {
 
 function matchesSearch(values, query) {
   const normalizedQuery = String(query || '').trim().toLowerCase();
-
   if (!normalizedQuery) return true;
-
   return values.filter(Boolean).join(' ').toLowerCase().includes(normalizedQuery);
 }
 
@@ -218,66 +211,20 @@ function buildRecentTransactions({ bookings, maintenanceWorkOrders, cleaningTask
   ].sort((a, b) => {
     const dateA = getDateValue(a.date);
     const dateB = getDateValue(b.date);
-
     if (!dateA && !dateB) return 0;
     if (!dateA) return 1;
     if (!dateB) return -1;
-
     return dateB - dateA;
   });
 }
 
-function toCsvValue(value) {
-  const text = String(value ?? '');
-  return `"${text.replaceAll('"', '""')}"`;
-}
-
-function downloadCsv(filename, rows) {
-  if (!rows.length) return;
-
-  const headers = Object.keys(rows[0]);
-  const csv = [
-    headers.map(toCsvValue).join(','),
-    ...rows.map((row) => headers.map((header) => toCsvValue(row[header])).join(',')),
-  ].join('\n');
-
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-
-  URL.revokeObjectURL(url);
-}
-
-function buildFinanceCsvRows(propertyRows) {
-  return propertyRows.map((row) => ({
-    property: row.name || 'Unnamed property',
-    currency: row.currency,
-    bookings: row.bookings,
-    revenue: row.revenue,
-    owner_payout: row.ownerPayout,
-    cleaning_fees_collected: row.cleaningFees,
-    taxes_platform_fees: row.platformFees,
-    cleaning_costs: row.cleaningCosts,
-    maintenance_costs: row.maintenanceCosts,
-    total_expenses: row.expenses,
-    net_profit: row.netProfit,
-    open_maintenance: row.openMaintenance,
-  }));
-}
-
-function buildTransactionCsvRows(transactions) {
-  return transactions.map((row) => ({
-    type: row.type,
-    property: row.property,
-    date: row.date,
-    status: row.status,
-    currency: row.currency,
-    amount: row.amount,
-  }));
+function DisabledExportButton({ label, icon: Icon = Download }) {
+  return (
+    <button type="button" disabled data-skip-create-action="true" title="CSV and PDF exports are not active yet.">
+      <Icon size={16} />
+      {label}
+    </button>
+  );
 }
 
 export function AccountantDashboardPage() {
@@ -316,15 +263,7 @@ export function AccountantDashboardPage() {
   })
     .filter((row) =>
       matchesSearch(
-        [
-          row.name,
-          row.address,
-          row.city,
-          row.state,
-          row.country,
-          row.status,
-          row.currency,
-        ],
+        [row.name, row.address, row.city, row.state, row.country, row.status, row.currency],
         filters.query,
       ),
     )
@@ -335,11 +274,7 @@ export function AccountantDashboardPage() {
   const cleaningFees = bookings.reduce((sum, booking) => sum + getCleaningFee(booking), 0);
   const taxesFees = bookings.reduce((sum, booking) => sum + getTaxesFees(booking), 0);
   const cleaningCosts = cleaningTasks.reduce((sum, task) => sum + getCleaningCost(task), 0);
-  const maintenanceCosts = maintenanceWorkOrders.reduce(
-    (sum, workOrder) => sum + getMaintenanceCost(workOrder),
-    0,
-  );
-
+  const maintenanceCosts = maintenanceWorkOrders.reduce((sum, workOrder) => sum + getMaintenanceCost(workOrder), 0);
   const totalExpenses = cleaningCosts + maintenanceCosts + taxesFees;
   const netProfit = grossRevenue - totalExpenses;
 
@@ -356,34 +291,25 @@ export function AccountantDashboardPage() {
   const recentTransactions = allTransactions
     .filter((transaction) => filters.transactionType === 'all' || transaction.type === filters.transactionType)
     .filter((transaction) =>
-      matchesSearch(
-        [transaction.type, transaction.property, transaction.status, transaction.date],
-        filters.query,
-      ),
+      matchesSearch([transaction.type, transaction.property, transaction.status, transaction.date], filters.query),
     );
 
   const clearFilters = () => {
-    setFilters({
-      query: '',
-      start: '',
-      end: '',
-      transactionType: 'all',
-    });
+    setFilters({ query: '', start: '', end: '', transactionType: 'all' });
   };
 
   return (
     <AppLayout
       title="Accountant dashboard"
-      subtitle="Finance-only view for revenue, expenses, owner payouts, reports, receipts, and exports."
+      subtitle="Finance-only view for revenue, expenses, owner payouts, reports, receipts, and export placeholders."
     >
-      <section className="card accountant-dashboard-notice">
+      <section className="card accountant-dashboard-notice finance-safety-notice">
         <div className="card-header">
           <div>
-            <h3>Finance-only access</h3>
+            <p className="eyebrow">Finance safety</p>
+            <h3>Finance-only access is read-only for now</h3>
             <p>
-              Accountant / Bookkeeper access is finance-focused. This dashboard avoids operational
-              editing and focuses on revenue, expenses, owner payouts, receipts, reports, and export
-              preparation.
+              Accountant / Bookkeeper access is finance-focused. This dashboard avoids operational editing and keeps CSV/PDF exports disabled until backend finance storage is connected.
             </p>
           </div>
           <ShieldCheck size={22} className="muted" />
@@ -409,32 +335,16 @@ export function AccountantDashboardPage() {
         <StatCard label="Cleaning fees collected" value={formatCurrency(cleaningFees, currency)} icon={ClipboardList} />
       </section>
 
-      <section className="card accountant-dashboard-toolbar">
+      <section className="card accountant-dashboard-toolbar finance-actions-toolbar">
         <div>
           <h3>Finance exports</h3>
-          <p>Export property finance and transaction records as CSV for bookkeeping review.</p>
+          <p>CSV and PDF exports are disabled until finance records are safely stored and backend exports are connected.</p>
         </div>
 
         <div className="accountant-dashboard-toolbar-actions">
-          <button
-            type="button"
-            onClick={() => downloadCsv('propflow-finance-summary.csv', buildFinanceCsvRows(propertyRows))}
-            disabled={!propertyRows.length}
-            data-skip-create-action="true"
-          >
-            <Download size={16} />
-            Finance CSV
-          </button>
-
-          <button
-            type="button"
-            onClick={() => downloadCsv('propflow-transactions.csv', buildTransactionCsvRows(recentTransactions))}
-            disabled={!recentTransactions.length}
-            data-skip-create-action="true"
-          >
-            <Download size={16} />
-            Transaction CSV
-          </button>
+          <DisabledExportButton label="Finance CSV disabled" />
+          <DisabledExportButton label="Transaction CSV disabled" />
+          <DisabledExportButton label="PDF disabled" icon={FileText} />
         </div>
       </section>
 
@@ -484,9 +394,7 @@ export function AccountantDashboardPage() {
             Transaction type
             <select
               value={filters.transactionType}
-              onChange={(event) =>
-                setFilters((current) => ({ ...current, transactionType: event.target.value }))
-              }
+              onChange={(event) => setFilters((current) => ({ ...current, transactionType: event.target.value }))}
             >
               <option value="all">All transaction types</option>
               {transactionTypes.map((type) => (
@@ -516,44 +424,14 @@ export function AccountantDashboardPage() {
           <DataTable
             rows={propertyRows}
             columns={[
-              {
-                key: 'name',
-                label: 'Property',
-              },
-              {
-                key: 'bookings',
-                label: 'Bookings',
-              },
-              {
-                key: 'revenue',
-                label: 'Revenue',
-                render: (row) => formatCurrency(row.revenue, row.currency),
-              },
-              {
-                key: 'expenses',
-                label: 'Expenses',
-                render: (row) => formatCurrency(row.expenses, row.currency),
-              },
-              {
-                key: 'netProfit',
-                label: 'Net profit',
-                render: (row) => formatCurrency(row.netProfit, row.currency),
-              },
-              {
-                key: 'ownerPayout',
-                label: 'Owner payout',
-                render: (row) => formatCurrency(row.ownerPayout, row.currency),
-              },
-              {
-                key: 'cleaningCosts',
-                label: 'Cleaning costs',
-                render: (row) => formatCurrency(row.cleaningCosts, row.currency),
-              },
-              {
-                key: 'maintenanceCosts',
-                label: 'Maintenance costs',
-                render: (row) => formatCurrency(row.maintenanceCosts, row.currency),
-              },
+              { key: 'name', label: 'Property' },
+              { key: 'bookings', label: 'Bookings' },
+              { key: 'revenue', label: 'Revenue', render: (row) => formatCurrency(row.revenue, row.currency) },
+              { key: 'expenses', label: 'Expenses', render: (row) => formatCurrency(row.expenses, row.currency) },
+              { key: 'netProfit', label: 'Net profit', render: (row) => formatCurrency(row.netProfit, row.currency) },
+              { key: 'ownerPayout', label: 'Owner payout', render: (row) => formatCurrency(row.ownerPayout, row.currency) },
+              { key: 'cleaningCosts', label: 'Cleaning costs', render: (row) => formatCurrency(row.cleaningCosts, row.currency) },
+              { key: 'maintenanceCosts', label: 'Maintenance costs', render: (row) => formatCurrency(row.maintenanceCosts, row.currency) },
               {
                 key: 'openMaintenance',
                 label: 'Open repairs',
@@ -572,7 +450,7 @@ export function AccountantDashboardPage() {
           eyebrow="Finance"
           icon={FileSpreadsheet}
           title="No property finance records yet"
-          description="Property finance summaries will appear once properties, bookings, cleaning tasks, and maintenance records exist."
+          description="Property finance summaries will appear once properties, bookings, cleaning tasks, and maintenance records exist. No accounting exports are generated yet."
         />
       )}
 
@@ -581,7 +459,7 @@ export function AccountantDashboardPage() {
           <div className="card-header">
             <div>
               <h3>Recent finance activity</h3>
-              <p>Revenue and cost records pulled from bookings, cleaning, and maintenance.</p>
+              <p>Revenue and cost previews pulled from bookings, cleaning, and maintenance.</p>
             </div>
             <Receipt size={20} className="muted" />
           </div>
@@ -607,7 +485,7 @@ export function AccountantDashboardPage() {
               compact
               icon={Receipt}
               title="No finance activity yet"
-              description="Booking revenue and cost activity will appear here."
+              description="Booking revenue and cost activity will appear here. CSV/PDF exports are not active yet."
             />
           )}
         </section>
@@ -636,7 +514,7 @@ export function AccountantDashboardPage() {
               compact
               icon={FileText}
               title="No owner reports generated"
-              description="Owner reports will appear here after report generation is connected."
+              description="Owner reports will appear here after report generation is connected. Export files are not generated yet."
             />
           )}
         </section>
