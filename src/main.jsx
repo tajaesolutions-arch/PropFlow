@@ -20,6 +20,7 @@ import './styles/team-workspace-safety.css';
 import './styles/public-pages-polish.css';
 import './styles/settings-account-safety.css';
 import './styles/table-list-consistency.css';
+import './styles/calendar-schedule-safety.css';
 
 const routeAliases = {
   '/accounting-dashboard': '/accountant-dashboard',
