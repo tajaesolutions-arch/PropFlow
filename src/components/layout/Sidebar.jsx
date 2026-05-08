@@ -12,6 +12,7 @@ import {
   HelpCircle,
   Home,
   LayoutDashboard,
+  Receipt,
   Search,
   Settings,
   Shield,
@@ -43,6 +44,7 @@ const operationalNav = [
     items: [
       ['/owners', 'Owners', Home],
       ['/guests', 'Guests / CRM', Users],
+      ['/expenses', 'Expenses', Receipt],
       ['/reports', 'Reports', BarChart3],
       ['/inventory', 'Supplies / Inventory', Boxes],
       ['/team', 'Team', Users],
@@ -120,6 +122,7 @@ const accountantNav = [
     items: [
       ['/accountant-dashboard', 'Accountant Dashboard', BarChart3],
       ['/properties', 'Properties', Building2],
+      ['/expenses', 'Expenses', Receipt],
       ['/reports', 'Reports', BarChart3],
       ['/billing', 'Billing', CreditCard],
     ],
