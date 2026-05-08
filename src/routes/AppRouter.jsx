@@ -46,6 +46,7 @@ const MaintenancePage = lazyPage(() => import('../pages/MaintenancePage.jsx'), '
 const OwnersPage = lazyPage(() => import('../pages/OwnersPage.jsx'), 'OwnersPage');
 const GuestsPage = lazyPage(() => import('../pages/GuestsPage.jsx'), 'GuestsPage');
 const ReportsPage = lazyPage(() => import('../pages/ReportsPage.jsx'), 'ReportsPage');
+const ExpensesPage = lazyPage(() => import('../pages/ExpensesPage.jsx'), 'ExpensesPage');
 const NotificationsPage = lazyPage(() => import('../pages/NotificationsPage.jsx'), 'NotificationsPage');
 const NotificationSettingsPage = lazyPage(
   () => import('../pages/NotificationSettingsPage.jsx'),
@@ -132,6 +133,7 @@ const protectedRoutes = {
     Page: ReportsPage,
     access: [...operationalRoles, roles.OWNER, roles.ACCOUNTANT],
   },
+  '/expenses': { Page: ExpensesPage, access: financeRoles },
   '/notifications': {
     Page: NotificationsPage,
     access: [roles.ADMIN, ...allWorkspaceRoles],
@@ -382,7 +384,7 @@ function isWorkspaceSetupPath(path) {
   return path === '/workspace-setup' || path === '/join';
 }
 
-function shouldBypassWorkspaceRequirement(path) {
+function shouldSkipWorkspaceRequirement(path) {
   return (
     path === '/workspace-setup' ||
     path === '/join' ||
@@ -461,7 +463,7 @@ export function AppRouter() {
 
   const isPropFlowAdmin = isPropFlowAdminUser(currentUser);
 
-  if (!currentWorkspace && !isPropFlowAdmin && !shouldBypassWorkspaceRequirement(path)) {
+  if (!currentWorkspace && !isPropFlowAdmin && !shouldSkipWorkspaceRequirement(path)) {
     return <RedirectTo to="/workspace-setup" />;
   }
 
