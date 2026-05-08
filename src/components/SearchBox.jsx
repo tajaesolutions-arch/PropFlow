@@ -2,7 +2,38 @@ import React from 'react';
 import { Search, X } from 'lucide-react';
 
 import { useApp } from '../lib/AppContext.jsx';
+import { getPostLoginPath, hasAnyRole } from '../lib/auth.js';
+import { roles } from '../data/constants.js';
 import { navigate } from '../routes/AppRouter.jsx';
+
+const operationalRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
+const ownerVisibleRoles = [...operationalRoles, roles.OWNER, roles.ACCOUNTANT];
+const staffOperationsRoles = [...operationalRoles, roles.CLEANER, roles.MAINTENANCE];
+const financeRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
+const allWorkspaceRoles = [
+  roles.OWNER_ADMIN,
+  roles.PROPERTY_MANAGER,
+  roles.HOST,
+  roles.ACCOUNTANT,
+  roles.OWNER,
+  roles.CLEANER,
+  roles.MAINTENANCE,
+];
+
+const routeAccess = {
+  '/dashboard': operationalRoles,
+  '/properties': ownerVisibleRoles,
+  '/bookings': [...operationalRoles, roles.OWNER, roles.ACCOUNTANT],
+  '/calendar': allWorkspaceRoles,
+  '/cleaning': [...operationalRoles, roles.CLEANER],
+  '/maintenance': staffOperationsRoles,
+  '/owners': financeRoles,
+  '/guests': operationalRoles,
+  '/reports': [...operationalRoles, roles.OWNER, roles.ACCOUNTANT],
+  '/inventory': [...operationalRoles, roles.ACCOUNTANT, roles.CLEANER],
+  '/settings': operationalRoles,
+  '/billing': [roles.ADMIN, roles.OWNER_ADMIN, roles.ACCOUNTANT],
+};
 
 const quickLinks = [
   {
@@ -97,6 +128,41 @@ function normalize(value) {
     .trim();
 }
 
+function normalizePath(path) {
+  const pathOnly = String(path || '').split(/[?#]/)[0] || '/';
+  return pathOnly === '/' ? '/' : pathOnly.replace(/\/+$/, '') || '/';
+}
+
+function canAccessPath(user, path) {
+  const cleanPath = normalizePath(path);
+
+  if (!cleanPath || cleanPath === '/account' || cleanPath.startsWith('/properties/')) return true;
+
+  const allowedRoles = routeAccess[cleanPath];
+  if (!allowedRoles) return true;
+
+  return hasAnyRole(user, allowedRoles);
+}
+
+function getQuickLinksForUser(user) {
+  return quickLinks
+    .map((link) => {
+      if (link.id !== 'dashboard') return link;
+
+      const dashboardPath = getPostLoginPath(user);
+      const safeDashboardPath = dashboardPath === '/workspace-setup' || dashboardPath === '/suspended'
+        ? '/account'
+        : dashboardPath;
+
+      return {
+        ...link,
+        path: safeDashboardPath,
+        subtitle: 'Your role-based dashboard',
+      };
+    })
+    .filter((link) => canAccessPath(user, link.path));
+}
+
 function includesQuery(values, query) {
   const text = values.filter(Boolean).join(' ').toLowerCase();
   return text.includes(query);
@@ -134,16 +200,23 @@ function uniqueAndLimit(results, limit = 8) {
   return uniqueResults.slice(0, limit);
 }
 
-function buildResults(data, query) {
+function pushIfAllowed(results, user, result) {
+  if (canAccessPath(user, result.path)) {
+    results.push(result);
+  }
+}
+
+function buildResults(data, query, user) {
   const q = normalize(query);
+  const roleSafeQuickLinks = getQuickLinksForUser(user);
 
   if (!q) {
-    return quickLinks.slice(0, 6);
+    return roleSafeQuickLinks.slice(0, 6);
   }
 
   const results = [];
 
-  quickLinks.forEach((link) => {
+  roleSafeQuickLinks.forEach((link) => {
     if (includesQuery([link.title, link.subtitle, link.type], q)) {
       results.push(link);
     }
@@ -168,7 +241,7 @@ function buildResults(data, query) {
         q,
       )
     ) {
-      results.push({
+      pushIfAllowed(results, user, {
         id: `property-${property.id}`,
         type: 'Property',
         title: property.name || 'Property',
@@ -204,7 +277,7 @@ function buildResults(data, query) {
         q,
       )
     ) {
-      results.push({
+      pushIfAllowed(results, user, {
         id: `booking-${booking.id}`,
         type: 'Booking',
         title: guestName,
@@ -239,7 +312,7 @@ function buildResults(data, query) {
         q,
       )
     ) {
-      results.push({
+      pushIfAllowed(results, user, {
         id: `lease-${lease.id}`,
         type: 'Lease',
         title: lease.tenant_name || lease.tenantName || 'Tenant lease',
@@ -269,7 +342,7 @@ function buildResults(data, query) {
         q,
       )
     ) {
-      results.push({
+      pushIfAllowed(results, user, {
         id: `cleaning-${task.id}`,
         type: 'Cleaning',
         title: task.property || 'Cleaning task',
@@ -301,7 +374,7 @@ function buildResults(data, query) {
         q,
       )
     ) {
-      results.push({
+      pushIfAllowed(results, user, {
         id: `maintenance-${workOrder.id}`,
         type: 'Maintenance',
         title: workOrder.title || 'Maintenance issue',
@@ -329,7 +402,7 @@ function buildResults(data, query) {
         q,
       )
     ) {
-      results.push({
+      pushIfAllowed(results, user, {
         id: `contact-${contact.id}`,
         type: contactType === 'owner' ? 'Owner' : 'Contact',
         title: contactName,
@@ -356,7 +429,7 @@ function buildResults(data, query) {
         q,
       )
     ) {
-      results.push({
+      pushIfAllowed(results, user, {
         id: `supply-${supply.id}`,
         type: 'Supply',
         title: supplyName,
@@ -383,7 +456,7 @@ function buildResults(data, query) {
         q,
       )
     ) {
-      results.push({
+      pushIfAllowed(results, user, {
         id: `report-${report.id}`,
         type: 'Report',
         title: reportTitle,
@@ -399,14 +472,14 @@ function buildResults(data, query) {
 export function SearchBox({
   placeholder = 'Search properties, bookings, guests, work orders, owners, reports...',
 }) {
-  const { data } = useApp();
+  const { data, currentUser } = useApp();
 
   const [query, setQuery] = React.useState('');
   const [open, setOpen] = React.useState(false);
   const [activeIndex, setActiveIndex] = React.useState(0);
   const searchRef = React.useRef(null);
 
-  const results = React.useMemo(() => buildResults(data || {}, query), [data, query]);
+  const results = React.useMemo(() => buildResults(data || {}, query, currentUser), [data, query, currentUser]);
 
   React.useEffect(() => {
     setActiveIndex(0);
