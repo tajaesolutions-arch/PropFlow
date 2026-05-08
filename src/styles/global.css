@@ -4307,3 +4307,105 @@ label {
     grid-template-columns: 1fr;
   }
 }
+/* Owner dashboard polish */
+
+.owner-dashboard-notice {
+  display: grid;
+  gap: 12px;
+}
+
+.owner-dashboard-property-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.owner-dashboard-property-card {
+  display: grid;
+  gap: 16px;
+}
+
+.owner-dashboard-property-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.owner-dashboard-property-icon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.owner-dashboard-property-card h3 {
+  margin-bottom: 4px;
+}
+
+.owner-dashboard-property-card p {
+  margin-bottom: 0;
+}
+
+.owner-dashboard-property-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.owner-dashboard-property-meta span,
+.owner-dashboard-health-grid span {
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+  min-width: 0;
+}
+
+.owner-dashboard-property-meta strong,
+.owner-dashboard-health-grid strong {
+  color: var(--text);
+}
+
+.owner-dashboard-property-meta strong,
+.owner-dashboard-property-meta small,
+.owner-dashboard-health-grid strong,
+.owner-dashboard-health-grid small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.owner-dashboard-health-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.owner-dashboard-health-grid span {
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 4px 8px;
+}
+
+.owner-dashboard-health-grid small {
+  grid-column: 2;
+  font-weight: 700;
+}
+
+@media (max-width: 1200px) {
+  .owner-dashboard-property-grid,
+  .owner-dashboard-health-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .owner-dashboard-property-grid,
+  .owner-dashboard-property-meta,
+  .owner-dashboard-health-grid {
+    grid-template-columns: 1fr;
+  }
+}
