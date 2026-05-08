@@ -102,23 +102,23 @@ function LandingDashboardPreview() {
           <small>Workspace: Island Stay Management</small>
         </span>
 
-        <span className="landing-live-pill">Live ops</span>
+        <span className="landing-live-pill">MVP preview</span>
       </div>
 
       <div className="landing-preview-kpis">
         <span>
           <small>Gross revenue</small>
-          <strong>$24.8k</strong>
+          <strong>Preview</strong>
         </span>
 
         <span>
           <small>Occupancy</small>
-          <strong>78%</strong>
+          <strong>Preview</strong>
         </span>
 
         <span>
           <small>Open repairs</small>
-          <strong>6</strong>
+          <strong>Preview</strong>
         </span>
       </div>
 
@@ -126,30 +126,30 @@ function LandingDashboardPreview() {
         <div>
           <ClipboardCheck size={16} />
           <span>
-            <strong>Villa cleaning due today</strong>
-            <small>Cleaner assigned · guest-ready pending</small>
+            <strong>Cleaning workflow</strong>
+            <small>Assign tasks · track guest-ready status</small>
           </span>
         </div>
 
         <div>
           <Wrench size={16} />
           <span>
-            <strong>Urgent AC repair</strong>
-            <small>Waiting for parts · estimated $220</small>
+            <strong>Maintenance workflow</strong>
+            <small>Track issues · manage repair status</small>
           </span>
         </div>
 
         <div>
           <CalendarDays size={16} />
           <span>
-            <strong>Upcoming check-in</strong>
-            <small>Oceanview Condo · tomorrow</small>
+            <strong>Booking workflow</strong>
+            <small>Manual bookings first · integrations later</small>
           </span>
         </div>
       </div>
 
       <div className="landing-preview-footer">
-        <span>Owner report ready</span>
+        <span>Pre-launch MVP interface</span>
         <button type="button" onClick={() => navigate('/signup')}>
           Start setup
         </button>
@@ -261,6 +261,20 @@ export function LandingPage() {
             <ShieldCheck className="stat-icon" size={20} />
           </div>
         </div>
+
+        <section className="card public-mvp-notice">
+          <div className="card-header">
+            <div>
+              <p className="eyebrow">MVP / pre-launch notice</p>
+              <h3>Public pages are safe previews only.</h3>
+              <p>
+                Live payments, public booking payments, provider integrations, and demo data are not exposed from this page.
+                Use signup/login CTAs to enter the real workspace flow.
+              </p>
+            </div>
+            <ShieldCheck size={22} className="muted" />
+          </div>
+        </section>
 
         <section className="card landing-section-card">
           <div className="card-header">
@@ -379,8 +393,8 @@ export function LandingPage() {
             </div>
 
             <div className="action-row">
-              <button className="primary" type="button" onClick={() => navigate('/book/demo-property')}>
-                Preview booking page
+              <button className="primary" type="button" onClick={() => navigate('/signup')}>
+                Create workspace first
               </button>
 
               <button type="button" onClick={() => navigate('/pricing')}>
@@ -389,8 +403,8 @@ export function LandingPage() {
             </div>
 
             <div className="helper">
-              MVP default: booking requests should require manual approval unless instant booking and
-              payment are explicitly enabled for that property.
+              MVP default: public booking pages and payments should stay disabled until a real
+              property record, approval rules, and Stripe backend flow are connected.
             </div>
           </section>
         </section>

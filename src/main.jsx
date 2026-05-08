@@ -17,6 +17,7 @@ import './styles/upload-safety.css';
 import './styles/audit-safety.css';
 import './styles/onboarding-setup.css';
 import './styles/team-workspace-safety.css';
+import './styles/public-pages-polish.css';
 
 const routeAliases = {
   '/accounting-dashboard': '/accountant-dashboard',
