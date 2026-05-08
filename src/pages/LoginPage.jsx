@@ -1,9 +1,25 @@
 import React from 'react';
-import { ShieldCheck } from 'lucide-react';
+import {
+  ArrowRight,
+  Building2,
+  CheckCircle2,
+  KeyRound,
+  Lock,
+  ShieldCheck,
+} from 'lucide-react';
 
 import { getPostLoginPath } from '../lib/auth.js';
 import { useApp } from '../lib/AppContext.jsx';
 import { navigate } from '../routes/AppRouter.jsx';
+
+function validateLogin(email, password) {
+  const errors = [];
+
+  if (!email.trim()) errors.push('Email is required.');
+  if (!password) errors.push('Password is required.');
+
+  return errors;
+}
 
 export function LoginPage() {
   const { signIn, isSupabaseConfigured } = useApp();
@@ -11,10 +27,19 @@ export function LoginPage() {
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [message, setMessage] = React.useState('');
+  const [errors, setErrors] = React.useState([]);
   const [busy, setBusy] = React.useState(false);
 
   const submit = async (event) => {
     event.preventDefault();
+
+    const nextErrors = validateLogin(email, password);
+    setErrors(nextErrors);
+
+    if (nextErrors.length) {
+      setMessage('Please enter your login details.');
+      return;
+    }
 
     if (!isSupabaseConfigured) {
       setMessage(
@@ -46,61 +71,115 @@ export function LoginPage() {
   };
 
   return (
-    <div className="auth-page">
-      <form className="auth-card" onSubmit={submit}>
-        <ShieldCheck size={34} />
+    <div className="auth-page login-page">
+      <section className="auth-card login-card">
+        <div className="login-card-header">
+          <div className="login-logo">
+            <ShieldCheck size={28} />
+          </div>
 
-        <h1>Login to PropFlow</h1>
-
-        <p>
-          Use your Supabase Auth account. Your workspace, roles, and access are loaded from the
-          database after login.
-        </p>
+          <div>
+            <p className="eyebrow">Secure workspace login</p>
+            <h1>Login to PropFlow</h1>
+            <p>
+              Use your real Supabase Auth account. PropFlow loads your workspace, roles, and
+              dashboard access from the database after login.
+            </p>
+          </div>
+        </div>
 
         {!isSupabaseConfigured && (
-          <div className="helper">
+          <div className="helper error-helper">
+            <Lock size={16} />
             Supabase is not configured. Demo login has been removed from production UI.
           </div>
         )}
 
-        <label>
-          Email
-          <input
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="you@company.com"
-            type="email"
-            required
-          />
-        </label>
+        {errors.length > 0 && (
+          <div className="helper error-helper" role="alert">
+            <strong>Please fix these fields:</strong>
+            <ul>
+              {errors.map((error) => (
+                <li key={error}>{error}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
-        <label>
-          Password
-          <input
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            type="password"
-            placeholder="••••••••"
-            required
-          />
-        </label>
+        {message && (
+          <div
+            className={
+              message.toLowerCase().includes('succeeded') ? 'helper' : 'helper error-helper'
+            }
+            role="status"
+          >
+            {message}
+          </div>
+        )}
 
-        {message && <div className="helper error-helper">{message}</div>}
+        <form className="login-form" onSubmit={submit} noValidate>
+          <label>
+            Email
+            <input
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="you@company.com"
+              type="email"
+              autoComplete="email"
+              required
+            />
+          </label>
 
-        <button className="primary" disabled={busy}>
-          {busy ? 'Authenticating…' : 'Login'}
-        </button>
+          <label>
+            Password
+            <input
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              type="password"
+              placeholder="••••••••"
+              autoComplete="current-password"
+              required
+            />
+          </label>
 
-        <p>
+          <button className="primary login-submit" disabled={busy}>
+            {busy ? 'Authenticating…' : 'Login'}
+            {!busy && <ArrowRight size={16} />}
+          </button>
+        </form>
+
+        <div className="login-links">
           <button type="button" className="link" onClick={() => navigate('/signup')}>
             Create account
           </button>
-          {' · '}
+
+          <span>·</span>
+
           <button type="button" className="link" onClick={() => navigate('/join')}>
             I have an invite or code
           </button>
-        </p>
-      </form>
+        </div>
+
+        <div className="login-security-grid">
+          <span>
+            <KeyRound size={16} />
+            <strong>Role-based routing</strong>
+            <small>Users are routed by saved database role.</small>
+          </span>
+
+          <span>
+            <Building2 size={16} />
+            <strong>Workspace scoped</strong>
+            <small>Each company keeps its records separated.</small>
+          </span>
+
+          <span>
+            <CheckCircle2 size={16} />
+            <strong>No demo login</strong>
+            <small>Production UI uses real authentication only.</small>
+          </span>
+        </div>
+      </section>
     </div>
   );
 }
