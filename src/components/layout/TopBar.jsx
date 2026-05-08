@@ -4,6 +4,7 @@ import { Bell, CalendarDays, Menu } from 'lucide-react';
 import { SearchBox } from '../SearchBox.jsx';
 import { WorkspaceSwitcher } from '../WorkspaceSwitcher.jsx';
 import { AccountMenu } from '../AccountMenu.jsx';
+import { useApp } from '../../lib/AppContext.jsx';
 import { navigate } from '../../routes/AppRouter.jsx';
 
 const dateRangeStorageKey = 'propflow.dashboardDateRange';
@@ -14,12 +15,22 @@ function getInitialDateRange() {
   return window.localStorage.getItem(dateRangeStorageKey) || 'last_30_days';
 }
 
+function isUnreadNotification(notification) {
+  return !notification?.read_at && !notification?.readAt && notification?.status !== 'read';
+}
+
 export function TopBar({
   title = 'Dashboard',
   subtitle = 'Workspace-scoped operational command center',
   setMobileOpen,
 }) {
+  const { data } = useApp();
   const [dateRange, setDateRange] = React.useState(getInitialDateRange);
+  const notifications = Array.isArray(data?.notifications) ? data.notifications : [];
+  const unreadNotifications = notifications.filter(isUnreadNotification).length;
+  const notificationLabel = unreadNotifications
+    ? `Open notifications. ${unreadNotifications} unread alert${unreadNotifications === 1 ? '' : 's'}.`
+    : 'Open notifications. No unread alerts.';
 
   React.useEffect(() => {
     window.localStorage.setItem(dateRangeStorageKey, dateRange);
@@ -77,13 +88,17 @@ export function TopBar({
 
       <button
         type="button"
-        className="icon-btn topbar-notification-btn"
+        className={`icon-btn topbar-notification-btn ${unreadNotifications ? 'has-alerts' : ''}`}
         onClick={() => navigate('/notifications')}
-        aria-label="Open notifications"
+        aria-label={notificationLabel}
         data-skip-create-action="true"
       >
         <Bell size={18} />
-        <span className="notification-dot" aria-hidden="true" />
+        {unreadNotifications ? (
+          <span className="notification-count" aria-hidden="true">
+            {unreadNotifications > 9 ? '9+' : unreadNotifications}
+          </span>
+        ) : null}
       </button>
 
       <AccountMenu />
