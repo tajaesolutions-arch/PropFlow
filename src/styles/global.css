@@ -4885,3 +4885,138 @@ label {
     justify-items: start;
   }
 }
+/* Account settings page polish */
+
+.account-profile-card {
+  display: grid;
+  gap: 18px;
+}
+
+.account-profile-header {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+}
+
+.account-profile-avatar {
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: linear-gradient(135deg, var(--accent), var(--info));
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+}
+
+.account-profile-header h3 {
+  margin-bottom: 4px;
+}
+
+.account-profile-header p {
+  margin-bottom: 0;
+}
+
+.account-profile-grid,
+.account-workspace-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.account-profile-grid span,
+.account-workspace-grid span {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 4px 8px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-2);
+  min-width: 0;
+}
+
+.account-profile-grid strong,
+.account-workspace-grid strong {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-profile-grid small,
+.account-workspace-grid small {
+  grid-column: 2;
+  font-weight: 700;
+}
+
+.account-session-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.account-session-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.account-workspace-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.account-workspace-grid button {
+  width: 100%;
+}
+
+.account-security-list {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.account-security-list span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.account-security-list span:last-child {
+  border-bottom: 0;
+}
+
+@media (max-width: 1200px) {
+  .account-profile-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .account-profile-header,
+  .account-profile-grid,
+  .account-workspace-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .account-session-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .account-session-actions {
+    display: grid;
+  }
+
+  .account-security-list span {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
