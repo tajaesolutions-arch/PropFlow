@@ -1,0 +1,60 @@
+.inventory-safety-notice {
+  border-color: rgba(217, 119, 6, 0.22);
+  background: var(--surface);
+}
+
+.inventory-safety-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.inventory-safety-card {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.inventory-safety-card svg {
+  color: var(--warning);
+}
+
+.inventory-safety-card span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.inventory-safety-card strong,
+.inventory-safety-card small {
+  overflow-wrap: anywhere;
+}
+
+.inventory-safety-helper {
+  margin-top: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+@media (max-width: 1080px) {
+  .inventory-safety-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .inventory-safety-card {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+
+  .inventory-safety-card .status-badge {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
