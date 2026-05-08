@@ -11,6 +11,7 @@ import './styles/mobile-responsiveness.css';
 import './styles/form-validation-polish.css';
 import './styles/environment-setup.css';
 import './styles/notification-alerts.css';
+import './styles/reports-export.css';
 
 const routeAliases = {
   '/accounting-dashboard': '/accountant-dashboard',
