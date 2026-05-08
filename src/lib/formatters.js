@@ -1,11 +1,54 @@
-export function safeNumber(value, fallback = 0) {
-  const number = Number(value);
+export function parseFormattedNumber(value, fallback = 0) {
+  if (value === '' || value === null || value === undefined) {
+    return fallback;
+  }
+
+  const cleanValue = String(value)
+    .replace(/,/g, '')
+    .replace(/[^\d.-]/g, '')
+    .trim();
+
+  if (!cleanValue || cleanValue === '-' || cleanValue === '.' || cleanValue === '-.') {
+    return fallback;
+  }
+
+  const number = Number(cleanValue);
 
   if (!Number.isFinite(number)) {
     return fallback;
   }
 
   return number;
+}
+
+export function safeNumber(value, fallback = 0) {
+  return parseFormattedNumber(value, fallback);
+}
+
+export function cleanNumberInput(value, fallback = null) {
+  return parseFormattedNumber(value, fallback);
+}
+
+export function formatNumberInput(value, options = {}) {
+  if (value === '' || value === null || value === undefined) return '';
+
+  const cleanValue = String(value)
+    .replace(/,/g, '')
+    .replace(/[^\d.-]/g, '')
+    .trim();
+
+  if (!cleanValue || cleanValue === '-' || cleanValue === '.' || cleanValue === '-.') {
+    return '';
+  }
+
+  const number = Number(cleanValue);
+
+  if (!Number.isFinite(number)) return '';
+
+  return new Intl.NumberFormat(options.locale || 'en-US', {
+    maximumFractionDigits: options.maximumFractionDigits ?? 2,
+    minimumFractionDigits: options.minimumFractionDigits ?? 0,
+  }).format(number);
 }
 
 export function formatCurrency(value, currency = 'USD', options = {}) {
