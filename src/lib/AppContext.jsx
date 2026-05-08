@@ -1,9 +1,12 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+
 import { roles } from '../data/constants.js';
 import { resolvePrimaryRole } from './auth.js';
 import { isSupabaseConfigured, supabase } from './supabase.js';
 
 const AppContext = createContext(null);
+
+const storageKey = 'propflow.currentWorkspaceId';
 
 const emptyData = {
   properties: [],
@@ -20,17 +23,39 @@ const emptyData = {
   members: [],
 };
 
-const customerAssignableRoles = new Set([
-  roles.OWNER_ADMIN,
-  roles.PROPERTY_MANAGER,
-  roles.HOST,
-  roles.ACCOUNTANT,
-  roles.OWNER,
-  roles.CLEANER,
-  roles.MAINTENANCE,
-]);
+function firstResult(data) {
+  return Array.isArray(data) ? data[0] : data;
+}
 
-const storageKey = 'propflow.currentWorkspaceId';
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function cleanNumber(value) {
+  if (value === '' || value === undefined || value === null) return null;
+
+  const cleanValue = String(value)
+    .replace(/,/g, '')
+    .replace(/[^\d.-]/g, '')
+    .trim();
+
+  if (!cleanValue || cleanValue === '-' || cleanValue === '.' || cleanValue === '-.') {
+    return null;
+  }
+
+  const numericValue = Number(cleanValue);
+  return Number.isFinite(numericValue) ? numericValue : null;
+}
+
+function cleanText(value) {
+  const text = String(value || '').trim();
+  return text || null;
+}
+
+function cleanEmail(value) {
+  const text = String(value || '').trim().toLowerCase();
+  return text || null;
+}
 
 function normalizeWorkspace(row) {
   if (!row) return null;
@@ -42,11 +67,9 @@ function normalizeWorkspace(row) {
   };
 }
 
-function firstResult(data) {
-  return Array.isArray(data) ? data[0] : data;
-}
-
 function normalizeProperty(row) {
+  if (!row) return row;
+
   return {
     ...row,
     rentalType: row.rental_type,
@@ -60,11 +83,13 @@ function normalizeProperty(row) {
 }
 
 function normalizeCleaning(row, properties = []) {
+  if (!row) return row;
+
   const property = properties.find((item) => item.id === row.property_id);
 
   return {
     ...row,
-    property: property?.name || 'Unassigned property',
+    property: property?.name || row.property || 'Unassigned property',
     propertyId: row.property_id,
     assignedCleanerId: row.assigned_cleaner_id,
     scheduledFor: row.scheduled_for,
@@ -75,12 +100,16 @@ function normalizeCleaning(row, properties = []) {
 }
 
 function normalizeMaintenance(row, properties = []) {
+  if (!row) return row;
+
   const property = properties.find((item) => item.id === row.property_id);
 
   return {
     ...row,
-    property: property?.name || 'Unassigned property',
+    property: property?.name || row.property || 'Unassigned property',
     propertyId: row.property_id,
+    description: row.description || row.issue_description || '',
+    issueDescription: row.description || row.issue_description || '',
     assignedMaintenanceId: row.assigned_maintenance_id,
     estimatedCost: row.estimated_cost,
     actualCost: row.actual_cost,
@@ -90,11 +119,13 @@ function normalizeMaintenance(row, properties = []) {
 }
 
 function normalizeBooking(row, properties = []) {
+  if (!row) return row;
+
   const property = properties.find((item) => item.id === row.property_id);
 
   return {
     ...row,
-    property: property?.name || 'Unassigned property',
+    property: property?.name || row.property || 'Unassigned property',
     propertyId: row.property_id,
     contactId: row.contact_id,
     guestName: row.guest_name,
@@ -114,11 +145,13 @@ function normalizeBooking(row, properties = []) {
 }
 
 function normalizeLease(row, properties = []) {
+  if (!row) return row;
+
   const property = properties.find((item) => item.id === row.property_id);
 
   return {
     ...row,
-    property: property?.name || 'Unassigned property',
+    property: property?.name || row.property || 'Unassigned property',
     propertyId: row.property_id,
     contactId: row.contact_id,
     tenantName: row.tenant_name,
@@ -136,6 +169,8 @@ function normalizeLease(row, properties = []) {
 }
 
 function normalizeSupply(row, properties = []) {
+  if (!row) return row;
+
   const property = properties.find((item) => item.id === row.property_id);
 
   return {
@@ -153,18 +188,59 @@ function normalizeSupply(row, properties = []) {
 }
 
 function normalizeMember(row) {
+  if (!row) return row;
+
   const profile = row.profiles || row.profile || null;
-  return { ...row, profile, profiles: profile };
+
+  return {
+    ...row,
+    profile,
+    profiles: profile,
+  };
 }
 
-function inviteToken() {
-  return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+function normalizeContact(row) {
+  if (!row) return row;
+
+  return {
+    ...row,
+    name: row.full_name || row.name,
+    fullName: row.full_name || row.name,
+    contactType: row.contact_type,
+  };
+}
+
+function normalizeReport(row) {
+  if (!row) return row;
+
+  return {
+    ...row,
+    propertyId: row.property_id,
+    reportType: row.report_type || row.type,
+    startDate: row.start_date,
+    endDate: row.end_date,
+  };
+}
+
+function normalizeFileUpload(row) {
+  if (!row) return row;
+
+  return {
+    ...row,
+    propertyId: row.property_id,
+    cleaningTaskId: row.cleaning_task_id,
+    maintenanceWorkOrderId: row.maintenance_work_order_id,
+    uploadedBy: row.uploaded_by,
+    fileName: row.file_name,
+    fileType: row.file_type,
+    fileSize: row.file_size,
+  };
 }
 
 function requireSupabase() {
   if (!supabase) {
     throw new Error(
-      'Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY before using database-backed actions.',
+      'Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY before using database actions.',
     );
   }
 
@@ -174,13 +250,10 @@ function requireSupabase() {
 function formatSupabaseError(error, fallback = 'The database action failed.') {
   if (!error) return fallback;
 
-  const message = error.message || error.details || error.hint || fallback;
-  const parts = [message];
+  const parts = [error.message, error.details, error.hint].filter(Boolean);
+  const message = parts.join(' ');
 
-  if (error.details && !message.includes(error.details)) parts.push(error.details);
-  if (error.hint && !parts.some((part) => part.includes(error.hint))) parts.push(error.hint);
-
-  return parts.filter(Boolean).join(' ');
+  return message || fallback;
 }
 
 function requireWorkspaceSession(workspace, activeSession) {
@@ -193,23 +266,61 @@ function requireWorkspaceSession(workspace, activeSession) {
   }
 }
 
-function cleanNumber(value) {
-  if (value === '' || value === undefined || value === null) return null;
-
-  const numericValue = Number(value);
-  return Number.isFinite(numericValue) ? numericValue : null;
+function inviteToken() {
+  return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function buildContactUpdatePayload(payload, contact) {
-  const nextPayload = { ...payload };
-
-  if (contact?.id) {
-    nextPayload.contact_id = contact.id;
-  } else if (Object.prototype.hasOwnProperty.call(payload, 'contact_id')) {
-    nextPayload.contact_id = payload.contact_id || null;
+function getSavedWorkspaceId() {
+  try {
+    return window.localStorage.getItem(storageKey);
+  } catch {
+    return null;
   }
+}
 
-  return nextPayload;
+function saveWorkspaceId(workspaceId) {
+  try {
+    if (workspaceId) window.localStorage.setItem(storageKey, workspaceId);
+    else window.localStorage.removeItem(storageKey);
+  } catch {
+    // Local storage may be unavailable in strict browser modes.
+  }
+}
+
+async function safeQuery(label, query, fallback = []) {
+  try {
+    const { data, error } = await query;
+
+    if (error) {
+      console.error(`[PropFlow] Could not load ${label}`, error);
+      return { data: fallback, error };
+    }
+
+    return { data: data || fallback, error: null };
+  } catch (error) {
+    console.error(`[PropFlow] Could not load ${label}`, error);
+    return { data: fallback, error };
+  }
+}
+
+function getWorkspaceCode(workspace) {
+  return workspace?.company_code || workspace?.code || '';
+}
+
+function makeDateTimeFromDate(value, fallback = new Date()) {
+  if (!value) return fallback.toISOString();
+
+  const text = String(value);
+
+  if (text.includes('T')) return text;
+
+  return new Date(`${text}T11:00:00`).toISOString();
+}
+
+function stripUnsupportedPayloadKeys(payload, allowedKeys) {
+  return Object.fromEntries(
+    Object.entries(payload).filter(([key, value]) => allowedKeys.includes(key) && value !== undefined),
+  );
 }
 
 export function AppProvider({ children }) {
@@ -228,321 +339,321 @@ export function AppProvider({ children }) {
       return { ok: true, warnings: [] };
     }
 
-    const makeWorkspaceQuery = (label, key, query, normalize = (rows) => rows || [], core = false) => ({
-      label,
-      key,
-      query,
-      normalize,
-      core,
-    });
-
-    const workspaceQueries = [
-      makeWorkspaceQuery(
-        'properties',
-        'properties',
-        supabase
-          .from('properties')
-          .select('*')
-          .eq('workspace_id', workspace.id)
-          .order('created_at', { ascending: false }),
-        (rows) => (rows || []).map(normalizeProperty),
-        true,
-      ),
-      makeWorkspaceQuery(
-        'workspace members',
-        'members',
-        supabase
-          .from('workspace_members')
-          .select('*, profiles:profiles!workspace_members_user_id_fkey(full_name, email)')
-          .eq('workspace_id', workspace.id)
-          .order('created_at', { ascending: true }),
-        (rows) => (rows || []).map(normalizeMember),
-      ),
-      makeWorkspaceQuery(
-        'bookings',
-        'bookings',
-        supabase
-          .from('bookings')
-          .select('*')
-          .eq('workspace_id', workspace.id)
-          .order('check_in', { ascending: true }),
-        (rows, props) => (rows || []).map((row) => normalizeBooking(row, props)),
-      ),
-      makeWorkspaceQuery(
-        'leases',
-        'leases',
-        supabase
-          .from('leases')
-          .select('*')
-          .eq('workspace_id', workspace.id)
-          .order('lease_start', { ascending: true }),
-        (rows, props) => (rows || []).map((row) => normalizeLease(row, props)),
-      ),
-      makeWorkspaceQuery(
-        'contacts',
-        'contacts',
-        supabase
-          .from('contacts')
-          .select('*')
-          .eq('workspace_id', workspace.id)
-          .order('updated_at', { ascending: false }),
-      ),
-      makeWorkspaceQuery(
-        'cleaning tasks',
-        'cleaningTasks',
-        supabase
-          .from('cleaning_tasks')
-          .select('*')
-          .eq('workspace_id', workspace.id)
-          .order('scheduled_for', { ascending: true }),
-        (rows, props) => (rows || []).map((row) => normalizeCleaning(row, props)),
-      ),
-      makeWorkspaceQuery(
-        'maintenance work orders',
-        'maintenanceWorkOrders',
-        supabase
-          .from('maintenance_work_orders')
-          .select('*')
-          .eq('workspace_id', workspace.id)
-          .order('created_at', { ascending: false }),
-        (rows, props) => (rows || []).map((row) => normalizeMaintenance(row, props)),
-      ),
-      makeWorkspaceQuery(
-        'supplies',
-        'supplies',
-        supabase
-          .from('supplies')
-          .select('*')
-          .eq('workspace_id', workspace.id)
-          .order('created_at', { ascending: false }),
-        (rows, props) => (rows || []).map((row) => normalizeSupply(row, props)),
-      ),
-      makeWorkspaceQuery(
-        'workspace invites',
-        'invites',
-        supabase
-          .from('workspace_invites')
-          .select('*')
-          .eq('workspace_id', workspace.id)
-          .order('created_at', { ascending: false }),
-      ),
-      makeWorkspaceQuery(
-        'file uploads',
-        'fileUploads',
-        supabase
-          .from('file_uploads')
-          .select('*')
-          .eq('workspace_id', workspace.id)
-          .order('created_at', { ascending: false }),
-      ),
-      makeWorkspaceQuery(
-        'notifications',
-        'notifications',
-        supabase
-          .from('notifications')
-          .select('*')
-          .eq('workspace_id', workspace.id)
-          .order('created_at', { ascending: false }),
-      ),
-      makeWorkspaceQuery(
-        'owner reports',
-        'ownerReports',
-        supabase
-          .from('owner_reports')
-          .select('*')
-          .eq('workspace_id', workspace.id)
-          .order('created_at', { ascending: false }),
-      ),
-    ];
-
-    const settledResponses = await Promise.allSettled(workspaceQueries.map(({ query }) => query));
+    const workspaceId = workspace.id;
     const nextData = { ...emptyData };
     const warnings = [];
-    const coreErrors = [];
-    const responseByKey = {};
 
-    workspaceQueries.forEach((workspaceQuery, index) => {
-      const settled = settledResponses[index];
-      const rejectedError = settled.status === 'rejected' ? settled.reason : null;
-      const response = settled.status === 'fulfilled' ? settled.value : { data: [], error: rejectedError };
-      responseByKey[workspaceQuery.key] = response;
+    const propertiesResponse = await safeQuery(
+      'properties',
+      supabase
+        .from('properties')
+        .select('*')
+        .eq('workspace_id', workspaceId)
+        .order('created_at', { ascending: false }),
+    );
 
-      if (response.error) {
-        const message = `${workspaceQuery.label}: ${formatSupabaseError(response.error)}`;
+    if (propertiesResponse.error) warnings.push(`properties: ${formatSupabaseError(propertiesResponse.error)}`);
 
-        if (workspaceQuery.core) coreErrors.push(message);
-        else warnings.push(message);
+    const properties = asArray(propertiesResponse.data).map(normalizeProperty);
+    nextData.properties = properties;
 
-        console.error(`[PropFlow] Could not load ${workspaceQuery.label}`, response.error);
-      }
-    });
+    const workspaceQueries = [
+      {
+        label: 'workspace members',
+        key: 'members',
+        query: supabase
+          .from('workspace_members')
+          .select('*, profiles:profiles!workspace_members_user_id_fkey(full_name, email)')
+          .eq('workspace_id', workspaceId)
+          .order('created_at', { ascending: true }),
+        normalize: (rows) => rows.map(normalizeMember),
+      },
+      {
+        label: 'bookings',
+        key: 'bookings',
+        query: supabase
+          .from('bookings')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .order('check_in', { ascending: true }),
+        normalize: (rows) => rows.map((row) => normalizeBooking(row, properties)),
+      },
+      {
+        label: 'leases',
+        key: 'leases',
+        query: supabase
+          .from('leases')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .order('lease_start', { ascending: true }),
+        normalize: (rows) => rows.map((row) => normalizeLease(row, properties)),
+      },
+      {
+        label: 'contacts',
+        key: 'contacts',
+        query: supabase
+          .from('contacts')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .order('updated_at', { ascending: false }),
+        normalize: (rows) => rows.map(normalizeContact),
+      },
+      {
+        label: 'cleaning tasks',
+        key: 'cleaningTasks',
+        query: supabase
+          .from('cleaning_tasks')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .order('scheduled_for', { ascending: true }),
+        normalize: (rows) => rows.map((row) => normalizeCleaning(row, properties)),
+      },
+      {
+        label: 'maintenance work orders',
+        key: 'maintenanceWorkOrders',
+        query: supabase
+          .from('maintenance_work_orders')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .order('created_at', { ascending: false }),
+        normalize: (rows) => rows.map((row) => normalizeMaintenance(row, properties)),
+      },
+      {
+        label: 'supplies',
+        key: 'supplies',
+        query: supabase
+          .from('supplies')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .order('created_at', { ascending: false }),
+        normalize: (rows) => rows.map((row) => normalizeSupply(row, properties)),
+      },
+      {
+        label: 'workspace invites',
+        key: 'invites',
+        query: supabase
+          .from('workspace_invites')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .order('created_at', { ascending: false }),
+        normalize: (rows) => rows,
+      },
+      {
+        label: 'file uploads',
+        key: 'fileUploads',
+        query: supabase
+          .from('file_uploads')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .order('created_at', { ascending: false }),
+        normalize: (rows) => rows.map(normalizeFileUpload),
+      },
+      {
+        label: 'notifications',
+        key: 'notifications',
+        query: supabase
+          .from('notifications')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .order('created_at', { ascending: false }),
+        normalize: (rows) => rows,
+      },
+      {
+        label: 'owner reports',
+        key: 'ownerReports',
+        query: supabase
+          .from('owner_reports')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .order('created_at', { ascending: false }),
+        normalize: (rows) => rows.map(normalizeReport),
+      },
+    ];
 
-    const propertyQuery = workspaceQueries.find(({ key }) => key === 'properties');
-    const props = responseByKey.properties?.error ? [] : propertyQuery.normalize(responseByKey.properties?.data || []);
-    nextData.properties = props;
+    const results = await Promise.all(
+      workspaceQueries.map(async (item) => {
+        const result = await safeQuery(item.label, item.query);
+        return { ...item, ...result };
+      }),
+    );
 
-    workspaceQueries.forEach((workspaceQuery) => {
-      if (workspaceQuery.key === 'properties') return;
-
-      const response = responseByKey[workspaceQuery.key];
-      nextData[workspaceQuery.key] = response?.error ? [] : workspaceQuery.normalize(response?.data || [], props);
+    results.forEach((result) => {
+      if (result.error) warnings.push(`${result.label}: ${formatSupabaseError(result.error)}`);
+      nextData[result.key] = result.error ? [] : result.normalize(asArray(result.data));
     });
 
     setData(nextData);
 
-    if (coreErrors.length || warnings.length) {
-      const message = coreErrors.length
-        ? `We loaded your account, but core workspace data could not be loaded. Please refresh or contact support. (${coreErrors.join('; ')})`
-        : `We loaded your account, but some workspace data could not be loaded. Please refresh or contact support. (${warnings.join('; ')})`;
-
-      setError(message);
-      return { ok: false, error: message, coreErrors, warnings };
-    }
-
-    setError('');
-    return { ok: true, warnings: [] };
+    return {
+      ok: warnings.length === 0,
+      warnings,
+    };
   };
 
-  const loadAccount = async (activeSession = session) => {
-    if (!supabase || !activeSession?.user) {
+  const loadAccount = async () => {
+    if (!supabase) {
+      setAuthLoading(false);
       setSession(null);
       setCurrentUser(null);
       setMemberships([]);
       setWorkspaces([]);
       setCurrentWorkspaceState(null);
       setData(emptyData);
-      setAuthLoading(false);
-      return null;
+      return {
+        session: null,
+        currentUser: null,
+        memberships: [],
+        workspaces: [],
+        currentWorkspace: null,
+      };
     }
 
     setAuthLoading(true);
     setError('');
 
-    let accountState = null;
-
     try {
-      const user = activeSession.user;
-      const profilePayload = {
-        id: user.id,
-        email: user.email,
-        full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'PropFlow user',
-      };
-
-      const { error: upsertError } = await supabase.from('profiles').upsert(profilePayload, {
-        onConflict: 'id',
-      });
-
-      if (upsertError) {
-        console.error('[PropFlow] Could not upsert profile during account load', upsertError);
-      }
-
-      const [profileResult, memberResult] = await Promise.allSettled([
-        supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
-        supabase
-          .from('workspace_members')
-          .select('*, workspaces(*)')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: true }),
-      ]);
-
-      const profileRes =
-        profileResult.status === 'fulfilled'
-          ? profileResult.value
-          : { data: null, error: profileResult.reason };
-
-      const memberRes =
-        memberResult.status === 'fulfilled'
-          ? memberResult.value
-          : { data: [], error: memberResult.reason };
-
-      const accountErrors = [];
-
-      if (profileRes.error) {
-        console.error('[PropFlow] Could not load profile during account load', profileRes.error);
-        accountErrors.push(`profile: ${formatSupabaseError(profileRes.error)}`);
-      }
-
-      if (memberRes.error) {
-        console.error('[PropFlow] Could not load workspace memberships during account load', memberRes.error);
-        accountErrors.push(`workspace membership: ${formatSupabaseError(memberRes.error)}`);
-      }
-
-      const activeMemberships = memberRes.error
-        ? []
-        : (memberRes.data || []).filter((m) => m.status !== 'revoked');
-
-      const normalizedWorkspaces = activeMemberships
-        .map((m) => normalizeWorkspace(m.workspaces))
-        .filter(Boolean);
-
-      const preferredId = localStorage.getItem(storageKey);
-      const selectedMembership = activeMemberships.find((m) => m.workspace_id === preferredId) || activeMemberships[0];
-      const profile = profileRes.data || profilePayload;
-      const selectedWorkspace = normalizeWorkspace(selectedMembership?.workspaces);
-      const userRoles = profile.is_propflow_admin ? [roles.ADMIN] : selectedMembership?.roles || [];
-
-      const nextUser = {
-        id: user.id,
-        email: user.email,
-        name: profile.full_name || profile.email,
-        status: profile.status || selectedMembership?.status || 'active',
-        roles: userRoles,
-        primaryRole: resolvePrimaryRole(userRoles),
-        workspaceId: selectedWorkspace?.id,
-        isPropFlowAdmin: Boolean(profile.is_propflow_admin),
-      };
+      const sessionResponse = await supabase.auth.getSession();
+      const activeSession = sessionResponse.data?.session || null;
+      const user = activeSession?.user || null;
 
       setSession(activeSession);
-      setMemberships(activeMemberships);
-      setWorkspaces(normalizedWorkspaces);
-      setCurrentWorkspaceState(selectedWorkspace || null);
-      setCurrentUser(nextUser);
 
-      if (selectedWorkspace) {
-        await refreshWorkspaceData(selectedWorkspace);
+      if (!user) {
+        setCurrentUser(null);
+        setMemberships([]);
+        setWorkspaces([]);
+        setCurrentWorkspaceState(null);
+        setData(emptyData);
+        saveWorkspaceId(null);
+
+        return {
+          session: null,
+          currentUser: null,
+          memberships: [],
+          workspaces: [],
+          currentWorkspace: null,
+        };
+      }
+
+      let profile = null;
+
+      const profileResponse = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (profileResponse.error) {
+        console.warn('[PropFlow] Could not load profile, using auth user fallback.', profileResponse.error);
+      } else {
+        profile = profileResponse.data;
+      }
+
+      if (!profile) {
+        const profilePayload = {
+          id: user.id,
+          email: user.email,
+          full_name: user.user_metadata?.fullName || user.user_metadata?.full_name || user.email || '',
+          status: 'active',
+          is_propflow_admin: false,
+        };
+
+        const upsertResponse = await supabase
+          .from('profiles')
+          .upsert(profilePayload, { onConflict: 'id' })
+          .select('*')
+          .maybeSingle();
+
+        profile = upsertResponse.data || profilePayload;
+      }
+
+      const membershipResponse = await supabase
+        .from('workspace_members')
+        .select('*, workspaces(*)')
+        .eq('user_id', user.id)
+        .neq('status', 'revoked')
+        .order('created_at', { ascending: true });
+
+      const membershipRows = membershipResponse.error ? [] : membershipResponse.data || [];
+      const normalizedMemberships = membershipRows.map((membership) => ({
+        ...membership,
+        workspace: normalizeWorkspace(membership.workspaces),
+        workspaces: normalizeWorkspace(membership.workspaces),
+      }));
+
+      const workspaceRows = normalizedMemberships
+        .map((membership) => membership.workspace || membership.workspaces)
+        .filter(Boolean);
+
+      const savedWorkspaceId = getSavedWorkspaceId();
+      const activeMembership =
+        normalizedMemberships.find(
+          (membership) =>
+            membership.workspace_id === savedWorkspaceId &&
+            membership.status !== 'revoked' &&
+            membership.workspace,
+        ) ||
+        normalizedMemberships.find(
+          (membership) => membership.status === 'active' && membership.workspace,
+        ) ||
+        normalizedMemberships.find((membership) => membership.workspace);
+
+      const activeWorkspace = normalizeWorkspace(activeMembership?.workspace || activeMembership?.workspaces);
+
+      if (activeWorkspace?.id) {
+        saveWorkspaceId(activeWorkspace.id);
+      }
+
+      const memberRoles = Array.from(
+        new Set(normalizedMemberships.flatMap((membership) => asArray(membership.roles))),
+      );
+
+      const userRoles = profile?.is_propflow_admin
+        ? [roles.ADMIN, ...memberRoles]
+        : memberRoles;
+
+      const accountUser = {
+        ...profile,
+        id: user.id,
+        email: profile?.email || user.email,
+        fullName: profile?.full_name || profile?.fullName || user.email,
+        full_name: profile?.full_name || profile?.fullName || user.email,
+        status: profile?.status || 'active',
+        roles: userRoles,
+        role: resolvePrimaryRole(userRoles),
+        workspaceId: activeWorkspace?.id || null,
+        workspace_id: activeWorkspace?.id || null,
+        membership: activeMembership || null,
+      };
+
+      setCurrentUser(accountUser);
+      setMemberships(normalizedMemberships);
+      setWorkspaces(workspaceRows);
+      setCurrentWorkspaceState(activeWorkspace || null);
+
+      if (activeWorkspace?.id) {
+        await refreshWorkspaceData(activeWorkspace);
       } else {
         setData(emptyData);
       }
 
-      if (accountErrors.length) {
-        setError(
-          `We loaded your account, but some workspace data could not be loaded. Please refresh or contact support. (${accountErrors.join(
-            '; ',
-          )})`,
-        );
-      }
-
-      accountState = {
-        currentUser: nextUser,
-        memberships: activeMemberships,
-        workspaces: normalizedWorkspaces,
-        currentWorkspace: selectedWorkspace || null,
+      return {
+        session: activeSession,
+        currentUser: accountUser,
+        memberships: normalizedMemberships,
+        workspaces: workspaceRows,
+        currentWorkspace: activeWorkspace || null,
       };
-
-      return accountState;
     } catch (loadError) {
       console.error('[PropFlow] Account load failed', loadError);
-      setError(`We could not finish loading your workspace. Please refresh or contact support. (${formatSupabaseError(loadError)})`);
-
-      if (activeSession?.user) {
-        const user = activeSession.user;
-
-        setSession(activeSession);
-        setCurrentUser((existingUser) =>
-          existingUser || {
-            id: user.id,
-            email: user.email,
-            name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'PropFlow user',
-            status: 'active',
-            roles: [],
-            primaryRole: resolvePrimaryRole([]),
-            workspaceId: undefined,
-            isPropFlowAdmin: false,
-          },
-        );
-      }
-
-      return accountState;
+      setError(loadError?.message || 'Could not load account.');
+      return {
+        session: null,
+        currentUser: null,
+        memberships: [],
+        workspaces: [],
+        currentWorkspace: null,
+      };
     } finally {
       setAuthLoading(false);
     }
@@ -556,67 +667,56 @@ export function AppProvider({ children }) {
 
     let mounted = true;
 
-    supabase.auth
-      .getSession()
-      .then(({ data: authData }) => {
-        if (mounted) loadAccount(authData.session);
-      })
-      .catch((sessionError) => {
-        console.error('[PropFlow] Session load failed', sessionError);
+    loadAccount().catch((loadError) => {
+      if (!mounted) return;
+      console.error('[PropFlow] Initial account load failed', loadError);
+      setError(loadError?.message || 'Could not load PropFlow.');
+      setAuthLoading(false);
+    });
 
-        if (mounted) {
-          setError(formatSupabaseError(sessionError, 'Could not check your session.'));
-          setAuthLoading(false);
-        }
-      });
-
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const subscription = supabase.auth.onAuthStateChange((_event, nextSession) => {
       if (!mounted) return;
 
+      setSession(nextSession || null);
+
       window.setTimeout(() => {
-        if (mounted) loadAccount(nextSession);
+        if (mounted) loadAccount();
       }, 0);
     });
 
     return () => {
       mounted = false;
-      subscription?.subscription?.unsubscribe?.();
+      subscription?.data?.subscription?.unsubscribe?.();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const setCurrentWorkspace = async (workspaceId) => {
-    const membership = memberships.find((item) => item.workspace_id === workspaceId);
+    const workspace = workspaces.find((item) => item.id === workspaceId) || null;
 
-    if (!membership) throw new Error('You do not belong to that workspace.');
+    setCurrentWorkspaceState(workspace);
+    saveWorkspaceId(workspace?.id || null);
 
-    localStorage.setItem(storageKey, workspaceId);
+    if (workspace?.id) {
+      await refreshWorkspaceData(workspace);
+    } else {
+      setData(emptyData);
+    }
 
-    const selectedWorkspace = normalizeWorkspace(
-      membership.workspaces || workspaces.find((workspace) => workspace.id === workspaceId),
-    );
-
-    setCurrentWorkspaceState(selectedWorkspace);
-    setCurrentUser((user) => ({
-      ...user,
-      roles: membership.roles || [],
-      primaryRole: resolvePrimaryRole(membership.roles || []),
-      workspaceId,
-    }));
-
-    return refreshWorkspaceData(selectedWorkspace);
+    return workspace;
   };
 
   const signIn = async (email, password) => {
     const client = requireSupabase();
 
-    const { data: authData, error: authError } = await client.auth.signInWithPassword({
+    const { data: authData, error: signInError } = await client.auth.signInWithPassword({
       email,
       password,
     });
 
-    if (authError) throw new Error(formatSupabaseError(authError, 'Login failed.'));
+    if (signInError) throw new Error(formatSupabaseError(signInError, 'Login failed.'));
 
-    const accountState = authData.session ? await loadAccount(authData.session) : null;
+    const accountState = await loadAccount();
 
     return {
       ...authData,
@@ -624,29 +724,46 @@ export function AppProvider({ children }) {
     };
   };
 
-  const signUp = async ({ email, password, fullName }) => {
+  const signUp = async ({ fullName, email, password }) => {
     const client = requireSupabase();
 
-    const { data: authData, error: authError } = await client.auth.signUp({
+    const { data: authData, error: signUpError } = await client.auth.signUp({
       email,
       password,
-      options: { data: { full_name: fullName } },
+      options: {
+        data: {
+          fullName,
+          full_name: fullName,
+        },
+      },
     });
 
-    if (authError) throw new Error(formatSupabaseError(authError, 'Signup failed.'));
+    if (signUpError) throw new Error(formatSupabaseError(signUpError, 'Signup failed.'));
 
-    const accountState = authData.session ? await loadAccount(authData.session) : null;
+    if (authData?.user?.id) {
+      await client.from('profiles').upsert(
+        {
+          id: authData.user.id,
+          full_name: fullName,
+          email,
+          status: 'active',
+          is_propflow_admin: false,
+        },
+        { onConflict: 'id' },
+      );
+    }
 
-    return {
-      ...authData,
-      accountState,
-    };
+    if (authData?.session) {
+      await loadAccount();
+    }
+
+    return authData;
   };
 
   const signOut = async () => {
-    if (supabase) await supabase.auth.signOut();
+    const client = requireSupabase();
 
-    localStorage.removeItem(storageKey);
+    await client.auth.signOut();
 
     setSession(null);
     setCurrentUser(null);
@@ -654,608 +771,923 @@ export function AppProvider({ children }) {
     setWorkspaces([]);
     setCurrentWorkspaceState(null);
     setData(emptyData);
-    setError('');
-    setAuthLoading(false);
+    saveWorkspaceId(null);
   };
 
   const createWorkspace = async (payload) => {
     const client = requireSupabase();
-    const activeSession = session || (await client.auth.getSession()).data.session;
+    requireWorkspaceSession(currentWorkspace || { id: 'workspace-setup' }, session);
 
-    if (!activeSession?.user) throw new Error('Sign in before creating a workspace.');
-
-    const rpcPayload = {
-      p_name: payload.name?.trim(),
-      p_business_type: payload.business_type || payload.businessType || 'property_management',
-      p_country: payload.country || null,
-      p_default_currency: payload.default_currency || payload.defaultCurrency || 'USD',
-      p_business_email: payload.business_email || payload.businessEmail || activeSession.user.email,
-      p_phone: payload.phone || null,
-      p_website: payload.website || null,
-      p_property_count_estimate: cleanNumber(payload.property_count_estimate || payload.propertyCountEstimate),
-      p_plan: payload.plan || 'starter',
+    const workspacePayload = {
+      name: cleanText(payload.name),
+      business_type: cleanText(payload.business_type),
+      country: cleanText(payload.country) || 'United States',
+      default_currency: payload.default_currency || payload.defaultCurrency || 'USD',
+      business_email: cleanEmail(payload.business_email),
+      phone: cleanText(payload.phone),
+      website: cleanText(payload.website),
+      property_count_estimate: cleanNumber(payload.property_count_estimate),
+      plan_placeholder: payload.plan || payload.plan_placeholder || 'starter',
+      status: 'active',
+      created_by: session.user.id,
     };
 
-    const { data: rpcData, error: rpcError } = await client.rpc('create_workspace_with_owner', rpcPayload);
-
-    if (rpcError) throw new Error(formatSupabaseError(rpcError, 'Workspace creation failed.'));
-
-    const workspace = normalizeWorkspace(firstResult(rpcData));
-    localStorage.setItem(storageKey, workspace.id);
-    await loadAccount(activeSession);
-    return workspace;
-  };
-
-  const createInvite = async ({
-    email,
-    roles: inviteRoles,
-    assignedPropertyIds = [],
-    expiresAt = null,
-    expires_at = null,
-    message = '',
-    permissionLevel = 'standard',
-  }) => {
-    const client = requireSupabase();
-    requireWorkspaceSession(currentWorkspace, session);
-
-    const safeRoles = (inviteRoles || []).filter((role) => customerAssignableRoles.has(role));
-
-    if (!safeRoles.length) throw new Error('Choose at least one customer workspace role.');
-
-    const safeExpiresAt = expiresAt || expires_at || null;
-    const token = inviteToken();
-
-    const { data: invite, error: inviteError } = await client
-      .from('workspace_invites')
-      .insert({
-        workspace_id: currentWorkspace.id,
-        email: email.toLowerCase().trim(),
-        roles: safeRoles,
-        assigned_property_ids: assignedPropertyIds,
-        expires_at: safeExpiresAt,
-        message,
-        permission_level: permissionLevel,
-        token,
-        invited_by: session.user.id,
-        status: 'pending',
-      })
+    const { data: workspaceRow, error: workspaceError } = await client
+      .from('workspaces')
+      .insert(workspacePayload)
       .select('*')
       .single();
 
-    if (inviteError) throw new Error(formatSupabaseError(inviteError, 'Invite creation failed.'));
+    if (workspaceError) {
+      throw new Error(formatSupabaseError(workspaceError, 'Workspace could not be created.'));
+    }
 
-    await refreshWorkspaceData();
-    return invite;
+    const workspace = normalizeWorkspace(workspaceRow);
+
+    const { error: memberError } = await client.from('workspace_members').insert({
+      workspace_id: workspace.id,
+      user_id: session.user.id,
+      roles: [roles.OWNER_ADMIN],
+      status: 'active',
+      invited_by: session.user.id,
+    });
+
+    if (memberError) {
+      throw new Error(formatSupabaseError(memberError, 'Workspace was created but membership failed.'));
+    }
+
+    saveWorkspaceId(workspace.id);
+    await loadAccount();
+
+    return workspace;
   };
 
   const joinWorkspace = async ({ token, code }) => {
     const client = requireSupabase();
-    const activeSession = session || (await client.auth.getSession()).data.session;
 
-    if (!activeSession?.user?.email) {
-      throw new Error('Sign in with the invited email before joining a workspace.');
+    if (!session?.user?.id) {
+      throw new Error('Log in before joining a workspace.');
     }
 
-    let query = client
+    const value = String(token || code || '').trim();
+
+    if (!value) {
+      throw new Error('Enter a valid invite token or company code.');
+    }
+
+    let inviteQuery = client
       .from('workspace_invites')
       .select('*')
-      .eq('email', activeSession.user.email.toLowerCase())
-      .eq('status', 'pending');
+      .eq('status', 'pending')
+      .limit(1);
 
-    if (token) query = query.eq('token', token.trim());
-
-    if (code) {
-      const workspaceRes = await client.from('workspaces').select('id').eq('company_code', code.trim()).maybeSingle();
-
-      if (workspaceRes.error) {
-        throw new Error(formatSupabaseError(workspaceRes.error, 'Workspace code lookup failed.'));
-      }
-
-      if (!workspaceRes.data) throw new Error('No workspace found for that code.');
-
-      query = query.eq('workspace_id', workspaceRes.data.id);
+    if (token) {
+      inviteQuery = inviteQuery.eq('token', value);
+    } else {
+      inviteQuery = inviteQuery.eq('workspace_code', value);
     }
 
-    const { data: invite, error: inviteError } = await query.maybeSingle();
+    const { data: inviteRows, error: inviteError } = await inviteQuery;
 
-    if (inviteError) throw new Error(formatSupabaseError(inviteError, 'Invite lookup failed.'));
-    if (!invite) throw new Error('No valid invite exists for this email. Ask the workspace owner to send you an invite.');
+    if (inviteError) {
+      throw new Error(formatSupabaseError(inviteError, 'Could not validate invite.'));
+    }
 
-    if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
-      throw new Error('This invite has expired. Ask the workspace owner for a new invite.');
+    const invite = inviteRows?.[0];
+
+    if (!invite) {
+      throw new Error('Invite not found, expired, or already used.');
+    }
+
+    const currentEmail = String(currentUser?.email || session.user.email || '').toLowerCase();
+    const invitedEmail = String(invite.email || '').toLowerCase();
+
+    if (invitedEmail && invitedEmail !== currentEmail) {
+      throw new Error('This invite was created for a different email address.');
     }
 
     const { error: memberError } = await client.from('workspace_members').upsert(
       {
         workspace_id: invite.workspace_id,
-        user_id: activeSession.user.id,
-        roles: invite.roles,
+        user_id: session.user.id,
+        roles: invite.roles || [],
         status: 'active',
-        invited_by: invite.invited_by,
+        invited_by: invite.invited_by || null,
       },
       { onConflict: 'workspace_id,user_id' },
     );
 
-    if (memberError) throw new Error(formatSupabaseError(memberError, 'Joining workspace failed.'));
+    if (memberError) {
+      throw new Error(formatSupabaseError(memberError, 'Could not join workspace.'));
+    }
 
     await client
       .from('workspace_invites')
-      .update({ status: 'accepted', accepted_at: new Date().toISOString() })
+      .update({
+        status: 'accepted',
+        accepted_by: session.user.id,
+        accepted_at: new Date().toISOString(),
+      })
       .eq('id', invite.id);
 
-    localStorage.setItem(storageKey, invite.workspace_id);
-    return loadAccount(activeSession);
+    saveWorkspaceId(invite.workspace_id);
+    await loadAccount();
+
+    return invite;
   };
 
   const createProperty = async (payload) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
-    const { data: property, error: propertyError } = await client
+    const allowed = [
+      'name',
+      'address',
+      'city',
+      'state',
+      'country',
+      'property_type',
+      'rental_type',
+      'currency',
+      'status',
+      'nightly_rate',
+      'monthly_rent',
+      'assigned_owner_id',
+      'bedrooms',
+      'bathrooms',
+      'square_feet',
+      'notes',
+    ];
+
+    const propertyPayload = stripUnsupportedPayloadKeys(payload, allowed);
+
+    propertyPayload.workspace_id = currentWorkspace.id;
+    propertyPayload.created_by = session.user.id;
+    propertyPayload.name = cleanText(propertyPayload.name);
+    propertyPayload.address = cleanText(propertyPayload.address);
+    propertyPayload.country = cleanText(propertyPayload.country) || currentWorkspace.country || 'United States';
+    propertyPayload.property_type = propertyPayload.property_type || 'short_term_rental';
+    propertyPayload.rental_type = propertyPayload.rental_type || 'short_term';
+    propertyPayload.currency = propertyPayload.currency || currentWorkspace.defaultCurrency || 'USD';
+    propertyPayload.status = propertyPayload.status || 'active';
+    propertyPayload.nightly_rate = cleanNumber(propertyPayload.nightly_rate);
+    propertyPayload.monthly_rent = cleanNumber(propertyPayload.monthly_rent);
+    propertyPayload.bedrooms = cleanNumber(propertyPayload.bedrooms);
+    propertyPayload.bathrooms = cleanNumber(propertyPayload.bathrooms);
+    propertyPayload.square_feet = cleanNumber(propertyPayload.square_feet);
+
+    const { data: row, error: insertError } = await client
       .from('properties')
-      .insert({ ...payload, workspace_id: currentWorkspace.id, created_by: session.user.id })
+      .insert(propertyPayload)
       .select('*')
       .single();
 
-    if (propertyError) throw new Error(formatSupabaseError(propertyError, 'Property creation failed.'));
+    if (insertError) throw new Error(formatSupabaseError(insertError, 'Property could not be saved.'));
 
     await refreshWorkspaceData();
-    return normalizeProperty(property);
+
+    return normalizeProperty(row);
   };
 
-  const updateProperty = async (id, payload) => {
+  const updateProperty = async (propertyId, payload) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
-    if (!id) throw new Error('Select a property before saving changes.');
+    const allowed = [
+      'name',
+      'address',
+      'city',
+      'state',
+      'country',
+      'property_type',
+      'rental_type',
+      'currency',
+      'status',
+      'nightly_rate',
+      'monthly_rent',
+      'assigned_owner_id',
+      'bedrooms',
+      'bathrooms',
+      'square_feet',
+      'notes',
+      'archived_at',
+    ];
 
-    const { data: property, error: propertyError } = await client
+    const updatePayload = stripUnsupportedPayloadKeys(payload, allowed);
+
+    ['nightly_rate', 'monthly_rent', 'bedrooms', 'bathrooms', 'square_feet'].forEach((key) => {
+      if (key in updatePayload) updatePayload[key] = cleanNumber(updatePayload[key]);
+    });
+
+    const { data: row, error: updateError } = await client
       .from('properties')
-      .update(payload)
-      .eq('id', id)
+      .update(updatePayload)
+      .eq('id', propertyId)
       .eq('workspace_id', currentWorkspace.id)
       .select('*')
       .single();
 
-    if (propertyError) throw new Error(formatSupabaseError(propertyError, 'Property update failed.'));
+    if (updateError) throw new Error(formatSupabaseError(updateError, 'Property could not be updated.'));
 
     await refreshWorkspaceData();
-    return normalizeProperty(property);
+
+    return normalizeProperty(row);
   };
 
-  const archiveProperty = async (id, archived = true) =>
-    updateProperty(id, {
+  const archiveProperty = async (propertyId, archived = true) =>
+    updateProperty(propertyId, {
       status: archived ? 'archived' : 'active',
       archived_at: archived ? new Date().toISOString() : null,
     });
 
-  const upsertContact = async (payload) => {
+  const createOrUpdateContact = async ({
+    full_name,
+    name,
+    email,
+    phone,
+    contact_type = 'other',
+    notes,
+  }) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
-    if (!payload.full_name?.trim()) return null;
+    const fullName = cleanText(full_name || name);
 
-    const { data: contact, error: contactError } = await client.rpc('create_or_update_contact', {
+    if (!fullName) {
+      throw new Error('Contact name is required.');
+    }
+
+    const rpcPayload = {
       p_workspace_id: currentWorkspace.id,
-      p_full_name: payload.full_name,
-      p_email: payload.email || null,
-      p_phone: payload.phone || null,
-      p_contact_type: payload.contact_type || 'other',
-      p_notes: payload.notes || null,
-    });
+      p_full_name: fullName,
+      p_email: cleanEmail(email),
+      p_phone: cleanText(phone),
+      p_contact_type: contact_type || 'other',
+      p_notes: cleanText(notes),
+    };
 
-    if (contactError) throw new Error(formatSupabaseError(contactError, 'Contact update failed.'));
+    const rpcResponse = await client.rpc('create_or_update_contact', rpcPayload);
 
-    return firstResult(contact);
+    if (!rpcResponse.error && rpcResponse.data) {
+      await refreshWorkspaceData();
+      return normalizeContact(firstResult(rpcResponse.data));
+    }
+
+    const fallbackPayload = {
+      workspace_id: currentWorkspace.id,
+      full_name: fullName,
+      email: cleanEmail(email),
+      phone: cleanText(phone),
+      contact_type: contact_type || 'other',
+      notes: cleanText(notes),
+      created_by: session.user.id,
+    };
+
+    const insertResponse = await client
+      .from('contacts')
+      .insert(fallbackPayload)
+      .select('*')
+      .single();
+
+    if (insertResponse.error) {
+      throw new Error(formatSupabaseError(insertResponse.error, 'Contact could not be saved.'));
+    }
+
+    await refreshWorkspaceData();
+
+    return normalizeContact(insertResponse.data);
   };
+
+  const createContact = (payload) => createOrUpdateContact(payload);
+  const createOwner = (payload) => createOrUpdateContact({ ...payload, contact_type: 'owner' });
+  const createGuest = (payload) => createOrUpdateContact({ ...payload, contact_type: 'guest' });
 
   const createBooking = async (payload) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
-    const contact = await upsertContact({
-      full_name: payload.guest_name,
-      email: payload.guest_email,
-      phone: payload.guest_phone,
-      contact_type: 'guest',
-    });
+    let contact = null;
 
-    const { data: booking, error: bookingError } = await client
+    if (payload.guest_name || payload.guest_email || payload.guest_phone) {
+      contact = await createOrUpdateContact({
+        full_name: payload.guest_name,
+        email: payload.guest_email,
+        phone: payload.guest_phone,
+        contact_type: 'guest',
+        notes: payload.notes,
+      });
+    }
+
+    const bookingPayload = {
+      workspace_id: currentWorkspace.id,
+      property_id: payload.property_id,
+      contact_id: contact?.id || payload.contact_id || null,
+      guest_name: cleanText(payload.guest_name),
+      guest_email: cleanEmail(payload.guest_email),
+      guest_phone: cleanText(payload.guest_phone),
+      check_in: payload.check_in,
+      check_out: payload.check_out,
+      guest_count: Number(payload.guest_count || 1),
+      source: payload.source || 'manual',
+      status: payload.status || 'confirmed',
+      payment_status: payload.payment_status || 'unpaid',
+      currency: payload.currency || currentWorkspace.defaultCurrency || 'USD',
+      total_amount: cleanNumber(payload.total_amount),
+      cleaning_fee: cleanNumber(payload.cleaning_fee),
+      taxes_fees: cleanNumber(payload.taxes_fees),
+      owner_payout: cleanNumber(payload.owner_payout),
+      notes: cleanText(payload.notes),
+      auto_create_cleaning: payload.auto_create_cleaning ?? true,
+      created_by: session.user.id,
+    };
+
+    const { data: row, error: insertError } = await client
       .from('bookings')
-      .insert({
-        ...payload,
-        workspace_id: currentWorkspace.id,
-        contact_id: contact?.id || null,
-        created_by: session.user.id,
-      })
+      .insert(bookingPayload)
       .select('*')
       .single();
 
-    if (bookingError) throw new Error(formatSupabaseError(bookingError, 'Booking creation failed.'));
+    if (insertError) throw new Error(formatSupabaseError(insertError, 'Booking could not be saved.'));
 
     await refreshWorkspaceData();
-    return booking;
+
+    return normalizeBooking(row, data.properties);
   };
 
-  const updateBooking = async (id, payload) => {
+  const updateBooking = async (bookingId, payload) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
-    if (!id) throw new Error('Select a booking before saving changes.');
+    const allowed = [
+      'property_id',
+      'contact_id',
+      'guest_name',
+      'guest_email',
+      'guest_phone',
+      'check_in',
+      'check_out',
+      'guest_count',
+      'source',
+      'status',
+      'payment_status',
+      'currency',
+      'total_amount',
+      'cleaning_fee',
+      'taxes_fees',
+      'owner_payout',
+      'notes',
+      'auto_create_cleaning',
+      'cancelled_at',
+    ];
 
-    const contact = await upsertContact({
-      full_name: payload.guest_name,
-      email: payload.guest_email,
-      phone: payload.guest_phone,
-      contact_type: 'guest',
+    const updatePayload = stripUnsupportedPayloadKeys(payload, allowed);
+
+    ['total_amount', 'cleaning_fee', 'taxes_fees', 'owner_payout'].forEach((key) => {
+      if (key in updatePayload) updatePayload[key] = cleanNumber(updatePayload[key]);
     });
 
-    const updatePayload = buildContactUpdatePayload(payload, contact);
+    if (updatePayload.status === 'cancelled' && !updatePayload.cancelled_at) {
+      updatePayload.cancelled_at = new Date().toISOString();
+    }
 
-    const { data: booking, error: bookingError } = await client
+    const { data: row, error: updateError } = await client
       .from('bookings')
       .update(updatePayload)
-      .eq('id', id)
+      .eq('id', bookingId)
       .eq('workspace_id', currentWorkspace.id)
       .select('*')
       .single();
 
-    if (bookingError) throw new Error(formatSupabaseError(bookingError, 'Booking update failed.'));
+    if (updateError) throw new Error(formatSupabaseError(updateError, 'Booking could not be updated.'));
 
     await refreshWorkspaceData();
-    return booking;
+
+    return normalizeBooking(row, data.properties);
   };
 
   const createLease = async (payload) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
-    const contact = await upsertContact({
-      full_name: payload.tenant_name,
-      email: payload.tenant_email,
-      phone: payload.tenant_phone,
-      contact_type: 'tenant',
-    });
+    let contact = null;
 
-    const { data: lease, error: leaseError } = await client
+    if (payload.tenant_name || payload.tenant_email || payload.tenant_phone) {
+      contact = await createOrUpdateContact({
+        full_name: payload.tenant_name,
+        email: payload.tenant_email,
+        phone: payload.tenant_phone,
+        contact_type: 'tenant',
+        notes: payload.notes,
+      });
+    }
+
+    const leasePayload = {
+      workspace_id: currentWorkspace.id,
+      property_id: payload.property_id,
+      contact_id: contact?.id || payload.contact_id || null,
+      tenant_name: cleanText(payload.tenant_name),
+      tenant_email: cleanEmail(payload.tenant_email),
+      tenant_phone: cleanText(payload.tenant_phone),
+      lease_start: payload.lease_start,
+      lease_end: payload.lease_end || null,
+      monthly_rent: cleanNumber(payload.monthly_rent),
+      security_deposit: cleanNumber(payload.security_deposit),
+      rent_payment_status: payload.rent_payment_status || 'unknown',
+      lease_status: payload.lease_status || 'active',
+      currency: payload.currency || currentWorkspace.defaultCurrency || 'USD',
+      lease_document_file_id: payload.lease_document_file_id || null,
+      notes: cleanText(payload.notes),
+      created_by: session.user.id,
+    };
+
+    const { data: row, error: insertError } = await client
       .from('leases')
-      .insert({
-        ...payload,
-        workspace_id: currentWorkspace.id,
-        contact_id: contact?.id || null,
-        created_by: session.user.id,
-      })
+      .insert(leasePayload)
       .select('*')
       .single();
 
-    if (leaseError) throw new Error(formatSupabaseError(leaseError, 'Lease creation failed.'));
+    if (insertError) throw new Error(formatSupabaseError(insertError, 'Lease could not be saved.'));
 
     await refreshWorkspaceData();
-    return lease;
+
+    return normalizeLease(row, data.properties);
   };
 
-  const updateLease = async (id, payload) => {
+  const updateLease = async (leaseId, payload) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
-    if (!id) throw new Error('Select a lease before saving changes.');
+    const allowed = [
+      'property_id',
+      'contact_id',
+      'tenant_name',
+      'tenant_email',
+      'tenant_phone',
+      'lease_start',
+      'lease_end',
+      'monthly_rent',
+      'security_deposit',
+      'rent_payment_status',
+      'lease_status',
+      'currency',
+      'lease_document_file_id',
+      'notes',
+      'terminated_at',
+    ];
 
-    const contact = await upsertContact({
-      full_name: payload.tenant_name,
-      email: payload.tenant_email,
-      phone: payload.tenant_phone,
-      contact_type: 'tenant',
+    const updatePayload = stripUnsupportedPayloadKeys(payload, allowed);
+
+    ['monthly_rent', 'security_deposit'].forEach((key) => {
+      if (key in updatePayload) updatePayload[key] = cleanNumber(updatePayload[key]);
     });
 
-    const updatePayload = buildContactUpdatePayload(payload, contact);
+    if (['terminated', 'cancelled'].includes(updatePayload.lease_status) && !updatePayload.terminated_at) {
+      updatePayload.terminated_at = new Date().toISOString();
+    }
 
-    const { data: lease, error: leaseError } = await client
+    const { data: row, error: updateError } = await client
       .from('leases')
       .update(updatePayload)
-      .eq('id', id)
+      .eq('id', leaseId)
       .eq('workspace_id', currentWorkspace.id)
       .select('*')
       .single();
 
-    if (leaseError) throw new Error(formatSupabaseError(leaseError, 'Lease update failed.'));
+    if (updateError) throw new Error(formatSupabaseError(updateError, 'Lease could not be updated.'));
 
     await refreshWorkspaceData();
-    return lease;
+
+    return normalizeLease(row, data.properties);
   };
 
   const createCleaningTask = async (payload) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
-    const { data: task, error: taskError } = await client
+    const cleaningPayload = {
+      workspace_id: currentWorkspace.id,
+      property_id: payload.property_id,
+      booking_id: payload.booking_id || null,
+      assigned_cleaner_id: payload.assigned_cleaner_id || null,
+      scheduled_for: makeDateTimeFromDate(payload.scheduled_for),
+      status: payload.status || 'scheduled',
+      checklist_items: payload.checklist_items || payload.checklist || [],
+      cleaner_notes: cleanText(payload.cleaner_notes),
+      supplies_used: cleanText(payload.supplies_used),
+      created_by: session.user.id,
+    };
+
+    const { data: row, error: insertError } = await client
       .from('cleaning_tasks')
-      .insert({ ...payload, workspace_id: currentWorkspace.id, created_by: session.user.id })
+      .insert(cleaningPayload)
       .select('*')
       .single();
 
-    if (taskError) throw new Error(formatSupabaseError(taskError, 'Cleaning task creation failed.'));
+    if (insertError) throw new Error(formatSupabaseError(insertError, 'Cleaning task could not be saved.'));
 
     await refreshWorkspaceData();
-    return task;
+
+    return normalizeCleaning(row, data.properties);
   };
 
-  const updateCleaningTask = async (id, payload) => {
+  const updateCleaningTask = async (taskId, payload) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
-    if (!id) throw new Error('Select a cleaning task before saving changes.');
+    const allowed = [
+      'property_id',
+      'booking_id',
+      'assigned_cleaner_id',
+      'scheduled_for',
+      'status',
+      'checklist_items',
+      'cleaner_notes',
+      'supplies_used',
+      'low_supplies_reported',
+      'issue_reported',
+      'started_at',
+      'completed_at',
+    ];
 
-    const { data: task, error: taskError } = await client
+    const updatePayload = stripUnsupportedPayloadKeys(payload, allowed);
+
+    if (updatePayload.scheduled_for) {
+      updatePayload.scheduled_for = makeDateTimeFromDate(updatePayload.scheduled_for);
+    }
+
+    if (updatePayload.status === 'completed' && !updatePayload.completed_at) {
+      updatePayload.completed_at = new Date().toISOString();
+    }
+
+    if (updatePayload.status === 'in_progress' && !updatePayload.started_at) {
+      updatePayload.started_at = new Date().toISOString();
+    }
+
+    const { data: row, error: updateError } = await client
       .from('cleaning_tasks')
-      .update(payload)
-      .eq('id', id)
+      .update(updatePayload)
+      .eq('id', taskId)
       .eq('workspace_id', currentWorkspace.id)
       .select('*')
       .single();
 
-    if (taskError) throw new Error(formatSupabaseError(taskError, 'Cleaning task update failed.'));
+    if (updateError) throw new Error(formatSupabaseError(updateError, 'Cleaning task could not be updated.'));
 
     await refreshWorkspaceData();
-    return task;
+
+    return normalizeCleaning(row, data.properties);
   };
 
   const createMaintenanceWorkOrder = async (payload) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
-    const { data: work, error: workError } = await client
+    const description = cleanText(payload.description || payload.issue_description) || 'No description provided.';
+
+    const workOrderPayload = {
+      workspace_id: currentWorkspace.id,
+      property_id: payload.property_id,
+      reported_by_user_id: session.user.id,
+      assigned_maintenance_id: payload.assigned_maintenance_id || null,
+      title: cleanText(payload.title),
+      description,
+      priority: payload.priority || 'medium',
+      status: payload.status === 'open' ? 'reported' : payload.status || 'reported',
+      estimated_cost: cleanNumber(payload.estimated_cost),
+      actual_cost: cleanNumber(payload.actual_cost),
+      parts_needed: cleanText(payload.parts_needed),
+      due_date: payload.due_date || null,
+      notes: cleanText(payload.notes),
+      created_by: session.user.id,
+    };
+
+    const { data: row, error: insertError } = await client
       .from('maintenance_work_orders')
-      .insert({
-        ...payload,
-        workspace_id: currentWorkspace.id,
-        created_by: session.user.id,
-      })
+      .insert(workOrderPayload)
       .select('*')
       .single();
 
-    if (workError) throw new Error(formatSupabaseError(workError, 'Maintenance work order creation failed.'));
+    if (insertError) {
+      throw new Error(formatSupabaseError(insertError, 'Maintenance work order could not be saved.'));
+    }
 
     await refreshWorkspaceData();
-    return work;
+
+    return normalizeMaintenance(row, data.properties);
   };
 
-  const updateMaintenanceWorkOrder = async (id, payload) => {
+  const updateMaintenanceWorkOrder = async (workOrderId, payload) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
-    if (!id) throw new Error('Select a maintenance work order before saving changes.');
+    const allowed = [
+      'property_id',
+      'reported_by_user_id',
+      'assigned_maintenance_id',
+      'title',
+      'description',
+      'issue_description',
+      'priority',
+      'status',
+      'estimated_cost',
+      'actual_cost',
+      'parts_needed',
+      'due_date',
+      'notes',
+      'completed_at',
+    ];
 
-    const { data: work, error: workError } = await client
+    const updatePayload = stripUnsupportedPayloadKeys(payload, allowed);
+
+    if ('issue_description' in updatePayload) {
+      updatePayload.description = updatePayload.issue_description;
+      delete updatePayload.issue_description;
+    }
+
+    if (updatePayload.status === 'open') updatePayload.status = 'reported';
+
+    ['estimated_cost', 'actual_cost'].forEach((key) => {
+      if (key in updatePayload) updatePayload[key] = cleanNumber(updatePayload[key]);
+    });
+
+    if (updatePayload.status === 'completed' && !updatePayload.completed_at) {
+      updatePayload.completed_at = new Date().toISOString();
+    }
+
+    const { data: row, error: updateError } = await client
       .from('maintenance_work_orders')
-      .update(payload)
-      .eq('id', id)
+      .update(updatePayload)
+      .eq('id', workOrderId)
       .eq('workspace_id', currentWorkspace.id)
       .select('*')
       .single();
 
-    if (workError) throw new Error(formatSupabaseError(workError, 'Maintenance work order update failed.'));
-
-    await refreshWorkspaceData();
-    return work;
-  };
-
-  const computeSupplyStatus = (payload) => {
-    if (payload.archived_at) return 'archived';
-
-    const quantity = Number(payload.current_quantity ?? 0);
-    const threshold = Number(payload.low_stock_threshold ?? 0);
-
-    if (quantity <= 0) return 'out_of_stock';
-    if (quantity <= threshold) return 'low_stock';
-    return 'in_stock';
-  };
-
-  const cleanSupplyPayload = (payload, archivedAt = payload.archived_at ?? null) => {
-    const quantity = cleanNumber(payload.current_quantity);
-    const threshold = cleanNumber(payload.low_stock_threshold);
-    const cost = cleanNumber(payload.estimated_unit_cost);
-
-    const nextPayload = {
-      property_id: payload.property_id || null,
-      item_name: payload.item_name?.trim() || '',
-      category: payload.category?.trim() || null,
-      current_quantity: quantity ?? 0,
-      low_stock_threshold: threshold ?? 0,
-      unit: payload.unit?.trim() || 'unit',
-      supplier_name: payload.supplier_name?.trim() || null,
-      supplier_contact: payload.supplier_contact?.trim() || null,
-      estimated_unit_cost: cost,
-      currency: payload.currency?.trim() || currentWorkspace?.defaultCurrency || currentWorkspace?.default_currency || 'USD',
-      notes: payload.notes?.trim() || null,
-      archived_at: archivedAt,
-    };
-
-    nextPayload.status = computeSupplyStatus(nextPayload);
-    return nextPayload;
-  };
-
-  const recordSupplyActivity = async (client, supply, action) => {
-    if (!currentWorkspace?.id || !session?.user?.id || !supply?.id) return;
-
-    const { error: activityError } = await client.from('activity_logs').insert({
-      workspace_id: currentWorkspace.id,
-      actor_user_id: session.user.id,
-      action,
-      metadata: {
-        supply_id: supply.id,
-        item_name: supply.item_name,
-        status: supply.status,
-      },
-    });
-
-    if (activityError) console.warn('[PropFlow] Could not record supply activity', activityError);
-  };
-
-  const maybeCreateSupplyNotification = async (client, supply) => {
-    if (
-      !currentWorkspace?.id ||
-      !session?.user?.id ||
-      !supply?.id ||
-      !['low_stock', 'out_of_stock'].includes(supply.status)
-    ) {
-      return;
+    if (updateError) {
+      throw new Error(formatSupabaseError(updateError, 'Maintenance work order could not be updated.'));
     }
 
-    const { error: notificationError } = await client.from('notifications').insert({
-      workspace_id: currentWorkspace.id,
-      recipient_user_id: session.user.id,
-      type: 'inventory_alert',
-      message: `${supply.item_name} is ${supply.status === 'out_of_stock' ? 'out of stock' : 'low on stock'}.`,
-      metadata: {
-        supply_id: supply.id,
-        item_name: supply.item_name,
-        status: supply.status,
-      },
-    });
+    await refreshWorkspaceData();
 
-    if (notificationError) console.warn('[PropFlow] Could not create supply notification', notificationError);
+    return normalizeMaintenance(row, data.properties);
   };
 
   const createSupply = async (payload) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
-    const supplyPayload = cleanSupplyPayload(payload, null);
+    const supplyPayload = {
+      workspace_id: currentWorkspace.id,
+      property_id: payload.property_id || null,
+      item_name: cleanText(payload.item_name),
+      category: cleanText(payload.category),
+      current_quantity: cleanNumber(payload.current_quantity) ?? 0,
+      low_stock_threshold: cleanNumber(payload.low_stock_threshold) ?? 0,
+      unit: cleanText(payload.unit) || 'unit',
+      supplier_name: cleanText(payload.supplier_name),
+      supplier_contact: cleanText(payload.supplier_contact),
+      estimated_unit_cost: cleanNumber(payload.estimated_unit_cost),
+      currency: payload.currency || currentWorkspace.defaultCurrency || 'USD',
+      notes: cleanText(payload.notes),
+      archived_at: payload.archived_at || null,
+      created_by: session.user.id,
+    };
 
-    const { data: supply, error: supplyError } = await client
+    const { data: row, error: insertError } = await client
       .from('supplies')
-      .insert({ ...supplyPayload, workspace_id: currentWorkspace.id, created_by: session.user.id })
+      .insert(supplyPayload)
       .select('*')
       .single();
 
-    if (supplyError) throw new Error(formatSupabaseError(supplyError, 'Supply creation failed.'));
+    if (insertError) throw new Error(formatSupabaseError(insertError, 'Supply could not be saved.'));
 
-    await recordSupplyActivity(client, supply, 'supply_created');
-    await maybeCreateSupplyNotification(client, supply);
     await refreshWorkspaceData();
 
-    return normalizeSupply(supply, data.properties || []);
+    return normalizeSupply(row, data.properties);
   };
 
-  const updateSupply = async (id, payload) => {
+  const updateSupply = async (supplyId, payload) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
-    const supplyPayload = cleanSupplyPayload(payload, payload.archived_at ?? null);
+    const allowed = [
+      'property_id',
+      'item_name',
+      'category',
+      'current_quantity',
+      'low_stock_threshold',
+      'unit',
+      'supplier_name',
+      'supplier_contact',
+      'estimated_unit_cost',
+      'currency',
+      'notes',
+      'archived_at',
+    ];
 
-    const { data: supply, error: supplyError } = await client
+    const updatePayload = stripUnsupportedPayloadKeys(payload, allowed);
+
+    ['current_quantity', 'low_stock_threshold', 'estimated_unit_cost'].forEach((key) => {
+      if (key in updatePayload) updatePayload[key] = cleanNumber(updatePayload[key]);
+    });
+
+    const { data: row, error: updateError } = await client
       .from('supplies')
-      .update(supplyPayload)
-      .eq('id', id)
+      .update(updatePayload)
+      .eq('id', supplyId)
       .eq('workspace_id', currentWorkspace.id)
       .select('*')
       .single();
 
-    if (supplyError) throw new Error(formatSupabaseError(supplyError, 'Supply update failed.'));
+    if (updateError) throw new Error(formatSupabaseError(updateError, 'Supply could not be updated.'));
 
-    await recordSupplyActivity(client, supply, 'supply_updated');
-    await maybeCreateSupplyNotification(client, supply);
     await refreshWorkspaceData();
 
-    return normalizeSupply(supply, data.properties || []);
+    return normalizeSupply(row, data.properties);
   };
 
-  const archiveSupply = async (id, archived = true) => {
+  const archiveSupply = async (supplyId, archived = true) =>
+    updateSupply(supplyId, {
+      archived_at: archived ? new Date().toISOString() : null,
+    });
+
+  const createInvite = async (payload) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
-    const archivedAt = archived ? new Date().toISOString() : null;
+    const token = inviteToken();
+    const roleList = payload.roles || [payload.role].filter(Boolean);
+    const assignedPropertyIds = [
+      payload.assigned_property_id,
+      payload.property_id,
+      ...(payload.assigned_property_ids || []),
+    ].filter(Boolean);
 
-    const { data: existing, error: existingError } = await client
-      .from('supplies')
-      .select('*')
-      .eq('id', id)
-      .eq('workspace_id', currentWorkspace.id)
-      .maybeSingle();
+    const invitePayload = {
+      workspace_id: currentWorkspace.id,
+      email: cleanEmail(payload.email),
+      roles: roleList,
+      assigned_property_ids: assignedPropertyIds,
+      token,
+      workspace_code: getWorkspaceCode(currentWorkspace),
+      message: cleanText(payload.message),
+      status: 'pending',
+      expires_at: payload.expires_at ? new Date(payload.expires_at).toISOString() : null,
+      invited_by: session.user.id,
+    };
 
-    if (existingError) throw new Error(formatSupabaseError(existingError, 'Supply lookup failed.'));
-    if (!existing) throw new Error('Supply item was not found in the current workspace.');
-
-    const nextStatus = archived ? 'archived' : computeSupplyStatus({ ...existing, archived_at: null });
-
-    const { data: supply, error: supplyError } = await client
-      .from('supplies')
-      .update({ archived_at: archivedAt, status: nextStatus })
-      .eq('id', id)
-      .eq('workspace_id', currentWorkspace.id)
+    const { data: row, error: insertError } = await client
+      .from('workspace_invites')
+      .insert(invitePayload)
       .select('*')
       .single();
 
-    if (supplyError) {
-      throw new Error(formatSupabaseError(supplyError, archived ? 'Supply archive failed.' : 'Supply restore failed.'));
+    if (insertError) throw new Error(formatSupabaseError(insertError, 'Invite could not be created.'));
+
+    await refreshWorkspaceData();
+
+    return row;
+  };
+
+  const createWorkspaceInvite = createInvite;
+  const inviteTeamMember = createInvite;
+
+  const createReport = async (payload) => {
+    const client = requireSupabase();
+    requireWorkspaceSession(currentWorkspace, session);
+
+    const reportPayload = {
+      workspace_id: currentWorkspace.id,
+      property_id: payload.property_id || null,
+      title: cleanText(payload.title) || 'Owner report',
+      report_type: payload.report_type || 'owner_report',
+      start_date: payload.start_date || null,
+      end_date: payload.end_date || null,
+      notes: cleanText(payload.notes),
+      status: payload.status || 'draft',
+      created_by: session.user.id,
+    };
+
+    const { data: row, error: insertError } = await client
+      .from('owner_reports')
+      .insert(reportPayload)
+      .select('*')
+      .single();
+
+    if (insertError) {
+      throw new Error(formatSupabaseError(insertError, 'Report could not be saved. Confirm the owner_reports columns exist.'));
     }
 
-    await recordSupplyActivity(client, supply, archived ? 'supply_archived' : 'supply_restored');
-    await maybeCreateSupplyNotification(client, supply);
     await refreshWorkspaceData();
 
-    return normalizeSupply(supply, data.properties || []);
+    return normalizeReport(row);
   };
 
-  const uploadWorkspaceFile = async ({ file, category, relatedTable, relatedId, propertyId }) => {
+  const createOwnerReport = createReport;
+
+  const createExpense = async () => {
+    throw new Error(
+      'Expense saving requires a dedicated expenses table. Create that table first, then connect this action.',
+    );
+  };
+
+  const createWorkspaceExpense = createExpense;
+
+  const uploadWorkspaceFile = async ({
+    file,
+    propertyId,
+    property_id,
+    cleaningTaskId,
+    cleaning_task_id,
+    maintenanceWorkOrderId,
+    maintenance_work_order_id,
+    category = 'property_document',
+  }) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
-    if (!file) throw new Error('Choose a file before uploading.');
+    if (!file) {
+      throw new Error('Choose a file before uploading.');
+    }
 
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '-');
-    const uploadId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const path = `${currentWorkspace.id}/${category}/${uploadId}-${safeName}`;
+    const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '-');
+    const storagePath = `${currentWorkspace.id}/${Date.now()}-${safeFileName}`;
+    const bucket = 'propflow-private';
 
-    const { error: uploadError } = await client.storage.from('propflow-private').upload(path, file, {
+    const uploadResponse = await client.storage.from(bucket).upload(storagePath, file, {
       upsert: false,
     });
 
-    if (uploadError) throw new Error(formatSupabaseError(uploadError, 'File upload failed.'));
+    if (uploadResponse.error) {
+      throw new Error(formatSupabaseError(uploadResponse.error, 'File upload failed.'));
+    }
 
-    const { data: upload, error: metadataError } = await client
+    const filePayload = {
+      workspace_id: currentWorkspace.id,
+      property_id: propertyId || property_id || null,
+      cleaning_task_id: cleaningTaskId || cleaning_task_id || null,
+      maintenance_work_order_id: maintenanceWorkOrderId || maintenance_work_order_id || null,
+      uploaded_by: session.user.id,
+      bucket,
+      path: storagePath,
+      file_name: file.name,
+      file_type: file.type || null,
+      file_size: file.size || null,
+      category,
+    };
+
+    const { data: row, error: insertError } = await client
       .from('file_uploads')
-      .insert({
-        workspace_id: currentWorkspace.id,
-        property_id: propertyId || null,
-        category,
-        related_table: relatedTable || null,
-        related_id: relatedId || null,
-        bucket: 'propflow-private',
-        path,
-        filename: file.name,
-        mime_type: file.type,
-        size_bytes: file.size,
-        uploaded_by: session.user.id,
-      })
+      .insert(filePayload)
       .select('*')
       .single();
 
-    if (metadataError) throw new Error(formatSupabaseError(metadataError, 'File metadata save failed.'));
+    if (insertError) throw new Error(formatSupabaseError(insertError, 'File record could not be saved.'));
 
     await refreshWorkspaceData();
-    return upload;
+
+    return normalizeFileUpload(row);
   };
 
-  const value = useMemo(
+  const markNotificationRead = async (notificationId) => {
+    const client = requireSupabase();
+    requireWorkspaceSession(currentWorkspace, session);
+
+    const { data: row, error: updateError } = await client
+      .from('notifications')
+      .update({ status: 'read' })
+      .eq('id', notificationId)
+      .eq('workspace_id', currentWorkspace.id)
+      .select('*')
+      .single();
+
+    if (updateError) {
+      throw new Error(formatSupabaseError(updateError, 'Notification could not be updated.'));
+    }
+
+    await refreshWorkspaceData();
+
+    return row;
+  };
+
+  const contextValue = useMemo(
     () => ({
       isSupabaseConfigured,
-      supabase,
       session,
       authLoading,
+      loading: authLoading,
       currentUser,
       memberships,
       workspaces,
       currentWorkspace,
       data,
       error,
+      loadAccount,
+      refreshWorkspaceData,
+      setCurrentWorkspace,
       signIn,
       signUp,
       signOut,
-      loadAccount,
-      setCurrentWorkspace,
       createWorkspace,
-      createInvite,
       joinWorkspace,
       createProperty,
       updateProperty,
@@ -1264,27 +1696,47 @@ export function AppProvider({ children }) {
       updateBooking,
       createLease,
       updateLease,
-      upsertContact,
-      createSupply,
-      updateSupply,
-      archiveSupply,
       createCleaningTask,
       updateCleaningTask,
       createMaintenanceWorkOrder,
       updateMaintenanceWorkOrder,
+      createContact,
+      createOwner,
+      createGuest,
+      createInvite,
+      createWorkspaceInvite,
+      inviteTeamMember,
+      createSupply,
+      updateSupply,
+      archiveSupply,
+      createReport,
+      createOwnerReport,
+      createExpense,
+      createWorkspaceExpense,
       uploadWorkspaceFile,
-      refreshWorkspaceData,
+      markNotificationRead,
     }),
-    [session, authLoading, currentUser, memberships, workspaces, currentWorkspace, data, error],
+    [
+      session,
+      authLoading,
+      currentUser,
+      memberships,
+      workspaces,
+      currentWorkspace,
+      data,
+      error,
+    ],
   );
 
-  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+  return <AppContext.Provider value={contextValue}>{children}</AppContext.Provider>;
 }
 
 export function useApp() {
   const context = useContext(AppContext);
 
-  if (!context) throw new Error('useApp must be used inside AppProvider');
+  if (!context) {
+    throw new Error('useApp must be used inside AppProvider.');
+  }
 
   return context;
 }
