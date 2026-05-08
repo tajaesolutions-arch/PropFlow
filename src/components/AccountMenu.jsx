@@ -23,11 +23,6 @@ function getInitials(value) {
     .join('');
 }
 
-function getAccountPath(currentUser) {
-  if (currentUser?.roles?.includes(roles.ADMIN)) return '/admin';
-  return '/account';
-}
-
 function shouldShowWorkspaceSettings(currentUser) {
   const primaryRole = resolvePrimaryRole(currentUser);
 
@@ -100,6 +95,7 @@ export function AccountMenu() {
         onClick={() => setOpen((value) => !value)}
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-label="Open account menu"
         data-skip-create-action="true"
       >
         <span className="account-avatar" aria-hidden="true">
@@ -142,7 +138,7 @@ export function AccountMenu() {
 
           <button
             type="button"
-            onClick={() => goTo(getAccountPath(currentUser))}
+            onClick={() => goTo('/account')}
             role="menuitem"
             data-skip-create-action="true"
           >
