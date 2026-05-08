@@ -1,0 +1,184 @@
+/* PropFlow topbar polish
+   Scope: layout-only overrides for the app header controls.
+   This keeps search, date range, workspace switcher, notifications, and account menu compact
+   without changing business logic or dashboard data flow.
+*/
+
+.topbar {
+  grid-template-columns: minmax(180px, 0.9fr) minmax(260px, 1.35fr) minmax(132px, auto) minmax(180px, auto) 40px minmax(168px, auto);
+  gap: 10px;
+  padding: 12px 22px;
+}
+
+.topbar-title {
+  min-width: 0;
+}
+
+.topbar-title h1,
+.topbar-title p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.global-search,
+.search-box,
+.topbar-filter,
+.workspace-switcher,
+.account-menu-wrap {
+  min-width: 0;
+}
+
+.global-search {
+  width: 100%;
+}
+
+.search-box,
+.topbar-filter,
+.workspace-switcher button,
+.account-menu,
+.topbar-notification-btn {
+  min-height: 40px;
+}
+
+.topbar-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  white-space: nowrap;
+}
+
+.topbar-filter select,
+.topbar-filter .date-filter {
+  width: auto;
+  min-width: 96px;
+  max-width: 136px;
+  height: 38px;
+  min-height: 38px;
+  border: 0;
+  background: transparent;
+  padding: 0 4px;
+  box-shadow: none;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.topbar-filter select:focus,
+.topbar-filter .date-filter:focus {
+  box-shadow: none;
+}
+
+.workspace-switcher button,
+.account-menu {
+  max-width: 220px;
+  overflow: hidden;
+}
+
+.workspace-switcher button span,
+.account-menu-copy,
+.account-menu-copy strong,
+.account-menu-copy small {
+  min-width: 0;
+}
+
+.account-menu-copy strong,
+.account-menu-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-notification-btn {
+  align-self: center;
+}
+
+@media (max-width: 1180px) {
+  .topbar {
+    grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.1fr) minmax(124px, auto) 40px minmax(148px, auto);
+  }
+
+  .topbar .workspace-switcher {
+    display: none;
+  }
+}
+
+@media (max-width: 960px) {
+  .topbar {
+    grid-template-columns: minmax(0, 1fr) 40px minmax(132px, auto);
+    gap: 8px;
+    padding: 10px 16px;
+  }
+
+  .topbar .global-search,
+  .topbar .topbar-filter,
+  .topbar .workspace-switcher {
+    grid-column: 1 / -1;
+  }
+
+  .topbar .global-search {
+    order: 2;
+  }
+
+  .topbar .topbar-filter {
+    order: 3;
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .topbar .workspace-switcher {
+    order: 4;
+    display: block;
+    width: 100%;
+  }
+
+  .workspace-switcher button {
+    max-width: none;
+    width: 100%;
+  }
+
+  .topbar-notification-btn,
+  .account-menu-wrap {
+    align-self: center;
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    grid-template-columns: minmax(0, 1fr) 40px 40px;
+    align-items: center;
+  }
+
+  .topbar-title p,
+  .account-menu-copy {
+    display: none;
+  }
+
+  .topbar h1 {
+    font-size: 18px;
+  }
+
+  .account-menu {
+    width: 40px;
+    min-width: 40px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .account-chevron {
+    display: none;
+  }
+
+  .topbar-filter select,
+  .topbar-filter .date-filter {
+    max-width: none;
+    width: 100%;
+  }
+}
