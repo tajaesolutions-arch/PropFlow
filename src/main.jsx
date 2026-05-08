@@ -6,6 +6,7 @@ import { SmartNumberFormatting } from './components/SmartNumberFormatting.jsx';
 import { AppProvider } from './lib/AppContext.jsx';
 import { AppRouter } from './routes/AppRouter.jsx';
 import './styles/global.css';
+import './styles/topbar-polish.css';
 
 const routeAliases = {
   '/accounting-dashboard': '/accountant-dashboard',
