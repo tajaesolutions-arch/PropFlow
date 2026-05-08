@@ -6680,3 +6680,120 @@ label {
     padding: 18px 12px;
   }
 }
+/* Signup page polish */
+
+.signup-page {
+  padding: 28px 16px;
+  background:
+    radial-gradient(circle at top left, rgba(27, 153, 139, 0.14), transparent 34%),
+    radial-gradient(circle at top right, rgba(37, 99, 235, 0.08), transparent 28%),
+    linear-gradient(180deg, #f7f8fa 0%, #ffffff 100%);
+}
+
+.signup-card {
+  width: min(560px, 100%);
+  display: grid;
+  gap: 18px;
+}
+
+.signup-card-header {
+  display: grid;
+  gap: 14px;
+}
+
+.signup-logo {
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.signup-card h1 {
+  margin-bottom: 8px;
+}
+
+.signup-card p {
+  margin-bottom: 0;
+}
+
+.signup-form {
+  display: grid;
+  gap: 14px;
+}
+
+.signup-submit {
+  width: 100%;
+}
+
+.signup-links {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.signup-flow-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.signup-flow-grid span {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 4px 8px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+
+.signup-flow-grid svg {
+  color: var(--accent);
+}
+
+.signup-flow-grid strong {
+  color: var(--text);
+}
+
+.signup-flow-grid small {
+  grid-column: 2;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.signup-guardrail {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 8px;
+  align-items: flex-start;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.signup-guardrail svg {
+  color: var(--accent);
+  margin-top: 2px;
+}
+
+@media (max-width: 760px) {
+  .signup-page {
+    padding: 18px 12px;
+  }
+
+  .signup-flow-grid {
+    grid-template-columns: 1fr;
+  }
+}
