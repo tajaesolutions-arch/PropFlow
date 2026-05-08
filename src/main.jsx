@@ -8,6 +8,7 @@ import { AppRouter } from './routes/AppRouter.jsx';
 import './styles/global.css';
 import './styles/topbar-polish.css';
 import './styles/mobile-responsiveness.css';
+import './styles/form-validation-polish.css';
 
 const routeAliases = {
   '/accounting-dashboard': '/accountant-dashboard',
