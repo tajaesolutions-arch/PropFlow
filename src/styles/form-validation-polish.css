@@ -1,0 +1,196 @@
+/* PropFlow form validation and submit-state polish
+   Scope: CSS-only UX improvements for existing create-action modal forms.
+   No modal rebuild, data flow, Supabase schema, RLS, or fake data changes.
+*/
+
+.modal-panel form,
+.modal-form,
+.form-grid {
+  min-width: 0;
+}
+
+.modal-panel label,
+.modal-form label,
+.form-grid label {
+  position: relative;
+  gap: 6px;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.modal-panel label > small,
+.modal-form label > small,
+.form-grid label > small,
+.field-helper {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.modal-panel input[required],
+.modal-panel select[required],
+.modal-panel textarea[required],
+.modal-form input[required],
+.modal-form select[required],
+.modal-form textarea[required] {
+  border-left-width: 3px;
+  border-left-color: var(--accent);
+}
+
+.modal-panel input[required]:placeholder-shown,
+.modal-panel textarea[required]:placeholder-shown,
+.modal-form input[required]:placeholder-shown,
+.modal-form textarea[required]:placeholder-shown {
+  border-left-color: var(--warning);
+}
+
+.modal-panel input:invalid:not(:placeholder-shown),
+.modal-panel textarea:invalid:not(:placeholder-shown),
+.modal-form input:invalid:not(:placeholder-shown),
+.modal-form textarea:invalid:not(:placeholder-shown) {
+  border-color: var(--error);
+  box-shadow: 0 0 0 3px var(--error-soft);
+}
+
+.modal-panel select:invalid,
+.modal-form select:invalid {
+  border-color: var(--warning);
+}
+
+.modal-error,
+.modal-warning,
+.modal-success,
+.form-error,
+.form-success {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.modal-error,
+.form-error {
+  border: 1px solid rgba(220, 38, 38, 0.28);
+  background: var(--error-soft);
+  color: #991B1B;
+}
+
+.modal-warning {
+  border: 1px solid rgba(217, 119, 6, 0.3);
+  background: var(--warning-soft);
+  color: #92400E;
+}
+
+.modal-success,
+.form-success {
+  border: 1px solid rgba(22, 163, 74, 0.28);
+  background: var(--success-soft);
+  color: #166534;
+}
+
+.modal-actions,
+.form-actions {
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.modal-actions button,
+.form-actions button {
+  white-space: nowrap;
+}
+
+.modal-actions button:disabled,
+.form-actions button:disabled,
+.modal-panel button[disabled],
+.modal-form button[disabled] {
+  cursor: not-allowed;
+  opacity: 0.68;
+  box-shadow: none;
+  transform: none;
+}
+
+.modal-actions .primary:disabled,
+.form-actions .primary:disabled,
+.modal-panel .primary:disabled,
+.modal-form .primary:disabled {
+  background: var(--accent-dark);
+  border-color: var(--accent-dark);
+  color: #FFFFFF;
+}
+
+.modal-actions .primary:disabled::after,
+.form-actions .primary:disabled::after,
+.modal-panel .primary:disabled::after,
+.modal-form .primary:disabled::after {
+  content: '';
+  width: 13px;
+  height: 13px;
+  margin-left: 2px;
+  border: 2px solid rgba(255, 255, 255, 0.52);
+  border-top-color: #FFFFFF;
+  border-radius: 999px;
+  animation: propflow-submit-spin 0.75s linear infinite;
+}
+
+@keyframes propflow-submit-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.modal-panel input::placeholder,
+.modal-panel textarea::placeholder,
+.modal-form input::placeholder,
+.modal-form textarea::placeholder {
+  color: var(--subtle);
+}
+
+.modal-panel input:disabled,
+.modal-panel select:disabled,
+.modal-panel textarea:disabled,
+.modal-form input:disabled,
+.modal-form select:disabled,
+.modal-form textarea:disabled {
+  background: var(--surface-3);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+@media (max-width: 720px) {
+  .modal-panel label,
+  .modal-form label,
+  .form-grid label {
+    font-size: 13px;
+  }
+
+  .modal-panel input,
+  .modal-panel select,
+  .modal-panel textarea,
+  .modal-form input,
+  .modal-form select,
+  .modal-form textarea {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .modal-panel textarea,
+  .modal-form textarea {
+    min-height: 112px;
+  }
+
+  .modal-error,
+  .modal-warning,
+  .modal-success,
+  .form-error,
+  .form-success {
+    font-size: 12.5px;
+  }
+}
