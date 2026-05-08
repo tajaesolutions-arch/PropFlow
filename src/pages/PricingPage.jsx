@@ -1,326 +1,374 @@
-/* Landing page polish */
+import React from 'react';
+import {
+  ArrowRight,
+  Building2,
+  Check,
+  CreditCard,
+  HelpCircle,
+  ShieldCheck,
+  Sparkles,
+  Users,
+} from 'lucide-react';
 
-.landing-page {
-  min-height: 100vh;
-  background:
-    radial-gradient(circle at top left, rgba(27, 153, 139, 0.14), transparent 34%),
-    radial-gradient(circle at top right, rgba(37, 99, 235, 0.08), transparent 28%),
-    linear-gradient(180deg, #f7f8fa 0%, #ffffff 100%);
+import { navigate } from '../routes/AppRouter.jsx';
+
+const plans = [
+  {
+    name: 'Starter',
+    key: 'starter',
+    price: '$29/mo',
+    description: 'For individual hosts, homeowners, and small landlords getting organized.',
+    featured: false,
+    audience: 'Small operators',
+    features: [
+      '14-day free trial',
+      '1 workspace',
+      'Core dashboard',
+      'Properties',
+      'Bookings and leases',
+      'Cleaning tasks',
+      'Maintenance work orders',
+      'Calendar view',
+    ],
+  },
+  {
+    name: 'Pro',
+    key: 'pro',
+    price: '$79/mo',
+    description: 'For growing Airbnb hosts, property managers, and rental operators.',
+    featured: true,
+    audience: 'Growing teams',
+    features: [
+      'Everything in Starter',
+      'Owner dashboard',
+      'Cleaner dashboard',
+      'Maintenance crew dashboard',
+      'Reports foundation',
+      'Supplies / inventory',
+      'Team roles and invites',
+      'Private file uploads',
+    ],
+  },
+  {
+    name: 'Business',
+    key: 'business',
+    price: '$199/mo',
+    description: 'For professional property management companies and larger teams.',
+    featured: false,
+    audience: 'Property companies',
+    features: [
+      'Everything in Pro',
+      'Multiple workspaces prepared',
+      'Accountant dashboard',
+      'Advanced reports foundation',
+      'Direct booking page foundation',
+      'Notification center',
+      'Billing recovery workflow prepared',
+      'Priority setup support',
+    ],
+  },
+  {
+    name: 'Enterprise',
+    key: 'enterprise',
+    price: 'Custom',
+    description: 'For agencies, real estate companies, villas, resorts, and large operators.',
+    featured: false,
+    audience: 'Large operators',
+    features: [
+      'Custom onboarding',
+      'Custom workspace limits',
+      'Advanced permission planning',
+      'Team training',
+      'Custom reporting support',
+      'Future integrations support',
+      'Dedicated support path',
+      'Founder review required',
+    ],
+  },
+];
+
+const faqs = [
+  {
+    question: 'Is Stripe billing live?',
+    answer:
+      'Not yet. Pricing is public, but live checkout should stay disabled until secure backend checkout sessions, billing portal sessions, webhooks, and subscription enforcement are connected.',
+  },
+  {
+    question: 'Is there a permanent free plan?',
+    answer:
+      'The recommended launch model is a 14-day trial instead of a permanent free plan. This keeps support load controlled while the product becomes stable.',
+  },
+  {
+    question: 'Can PropFlow support Jamaica and other currencies?',
+    answer:
+      'Yes. Workspace setup already collects default currency. Real-time currency conversion should be handled through a secure backend exchange-rate provider later.',
+  },
+  {
+    question: 'Can one account manage multiple businesses?',
+    answer:
+      'Yes. PropFlow is structured around workspaces, so one user can belong to multiple businesses or rental operations.',
+  },
+];
+
+function PricingCard({ plan }) {
+  return (
+    <article className={`pricing-card ${plan.featured ? 'featured' : ''}`}>
+      {plan.featured && <span className="pricing-popular-badge">Recommended</span>}
+
+      <div className="pricing-card-head">
+        <span>{plan.audience}</span>
+        <h3>{plan.name}</h3>
+        <p>{plan.description}</p>
+      </div>
+
+      <strong className="pricing-price">{plan.price}</strong>
+
+      <ul>
+        {plan.features.map((feature) => (
+          <li key={feature}>
+            <Check size={16} />
+            {feature}
+          </li>
+        ))}
+      </ul>
+
+      <button className="primary" type="button" onClick={() => navigate('/signup')}>
+        Start {plan.name}
+        <ArrowRight size={16} />
+      </button>
+
+      <small className="todo">
+        Stripe checkout should be connected through secure backend endpoints before live billing.
+      </small>
+    </article>
+  );
 }
 
-.landing-nav {
-  width: min(1180px, calc(100% - 36px));
-  margin: 0 auto;
-  padding: 18px 0;
-}
+export function PricingPage() {
+  return (
+    <div className="public-page pricing-page">
+      <nav className="public-nav pricing-nav">
+        <strong onClick={() => navigate('/')}>PropFlow</strong>
 
-.landing-hero {
-  width: min(1180px, calc(100% - 36px));
-  margin: 0 auto;
-  display: grid;
-  grid-template-columns: minmax(0, 1.08fr) minmax(360px, 0.62fr);
-  gap: 34px;
-  align-items: center;
-  padding: 64px 0 42px;
-}
+        <div>
+          <button type="button" onClick={() => navigate('/')}>
+            Home
+          </button>
 
-.landing-hero h1 {
-  margin-bottom: 16px;
-  color: var(--text);
-  font-size: clamp(44px, 6.5vw, 78px);
-  line-height: 0.95;
-  letter-spacing: -0.075em;
-}
+          <button type="button" onClick={() => navigate('/login')}>
+            Login
+          </button>
 
-.landing-hero p {
-  max-width: 720px;
-  font-size: 17px;
-}
+          <button className="primary" type="button" onClick={() => navigate('/signup')}>
+            Start free
+          </button>
+        </div>
+      </nav>
 
-.landing-trust-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 22px;
-}
+      <section className="pricing-hero">
+        <div>
+          <p className="eyebrow">Simple launch pricing</p>
+          <h1>Plans for serious property operations.</h1>
+          <p>
+            Start with a 14-day free trial, then choose the plan that matches your rental operation.
+            Stripe checkout is prepared as a backend phase and is not live yet.
+          </p>
 
-.landing-trust-row span {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 36px;
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.76);
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 800;
-  box-shadow: var(--shadow-sm);
-}
+          <div className="hero-actions">
+            <button className="primary large" type="button" onClick={() => navigate('/signup')}>
+              Start 14-day trial
+              <ArrowRight size={18} />
+            </button>
 
-.landing-trust-row svg {
-  color: var(--accent);
-}
+            <button className="secondary large" type="button" onClick={() => navigate('/login')}>
+              Login
+            </button>
+          </div>
+        </div>
 
-.landing-dashboard-preview {
-  display: grid;
-  gap: 16px;
-  padding: 18px;
-  border: 1px solid var(--border);
-  border-radius: 28px;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: var(--shadow-lg);
-}
+        <aside className="pricing-hero-panel">
+          <div>
+            <Sparkles size={20} />
+            <span>
+              <strong>No permanent free plan recommended</strong>
+              <small>Use a trial to attract serious users and reduce launch support load.</small>
+            </span>
+          </div>
 
-.landing-preview-header,
-.landing-preview-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-}
+          <div>
+            <ShieldCheck size={20} />
+            <span>
+              <strong>Workspace billing model</strong>
+              <small>Subscriptions should attach to workspaces, not random frontend state.</small>
+            </span>
+          </div>
 
-.landing-preview-header span:first-child {
-  display: grid;
-  gap: 3px;
-}
+          <div>
+            <CreditCard size={20} />
+            <span>
+              <strong>Stripe-ready structure</strong>
+              <small>Checkout, portal, webhooks, and grace period still need backend wiring.</small>
+            </span>
+          </div>
+        </aside>
+      </section>
 
-.landing-preview-header strong,
-.landing-preview-footer span {
-  color: var(--text);
-}
+      <section className="pricing-grid">
+        {plans.map((plan) => (
+          <PricingCard key={plan.key} plan={plan} />
+        ))}
+      </section>
 
-.landing-preview-header small {
-  color: var(--muted);
-  font-weight: 700;
-}
+      <section className="pricing-content">
+        <div className="panel-grid two">
+          <section className="card">
+            <div className="card-header">
+              <div>
+                <h3>What is included in the trial?</h3>
+                <p>
+                  The trial should let new workspaces create properties, invite team members, test
+                  dashboards, add bookings, create cleaning tasks, create maintenance work orders,
+                  and review reports before paying.
+                </p>
+              </div>
 
-.landing-live-pill {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  padding: 5px 10px;
-  border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 900;
-}
+              <Sparkles size={20} className="muted" />
+            </div>
 
-.landing-preview-kpis {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
+            <ul className="checklist">
+              <li>
+                <Check size={16} />
+                Create or join a workspace.
+              </li>
+              <li>
+                <Check size={16} />
+                Add real properties.
+              </li>
+              <li>
+                <Check size={16} />
+                Invite team members by role.
+              </li>
+              <li>
+                <Check size={16} />
+                Test role-based dashboards.
+              </li>
+              <li>
+                <Check size={16} />
+                Track bookings, cleaning, maintenance, calendar, owners, and reports.
+              </li>
+            </ul>
+          </section>
 
-.landing-preview-kpis span {
-  display: grid;
-  gap: 4px;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--surface-2);
-}
+          <section className="card">
+            <div className="card-header">
+              <div>
+                <h3>Billing setup status</h3>
+                <p>
+                  Pricing is shown publicly, but live billing should stay disabled until Stripe
+                  checkout, billing portal, webhooks, subscription tables, and access restrictions
+                  are connected securely.
+                </p>
+              </div>
 
-.landing-preview-kpis small {
-  color: var(--muted);
-  font-weight: 800;
-}
+              <CreditCard size={20} className="muted" />
+            </div>
 
-.landing-preview-kpis strong {
-  color: var(--text);
-  font-size: 24px;
-  letter-spacing: -0.06em;
-}
+            <div className="pricing-status-grid">
+              <span>
+                <CreditCard size={16} />
+                <strong>Stripe checkout</strong>
+                <small>Pending backend endpoint</small>
+              </span>
 
-.landing-preview-list {
-  display: grid;
-  gap: 10px;
-}
+              <span>
+                <ShieldCheck size={16} />
+                <strong>Webhooks</strong>
+                <small>Pending signature validation</small>
+              </span>
 
-.landing-preview-list div {
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  gap: 10px;
-  align-items: flex-start;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--surface);
-}
+              <span>
+                <Building2 size={16} />
+                <strong>Workspace billing</strong>
+                <small>Pending subscription enforcement</small>
+              </span>
 
-.landing-preview-list svg {
-  color: var(--accent);
-}
+              <span>
+                <Check size={16} />
+                <strong>Pricing page</strong>
+                <small>Public frontend ready</small>
+              </span>
+            </div>
 
-.landing-preview-list span {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
+            <div className="helper">
+              Do not add Stripe secret keys to frontend code. Billing must be handled through secure
+              backend endpoints or Supabase Edge Functions.
+            </div>
+          </section>
+        </div>
 
-.landing-preview-list strong {
-  color: var(--text);
-}
+        <section className="card pricing-model-card">
+          <div className="card-header">
+            <div>
+              <h3>Recommended launch model</h3>
+              <p>
+                Avoid a permanent free plan at launch. Free users can create support load before the
+                product is stable. Use a trial instead, then convert serious users into paid
+                workspaces.
+              </p>
+            </div>
 
-.landing-preview-list small {
-  color: var(--muted);
-  font-weight: 700;
-}
+            <Users size={20} className="muted" />
+          </div>
 
-.landing-preview-footer {
-  padding-top: 2px;
-}
+          <div className="pricing-model-grid">
+            <span>
+              <strong>14-day trial</strong>
+              <small>Let users test the actual workspace flow.</small>
+            </span>
 
-.landing-content {
-  width: min(1180px, calc(100% - 36px));
-  margin: 0 auto;
-  display: grid;
-  gap: 18px;
-  padding: 24px 0 72px;
-}
+            <span>
+              <strong>Starter / Pro / Business</strong>
+              <small>Simple upgrade path for normal customers.</small>
+            </span>
 
-.landing-section-card {
-  display: grid;
-  gap: 18px;
-}
+            <span>
+              <strong>Enterprise</strong>
+              <small>Manual review for larger accounts and special cases.</small>
+            </span>
+          </div>
 
-.landing-feature-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-}
+          <div className="action-row">
+            <button className="primary large" type="button" onClick={() => navigate('/signup')}>
+              Start 14-day trial
+              <ArrowRight size={18} />
+            </button>
 
-.landing-feature-card {
-  display: grid;
-  grid-template-columns: 46px minmax(0, 1fr);
-  gap: 14px;
-  align-items: flex-start;
-}
+            <button className="secondary large" type="button" onClick={() => navigate('/login')}>
+              Login
+            </button>
+          </div>
+        </section>
 
-.landing-feature-icon {
-  width: 46px;
-  height: 46px;
-  display: grid;
-  place-items: center;
-  border-radius: 16px;
-  background: var(--accent-soft);
-  color: var(--accent);
-}
+        <section className="card">
+          <div className="card-header">
+            <div>
+              <h3>Pricing questions</h3>
+              <p>Clear expectations before the billing backend is connected.</p>
+            </div>
 
-.landing-feature-card h3 {
-  margin-bottom: 5px;
-}
+            <HelpCircle size={20} className="muted" />
+          </div>
 
-.landing-feature-card p {
-  margin-bottom: 0;
-}
-
-.landing-split-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
-  align-items: stretch;
-}
-
-.landing-checklist-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.landing-mini-metrics {
-  display: grid;
-  gap: 10px;
-}
-
-.landing-mini-metrics span {
-  display: grid;
-  gap: 3px;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--surface-2);
-}
-
-.landing-mini-metrics strong {
-  color: var(--text);
-}
-
-.landing-mini-metrics small {
-  color: var(--muted);
-  font-weight: 700;
-}
-
-.landing-final-cta {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 18px;
-  align-items: center;
-}
-
-.landing-final-cta h3 {
-  margin-bottom: 6px;
-  color: var(--text);
-  font-size: clamp(28px, 4vw, 44px);
-  letter-spacing: -0.06em;
-}
-
-.landing-final-cta p:last-child {
-  margin-bottom: 0;
-}
-
-.landing-final-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-@media (max-width: 1100px) {
-  .landing-hero,
-  .landing-feature-grid,
-  .landing-split-grid,
-  .landing-final-cta {
-    grid-template-columns: 1fr;
-  }
-
-  .landing-dashboard-preview {
-    max-width: 720px;
-  }
-
-  .landing-final-actions {
-    justify-content: flex-start;
-  }
-}
-
-@media (max-width: 760px) {
-  .landing-nav,
-  .landing-hero,
-  .landing-content {
-    width: min(100% - 24px, 1180px);
-  }
-
-  .landing-hero {
-    padding-top: 38px;
-  }
-
-  .landing-preview-kpis,
-  .landing-checklist-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .landing-feature-card {
-    grid-template-columns: 1fr;
-  }
-
-  .landing-preview-header,
-  .landing-preview-footer {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .landing-final-actions,
-  .landing-final-actions button {
-    width: 100%;
-  }
+          <div className="pricing-faq-grid">
+            {faqs.map((faq) => (
+              <article key={faq.question}>
+                <strong>{faq.question}</strong>
+                <p>{faq.answer}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+      </section>
+    </div>
+  );
 }
