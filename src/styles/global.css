@@ -5237,3 +5237,227 @@ label {
     align-items: flex-start;
   }
 }
+/* Notifications page polish */
+
+.notifications-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.notifications-toolbar h3 {
+  margin-bottom: 4px;
+}
+
+.notifications-toolbar p {
+  margin-bottom: 0;
+}
+
+.notifications-toolbar-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.notifications-filters {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.5fr) repeat(2, minmax(145px, 0.7fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.notifications-filters label {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.notifications-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 0 12px;
+  box-shadow: var(--shadow-sm);
+  color: var(--muted);
+}
+
+.notifications-search input {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.notifications-search input:focus {
+  box-shadow: none;
+}
+
+.notifications-list {
+  display: grid;
+  gap: 12px;
+}
+
+.notification-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.notification-row.unread {
+  border-color: rgba(27, 153, 139, 0.32);
+  background: var(--accent-soft);
+}
+
+.notification-row-icon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: var(--surface-2);
+  color: var(--info);
+}
+
+.notification-row-icon.tone-error {
+  color: var(--danger);
+  background: rgba(220, 38, 38, 0.08);
+}
+
+.notification-row-icon.tone-warning {
+  color: var(--warning);
+  background: rgba(217, 119, 6, 0.08);
+}
+
+.notification-row-icon.tone-success {
+  color: var(--success);
+  background: rgba(22, 163, 74, 0.08);
+}
+
+.notification-row-copy {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.notification-row-copy h3 {
+  margin-bottom: 3px;
+}
+
+.notification-row-copy p {
+  margin-bottom: 0;
+}
+
+.notification-row-copy h3,
+.notification-row-copy p,
+.notification-row-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.notification-row-copy small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.notification-row-status {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+}
+
+.notification-provider-summary {
+  display: grid;
+  gap: 10px;
+}
+
+.notification-provider-summary span {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.notification-provider-summary span:last-child {
+  border-bottom: 0;
+}
+
+.notification-provider-summary strong {
+  color: var(--text);
+}
+
+.notification-provider-summary small {
+  grid-column: 2;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.notification-category-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.notification-category-grid span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 800;
+}
+
+.notification-category-grid svg {
+  color: var(--accent);
+}
+
+@media (max-width: 1200px) {
+  .notifications-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .notifications-search {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .notifications-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .notifications-toolbar-actions,
+  .notifications-filters,
+  .notification-row,
+  .notification-provider-summary span,
+  .notification-category-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .notifications-search {
+    grid-column: auto;
+  }
+
+  .notification-row-status {
+    justify-items: start;
+  }
+}
