@@ -18,6 +18,7 @@ import { EmptyState } from '../components/EmptyState.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
 import { useApp } from '../lib/AppContext.jsx';
 import { roles } from '../data/constants.js';
+import '../styles/expense-finance-safety.css';
 
 const expenseCategories = [
   'Cleaning',
