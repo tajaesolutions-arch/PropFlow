@@ -86,26 +86,57 @@ function prepareInput(input) {
   input.dataset.commaFormat = 'true';
 }
 
-function formatInputDisplay(input) {
+function moveCaretToEnd(input) {
+  if (document.activeElement !== input) return;
+
+  try {
+    const end = input.value.length;
+    input.setSelectionRange(end, end);
+  } catch {
+    // Some browser/input combinations do not allow selection updates.
+  }
+}
+
+function setNativeValue(input, value) {
+  const valueSetter = Object.getOwnPropertyDescriptor(input, 'value')?.set;
+  const prototype = Object.getPrototypeOf(input);
+  const prototypeValueSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+
+  if (prototypeValueSetter && valueSetter !== prototypeValueSetter) {
+    prototypeValueSetter.call(input, value);
+    return;
+  }
+
+  if (valueSetter) {
+    valueSetter.call(input, value);
+    return;
+  }
+
+  input.value = value;
+}
+
+function showFormattedValue(input) {
   if (!shouldFormatInput(input)) return;
 
   prepareInput(input);
 
-  const nextValue = formatNumberText(input.value);
+  const formattedValue = formatNumberText(input.value);
 
-  if (input.value !== nextValue) {
-    const focused = document.activeElement === input;
-    input.value = nextValue;
+  if (input.value !== formattedValue) {
+    input.value = formattedValue;
+    moveCaretToEnd(input);
+  }
+}
 
-    if (focused) {
-      const end = input.value.length;
+function normalizeBeforeReactReadsValue(input) {
+  if (!shouldFormatInput(input)) return;
 
-      try {
-        input.setSelectionRange(end, end);
-      } catch {
-        // Some browser/input combinations do not allow selection updates.
-      }
-    }
+  prepareInput(input);
+
+  const normalizedValue = normalizeNumberText(input.value);
+
+  if (input.value !== normalizedValue) {
+    setNativeValue(input, normalizedValue);
   }
 }
 
@@ -115,30 +146,37 @@ export function SmartNumberFormatting() {
       document.querySelectorAll('input').forEach((input) => {
         if (shouldFormatInput(input)) {
           prepareInput(input);
-          formatInputDisplay(input);
+          showFormattedValue(input);
         }
       });
     };
 
     const onFocusIn = (event) => {
-      if (event.target instanceof HTMLInputElement) {
-        prepareInput(event.target);
-        formatInputDisplay(event.target);
-      }
+      if (!(event.target instanceof HTMLInputElement)) return;
+
+      prepareInput(event.target);
+      window.requestAnimationFrame(() => showFormattedValue(event.target));
     };
 
-    const onInput = (event) => {
-      if (event.target instanceof HTMLInputElement && shouldFormatInput(event.target)) {
-        window.requestAnimationFrame(() => formatInputDisplay(event.target));
-      }
+    const onInputCapture = (event) => {
+      if (!(event.target instanceof HTMLInputElement)) return;
+      if (!shouldFormatInput(event.target)) return;
+
+      normalizeBeforeReactReadsValue(event.target);
+
+      window.requestAnimationFrame(() => {
+        showFormattedValue(event.target);
+      });
     };
 
-    const observer = new MutationObserver(() => prepareAll());
+    const observer = new MutationObserver(() => {
+      prepareAll();
+    });
 
     prepareAll();
 
     document.addEventListener('focusin', onFocusIn, true);
-    document.addEventListener('input', onInput, true);
+    document.addEventListener('input', onInputCapture, true);
 
     observer.observe(document.body, {
       childList: true,
@@ -147,7 +185,7 @@ export function SmartNumberFormatting() {
 
     return () => {
       document.removeEventListener('focusin', onFocusIn, true);
-      document.removeEventListener('input', onInput, true);
+      document.removeEventListener('input', onInputCapture, true);
       observer.disconnect();
     };
   }, []);
