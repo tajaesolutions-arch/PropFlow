@@ -1,4 +1,15 @@
 import React from 'react';
+import {
+  AlertTriangle,
+  ArrowRight,
+  Building2,
+  Home,
+  Loader2,
+  Lock,
+  RefreshCw,
+  ShieldAlert,
+  ShieldCheck,
+} from 'lucide-react';
 
 import { getPostLoginPath, hasAnyRole } from '../lib/auth.js';
 import { useApp } from '../lib/AppContext.jsx';
@@ -190,25 +201,55 @@ function RedirectTo({ to }) {
     navigate(to);
   }, [to]);
 
-  return <LoadingScreen />;
+  return <LoadingScreen title="Redirecting PropFlow..." subtitle="Sending you to the correct workspace screen." />;
 }
 
-function LoadingScreen() {
+function LoadingScreen({
+  title = 'Loading PropFlow...',
+  subtitle = 'Checking your secure session and workspace access.',
+}) {
   return (
-    <div className="auth-page">
-      <div className="auth-card">
+    <div className="auth-page router-state-page">
+      <div className="auth-card router-state-card">
+        <div className="router-state-icon">
+          <Loader2 size={30} className="router-spinner" />
+        </div>
+
         <p className="eyebrow">PropFlow</p>
-        <h1>Loading PropFlow...</h1>
-        <p>Checking your secure session and workspace access.</p>
+        <h1>{title}</h1>
+        <p>{subtitle}</p>
+
+        <div className="router-state-grid">
+          <span>
+            <ShieldCheck size={16} />
+            Secure session
+          </span>
+
+          <span>
+            <Building2 size={16} />
+            Workspace access
+          </span>
+
+          <span>
+            <Lock size={16} />
+            Role permissions
+          </span>
+        </div>
       </div>
     </div>
   );
 }
 
 function RuntimeErrorScreen({ error }) {
+  const errorMessage = error?.message || String(error || 'Unknown runtime error');
+
   return (
-    <div className="auth-page">
-      <div className="auth-card wide">
+    <div className="auth-page router-state-page router-error-page">
+      <div className="auth-card wide router-state-card">
+        <div className="router-state-icon error">
+          <AlertTriangle size={30} />
+        </div>
+
         <p className="eyebrow">Runtime error</p>
         <h1>PropFlow could not load this screen</h1>
         <p>
@@ -217,11 +258,17 @@ function RuntimeErrorScreen({ error }) {
         </p>
 
         <div className="helper error-helper">
-          {error?.message || String(error || 'Unknown runtime error')}
+          {errorMessage}
         </div>
 
-        <div className="action-row">
-          <button type="button" className="primary" onClick={() => navigate('/')}>
+        <div className="router-error-actions">
+          <button type="button" className="primary" onClick={() => window.location.reload()}>
+            <RefreshCw size={16} />
+            Reload page
+          </button>
+
+          <button type="button" onClick={() => navigate('/')}>
+            <Home size={16} />
             Go to homepage
           </button>
 
@@ -277,15 +324,46 @@ function NotFoundPage({ currentUser }) {
   const fallbackPath = currentUser ? getPostLoginPath(currentUser) : '/';
 
   return (
-    <div className="auth-page">
-      <div className="auth-card">
+    <div className="auth-page router-state-page">
+      <div className="auth-card wide router-state-card">
+        <div className="router-state-icon warning">
+          <ShieldAlert size={30} />
+        </div>
+
         <p className="eyebrow">404</p>
         <h1>Page not found</h1>
-        <p>The page you are looking for does not exist or is not available for your role.</p>
+        <p>
+          The page you are looking for does not exist, was moved, or is not available for your
+          current role.
+        </p>
 
-        <button className="primary" type="button" onClick={() => navigate(fallbackPath)}>
-          Back to dashboard
-        </button>
+        <div className="router-state-grid">
+          <span>
+            <ShieldCheck size={16} />
+            Role checked
+          </span>
+
+          <span>
+            <Building2 size={16} />
+            Workspace checked
+          </span>
+
+          <span>
+            <Lock size={16} />
+            Access protected
+          </span>
+        </div>
+
+        <div className="router-error-actions">
+          <button className="primary" type="button" onClick={() => navigate(fallbackPath)}>
+            <ArrowRight size={16} />
+            Back to dashboard
+          </button>
+
+          <button type="button" onClick={() => navigate('/account')}>
+            Account settings
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -327,6 +405,16 @@ function userCanAccessRoute(user, route) {
 
 function isPropFlowAdminUser(user) {
   return Boolean(user?.roles?.includes(roles.ADMIN));
+}
+
+function RoleGuard({ allowed, children }) {
+  const { currentUser } = useApp();
+
+  if (!hasAnyRole(currentUser, allowed)) {
+    return renderRoute(SuspendedPage, { variant: 'denied' });
+  }
+
+  return children;
 }
 
 export function AppRouter() {
@@ -408,18 +496,4 @@ export function AppRouter() {
   }
 
   return renderRoute(route.Page, route.props, path);
-}
-
-export function RoleGuard({ allowed, children }) {
-  const { currentUser } = useApp();
-
-  if (currentUser?.status === 'suspended') {
-    return renderRoute(SuspendedPage);
-  }
-
-  if (!hasAnyRole(currentUser, allowed)) {
-    return renderRoute(SuspendedPage, { variant: 'denied' });
-  }
-
-  return children;
 }
