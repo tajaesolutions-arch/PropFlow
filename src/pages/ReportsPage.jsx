@@ -9,6 +9,7 @@ import {
   Plus,
   Receipt,
   Search,
+  ShieldCheck,
   Wrench,
   X,
 } from 'lucide-react';
@@ -85,10 +86,6 @@ function safeNumber(value) {
   return Number.isFinite(number) ? number : 0;
 }
 
-function normalizeLabel(value) {
-  return String(value || 'unknown').replaceAll('_', ' ');
-}
-
 function getPropertyId(record) {
   return record?.propertyId || record?.property_id;
 }
@@ -118,20 +115,15 @@ function getCleaningCost(task) {
 
 function getDateValue(value) {
   if (!value) return null;
-
   const date = new Date(value);
-
   if (Number.isNaN(date.getTime())) return null;
-
   return date;
 }
 
 function daysBetween(start, end) {
   const startDate = getDateValue(start);
   const endDate = getDateValue(end);
-
   if (!startDate || !endDate || endDate <= startDate) return 0;
-
   return Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
 }
 
@@ -153,7 +145,6 @@ function getCleaningDate(task) {
 
 function isInDateRange(value, start, end) {
   const date = getDateValue(value);
-
   if (!date) return !start && !end;
 
   if (start) {
@@ -174,10 +165,35 @@ function isInDateRange(value, start, end) {
 
 function getMonthKey(value) {
   const date = getDateValue(value);
-
   if (!date) return null;
-
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function isOwnerRole(currentUser) {
+  return Boolean(currentUser?.roles?.includes(roles.OWNER));
+}
+
+function getAssignedOwnerId(property) {
+  return property.assignedOwnerId || property.assigned_owner_id || property.ownerId || property.owner_id || '';
+}
+
+function isAssignedToCurrentOwner(property, currentUser) {
+  if (!isOwnerRole(currentUser)) return true;
+  const assignedOwnerId = getAssignedOwnerId(property);
+  if (!assignedOwnerId) return false;
+  return assignedOwnerId === currentUser?.id;
+}
+
+function canOwnerSeeReport(report, assignedPropertyIds, currentUser) {
+  if (!isOwnerRole(currentUser)) return true;
+
+  const propertyId = getPropertyId(report);
+  const ownerId = report.owner_id || report.ownerId || report.contact_id || report.contactId;
+
+  if (propertyId) return assignedPropertyIds.has(propertyId);
+  if (ownerId) return ownerId === currentUser?.id;
+
+  return false;
 }
 
 function buildMonthlyRows({ bookings, cleaning, maintenance, currency }) {
@@ -201,23 +217,17 @@ function buildMonthlyRows({ bookings, cleaning, maintenance, currency }) {
 
   bookings.forEach((booking) => {
     const key = getMonthKey(getBookingDate(booking));
-    if (!key) return;
-
-    ensureMonth(key).revenue += getBookingAmount(booking);
+    if (key) ensureMonth(key).revenue += getBookingAmount(booking);
   });
 
   cleaning.forEach((task) => {
     const key = getMonthKey(getCleaningDate(task));
-    if (!key) return;
-
-    ensureMonth(key).cleaningCosts += getCleaningCost(task);
+    if (key) ensureMonth(key).cleaningCosts += getCleaningCost(task);
   });
 
   maintenance.forEach((workOrder) => {
     const key = getMonthKey(getMaintenanceDate(workOrder));
-    if (!key) return;
-
-    ensureMonth(key).maintenanceCosts += getMaintenanceCost(workOrder);
+    if (key) ensureMonth(key).maintenanceCosts += getMaintenanceCost(workOrder);
   });
 
   return Array.from(monthMap.values())
@@ -275,75 +285,22 @@ function buildExportHistory(ownerReports) {
 
 function matchesPropertySearch(row, query) {
   const q = String(query || '').trim().toLowerCase();
-
   if (!q) return true;
 
-  return [
-    row.name,
-    row.address,
-    row.city,
-    row.state,
-    row.country,
-    row.status,
-    row.currency,
-  ]
+  return [row.name, row.address, row.city, row.state, row.country, row.status, row.currency]
     .filter(Boolean)
     .join(' ')
     .toLowerCase()
     .includes(q);
 }
 
-function toCsvValue(value) {
-  const text = String(value ?? '');
-  return `"${text.replaceAll('"', '""')}"`;
-}
-
-function downloadCsv(filename, rows) {
-  if (!rows.length) return;
-
-  const headers = Object.keys(rows[0]);
-  const csv = [
-    headers.map(toCsvValue).join(','),
-    ...rows.map((row) => headers.map((header) => toCsvValue(row[header])).join(',')),
-  ].join('\n');
-
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-
-  URL.revokeObjectURL(url);
-}
-
-function buildPropertyCsvRows(propertyRows) {
-  return propertyRows.map((row) => ({
-    property: row.name || 'Unnamed property',
-    currency: row.currency,
-    bookings: row.bookings,
-    booked_nights: row.bookedNights,
-    revenue: row.revenue,
-    owner_payout: row.ownerPayout,
-    expenses: row.expenses,
-    net_profit: row.netProfit,
-    occupancy_rate: `${Math.round(row.occupancy)}%`,
-    cleaning_tasks: row.cleaningTasks,
-    open_maintenance: row.openMaintenance,
-  }));
-}
-
-function buildMonthlyCsvRows(monthlyRows) {
-  return monthlyRows.map((row) => ({
-    month: row.month,
-    currency: row.currency,
-    revenue: row.revenue,
-    cleaning_costs: row.cleaningCosts,
-    maintenance_costs: row.maintenanceCosts,
-    expenses: row.expenses,
-    net_profit: row.netProfit,
-  }));
+function DisabledExportButton({ label, icon: Icon = Download }) {
+  return (
+    <button type="button" disabled data-skip-create-action="true" title="CSV and PDF exports are not active yet.">
+      <Icon size={16} />
+      {label}
+    </button>
+  );
 }
 
 export function ReportsPage() {
@@ -362,18 +319,30 @@ export function ReportsPage() {
   const rawBookings = data.bookings || [];
   const rawMaintenance = data.maintenanceWorkOrders || [];
   const rawCleaning = data.cleaningTasks || [];
-  const properties = data.properties || [];
-  const ownerReports = data.ownerReports || [];
+  const allProperties = data.properties || [];
+
+  const properties = allProperties
+    .filter((property) => property.status !== 'archived')
+    .filter((property) => isAssignedToCurrentOwner(property, currentUser));
+
+  const assignedPropertyIds = new Set(properties.map((property) => property.id));
+
+  const ownerReports = (data.ownerReports || []).filter((report) =>
+    canOwnerSeeReport(report, assignedPropertyIds, currentUser),
+  );
 
   const bookings = rawBookings
     .filter((booking) => !cancelledStatuses.has(booking.status))
+    .filter((booking) => !isOwnerRole(currentUser) || assignedPropertyIds.has(getPropertyId(booking)))
     .filter((booking) => isInDateRange(getBookingDate(booking), filters.start, filters.end));
 
-  const maintenance = rawMaintenance.filter((item) =>
-    isInDateRange(getMaintenanceDate(item), filters.start, filters.end),
-  );
+  const maintenance = rawMaintenance
+    .filter((item) => !isOwnerRole(currentUser) || assignedPropertyIds.has(getPropertyId(item)))
+    .filter((item) => isInDateRange(getMaintenanceDate(item), filters.start, filters.end));
 
-  const cleaning = rawCleaning.filter((task) => isInDateRange(getCleaningDate(task), filters.start, filters.end));
+  const cleaning = rawCleaning
+    .filter((task) => !isOwnerRole(currentUser) || assignedPropertyIds.has(getPropertyId(task)))
+    .filter((task) => isInDateRange(getCleaningDate(task), filters.start, filters.end));
 
   const grossRevenue = bookings.reduce((sum, booking) => sum + getBookingAmount(booking), 0);
   const ownerPayouts = bookings.reduce((sum, booking) => sum + getOwnerPayout(booking), 0);
@@ -383,10 +352,7 @@ export function ReportsPage() {
   const netProfit = grossRevenue - totalExpenses;
 
   const bookedNights = bookings.reduce((sum, booking) => sum + getBookingNights(booking), 0);
-  const availableNights = Math.max(
-    properties.filter((property) => property.status !== 'archived').length * 30,
-    1,
-  );
+  const availableNights = Math.max(properties.length * 30, 1);
   const occupancyRate = Math.min((bookedNights / availableNights) * 100, 100);
 
   const completedCleaning = cleaning.filter((task) => ['completed', 'guest_ready'].includes(task.status)).length;
@@ -408,27 +374,33 @@ export function ReportsPage() {
   });
 
   const exportHistory = buildExportHistory(ownerReports);
-
   const categories = [...new Set(reportTypes.map((report) => report.category))];
-
   const visibleReportTypes = reportTypes.filter(
     (report) => filters.reportCategory === 'all' || report.category === filters.reportCategory,
   );
 
   const clearFilters = () => {
-    setFilters({
-      query: '',
-      start: '',
-      end: '',
-      reportCategory: 'all',
-    });
+    setFilters({ query: '', start: '', end: '', reportCategory: 'all' });
   };
 
   return (
     <AppLayout
       title="Reports & Exports"
-      subtitle="Owner reports, finance summaries, operations reports, CSV export, and PDF preparation."
+      subtitle="Owner reports, finance summaries, operations reports, and export placeholders."
     >
+      <section className="card finance-safety-notice">
+        <div className="card-header">
+          <div>
+            <p className="eyebrow">Finance export safety</p>
+            <h3>CSV and PDF exports are disabled for now</h3>
+            <p>
+              Report exports are placeholder-safe. CSV and PDF files will be connected after finance records are safely stored and backend export generation is ready.
+            </p>
+          </div>
+          <ShieldCheck size={22} className="muted" />
+        </div>
+      </section>
+
       <section className="stat-grid dense">
         <StatCard label="Gross revenue" value={formatCurrency(grossRevenue, currency)} icon={BarChart3} />
         <StatCard label="Net profit" value={formatCurrency(netProfit, currency)} icon={FileSpreadsheet} />
@@ -443,42 +415,25 @@ export function ReportsPage() {
         <StatCard label="Open maintenance" value={openMaintenance} icon={Wrench} tone={openMaintenance ? 'warning' : 'accent'} />
       </section>
 
-      <section className="card reports-toolbar">
+      <section className="card reports-toolbar finance-actions-toolbar">
         <div>
           <h3>Report center</h3>
           <p>
-            Manual reports come first. Scheduled weekly, monthly, and quarterly owner reports should
-            use the same report structure when backend jobs are connected.
+            Manual reports come first. Scheduled reports, CSV export, and PDF export remain disabled until backend report jobs are connected.
           </p>
         </div>
 
         <div className="reports-toolbar-actions">
           {canManageReports && (
-            <button type="button" className="primary" data-create-action="report">
+            <button type="button" className="primary" disabled data-skip-create-action="true">
               <Plus size={16} />
-              Add Report
+              Add Report disabled
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={() => downloadCsv('propflow-property-performance.csv', buildPropertyCsvRows(propertyRows))}
-            disabled={!propertyRows.length}
-            data-skip-create-action="true"
-          >
-            <Download size={16} />
-            Property CSV
-          </button>
-
-          <button
-            type="button"
-            onClick={() => downloadCsv('propflow-monthly-summary.csv', buildMonthlyCsvRows(monthlyRows))}
-            disabled={!monthlyRows.length}
-            data-skip-create-action="true"
-          >
-            <Download size={16} />
-            Monthly CSV
-          </button>
+          <DisabledExportButton label="Property CSV disabled" />
+          <DisabledExportButton label="Monthly CSV disabled" />
+          <DisabledExportButton label="PDF disabled" icon={FileText} />
         </div>
       </section>
 
@@ -561,32 +516,12 @@ export function ReportsPage() {
             </div>
 
             <div className="report-type-actions">
-              <button
-                type="button"
-                onClick={() =>
-                  downloadCsv(
-                    `propflow-${report.id}.csv`,
-                    report.id === 'property_performance'
-                      ? buildPropertyCsvRows(propertyRows)
-                      : buildMonthlyCsvRows(monthlyRows),
-                  )
-                }
-                disabled={report.id === 'property_performance' ? !propertyRows.length : !monthlyRows.length}
-                data-skip-create-action="true"
-              >
-                <Download size={16} />
-                CSV
-              </button>
-
-              <button className="primary" type="button" disabled data-skip-create-action="true">
-                <Download size={16} />
-                PDF
-              </button>
+              <DisabledExportButton label="CSV disabled" />
+              <DisabledExportButton label="PDF disabled" icon={FileText} />
             </div>
 
             <div className="helper">
-              CSV preview export works in-browser. PDF generation should be connected later through
-              backend report logic.
+              CSV and PDF exports are not active yet. Report export will be connected after finance records are safely stored.
             </div>
           </article>
         ))}
@@ -597,50 +532,21 @@ export function ReportsPage() {
           <div className="card-header">
             <div>
               <h3>Property performance report</h3>
-              <p>Preview of the report data used for owner statements and property performance exports.</p>
+              <p>Preview of report data used for owner statements and property performance summaries.</p>
             </div>
           </div>
 
           <DataTable
             rows={propertyRows}
             columns={[
-              {
-                key: 'name',
-                label: 'Property',
-              },
-              {
-                key: 'bookings',
-                label: 'Bookings',
-              },
-              {
-                key: 'bookedNights',
-                label: 'Booked nights',
-              },
-              {
-                key: 'revenue',
-                label: 'Revenue',
-                render: (row) => formatCurrency(row.revenue, row.currency),
-              },
-              {
-                key: 'ownerPayout',
-                label: 'Owner payout',
-                render: (row) => formatCurrency(row.ownerPayout, row.currency),
-              },
-              {
-                key: 'expenses',
-                label: 'Expenses',
-                render: (row) => formatCurrency(row.expenses, row.currency),
-              },
-              {
-                key: 'netProfit',
-                label: 'Net profit',
-                render: (row) => formatCurrency(row.netProfit, row.currency),
-              },
-              {
-                key: 'occupancy',
-                label: 'Occupancy',
-                render: (row) => formatPercent(row.occupancy),
-              },
+              { key: 'name', label: 'Property' },
+              { key: 'bookings', label: 'Bookings' },
+              { key: 'bookedNights', label: 'Booked nights' },
+              { key: 'revenue', label: 'Revenue', render: (row) => formatCurrency(row.revenue, row.currency) },
+              { key: 'ownerPayout', label: 'Owner payout', render: (row) => formatCurrency(row.ownerPayout, row.currency) },
+              { key: 'expenses', label: 'Expenses', render: (row) => formatCurrency(row.expenses, row.currency) },
+              { key: 'netProfit', label: 'Net profit', render: (row) => formatCurrency(row.netProfit, row.currency) },
+              { key: 'occupancy', label: 'Occupancy', render: (row) => formatPercent(row.occupancy) },
               {
                 key: 'openMaintenance',
                 label: 'Open repairs',
@@ -659,13 +565,7 @@ export function ReportsPage() {
           eyebrow="Reports"
           icon={FileSpreadsheet}
           title="No report data yet"
-          description="Add properties, bookings, cleaning tasks, and maintenance work orders to generate useful report previews."
-          action={
-            <button type="button" className="primary" data-create-action="booking">
-              <Plus size={16} />
-              Add Booking
-            </button>
-          }
+          description="Add properties, bookings, cleaning tasks, and maintenance work orders to generate useful report previews. No export files are generated yet."
         />
       )}
 
@@ -682,25 +582,10 @@ export function ReportsPage() {
             <DataTable
               rows={monthlyRows.slice(0, 8)}
               columns={[
-                {
-                  key: 'month',
-                  label: 'Month',
-                },
-                {
-                  key: 'revenue',
-                  label: 'Revenue',
-                  render: (row) => formatCurrency(row.revenue, row.currency),
-                },
-                {
-                  key: 'expenses',
-                  label: 'Expenses',
-                  render: (row) => formatCurrency(row.expenses, row.currency),
-                },
-                {
-                  key: 'netProfit',
-                  label: 'Net profit',
-                  render: (row) => formatCurrency(row.netProfit, row.currency),
-                },
+                { key: 'month', label: 'Month' },
+                { key: 'revenue', label: 'Revenue', render: (row) => formatCurrency(row.revenue, row.currency) },
+                { key: 'expenses', label: 'Expenses', render: (row) => formatCurrency(row.expenses, row.currency) },
+                { key: 'netProfit', label: 'Net profit', render: (row) => formatCurrency(row.netProfit, row.currency) },
               ]}
             />
           ) : (
@@ -717,7 +602,7 @@ export function ReportsPage() {
           <div className="card-header">
             <div>
               <h3>Export history</h3>
-              <p>Track generated PDF and CSV exports.</p>
+              <p>Export history is disabled until backend-generated files are connected.</p>
             </div>
           </div>
 
@@ -725,24 +610,10 @@ export function ReportsPage() {
             <DataTable
               rows={exportHistory}
               columns={[
-                {
-                  key: 'report_type',
-                  label: 'Report',
-                },
-                {
-                  key: 'format',
-                  label: 'Format',
-                },
-                {
-                  key: 'status',
-                  label: 'Status',
-                  render: (row) => <StatusBadge>{row.status}</StatusBadge>,
-                },
-                {
-                  key: 'created_at',
-                  label: 'Created',
-                  render: (row) => formatDate(row.created_at, row.created_at || '—'),
-                },
+                { key: 'report_type', label: 'Report' },
+                { key: 'format', label: 'Format' },
+                { key: 'status', label: 'Status', render: (row) => <StatusBadge>{row.status}</StatusBadge> },
+                { key: 'created_at', label: 'Created', render: (row) => formatDate(row.created_at, row.created_at || '—') },
               ]}
             />
           ) : (
@@ -750,7 +621,7 @@ export function ReportsPage() {
               compact
               icon={Download}
               title="No exports generated yet"
-              description="Report export history will appear here after PDF or backend-generated CSV exports are saved."
+              description="CSV and PDF export history will appear here after backend-generated exports are safely connected."
             />
           )}
         </section>
