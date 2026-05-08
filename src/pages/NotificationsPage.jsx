@@ -1,14 +1,19 @@
 import React from 'react';
 import {
+  AlertTriangle,
   Bell,
   CalendarCheck,
+  CheckCircle2,
   CreditCard,
   Mail,
   MessageCircle,
+  Package,
+  Search,
   Settings,
   Smartphone,
   Users,
   Wrench,
+  X,
 } from 'lucide-react';
 
 import { AppLayout } from '../components/layout/AppLayout.jsx';
@@ -16,6 +21,8 @@ import { EmptyState } from '../components/EmptyState.jsx';
 import { StatCard } from '../components/StatCard.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
 import { useApp } from '../lib/AppContext.jsx';
+import { hasAnyRole } from '../lib/auth.js';
+import { roles } from '../data/constants.js';
 import { navigate } from '../routes/AppRouter.jsx';
 
 const notificationTypes = [
@@ -28,6 +35,8 @@ const notificationTypes = [
   'inventory_alert',
   'system',
 ];
+
+const settingsAccessRoles = [roles.ADMIN, roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
 
 function formatLabel(value) {
   return value ? String(value).replaceAll('_', ' ') : 'Notification';
@@ -54,12 +63,20 @@ function getNotificationType(notification) {
   return notification.type || notification.category || 'system';
 }
 
+function getNotificationTitle(notification) {
+  return notification.title || formatLabel(getNotificationType(notification));
+}
+
 function getNotificationMessage(notification) {
-  return notification.message || notification.title || 'Workspace notification';
+  return notification.message || notification.body || notification.title || 'Workspace notification';
+}
+
+function getNotificationDate(notification) {
+  return notification.created_at || notification.createdAt || notification.time || notification.sent_at || '';
 }
 
 function isUnread(notification) {
-  return !notification.read_at && notification.status !== 'read';
+  return !notification.read_at && !notification.readAt && notification.status !== 'read';
 }
 
 function getTone(notification) {
@@ -76,15 +93,88 @@ function getTone(notification) {
 
 function getIcon(type) {
   if (type === 'booking') return CalendarCheck;
-  if (type === 'cleaning') return CalendarCheck;
+  if (type === 'cleaning') return CheckCircle2;
   if (type === 'maintenance') return Wrench;
   if (type === 'billing') return CreditCard;
   if (type === 'team') return Users;
+  if (type === 'inventory_alert') return Package;
+  if (type === 'owner_report') return Bell;
   return Bell;
 }
 
+function statusTone(value) {
+  const text = String(value || '').toLowerCase();
+
+  if (['failed', 'urgent', 'overdue', 'error'].some((term) => text.includes(term))) return 'error';
+  if (['pending', 'warning', 'scheduled'].some((term) => text.includes(term))) return 'warning';
+  if (['read', 'sent', 'ready', 'completed'].some((term) => text.includes(term))) return 'success';
+
+  return 'info';
+}
+
+function matchesSearch(notification, query) {
+  const normalizedQuery = String(query || '').trim().toLowerCase();
+
+  if (!normalizedQuery) return true;
+
+  return [
+    getNotificationType(notification),
+    getNotificationTitle(notification),
+    getNotificationMessage(notification),
+    notification.status,
+    notification.channel,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+    .includes(normalizedQuery);
+}
+
+function sortNotifications(notifications) {
+  return [...notifications].sort((a, b) => {
+    const dateA = new Date(getNotificationDate(a)).getTime();
+    const dateB = new Date(getNotificationDate(b)).getTime();
+
+    if (Number.isNaN(dateA) && Number.isNaN(dateB)) return 0;
+    if (Number.isNaN(dateA)) return 1;
+    if (Number.isNaN(dateB)) return -1;
+
+    return dateB - dateA;
+  });
+}
+
+function NotificationRow({ notification }) {
+  const type = getNotificationType(notification);
+  const Icon = getIcon(type);
+  const unread = isUnread(notification);
+
+  return (
+    <article className={`notification-row ${unread ? 'unread' : ''}`}>
+      <div className={`notification-row-icon tone-${getTone(notification)}`}>
+        <Icon size={18} />
+      </div>
+
+      <div className="notification-row-copy">
+        <div>
+          <h3>{getNotificationTitle(notification)}</h3>
+          <p>{getNotificationMessage(notification)}</p>
+        </div>
+
+        <small>
+          {formatLabel(type)} · {formatDate(getNotificationDate(notification))}
+        </small>
+      </div>
+
+      <div className="notification-row-status">
+        <StatusBadge tone={unread ? 'warning' : 'success'}>{unread ? 'unread' : 'read'}</StatusBadge>
+        <StatusBadge tone={getTone(notification)}>{notification.status || type}</StatusBadge>
+      </div>
+    </article>
+  );
+}
+
 export function NotificationsPage() {
-  const { data } = useApp();
+  const { data, currentUser } = useApp();
 
   const [filters, setFilters] = React.useState({
     query: '',
@@ -92,7 +182,8 @@ export function NotificationsPage() {
     status: 'all',
   });
 
-  const notifications = data.notifications || [];
+  const notifications = sortNotifications(data.notifications || []);
+  const canOpenSettings = hasAnyRole(currentUser, settingsAccessRoles);
 
   const unreadCount = notifications.filter(isUnread).length;
   const billingCount = notifications.filter((notification) => getNotificationType(notification) === 'billing').length;
@@ -106,18 +197,7 @@ export function NotificationsPage() {
       if (filters.status === 'read') return !isUnread(notification);
       return true;
     })
-    .filter((notification) => {
-      const searchText = [
-        getNotificationType(notification),
-        getNotificationMessage(notification),
-        notification.status,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-
-      return searchText.includes(filters.query.toLowerCase());
-    });
+    .filter((notification) => matchesSearch(notification, filters.query));
 
   const setFilter = (key) => (event) => {
     setFilters((value) => ({
@@ -126,52 +206,93 @@ export function NotificationsPage() {
     }));
   };
 
+  const clearFilters = () => {
+    setFilters({
+      query: '',
+      type: 'all',
+      status: 'all',
+    });
+  };
+
   return (
-    <AppLayout title="Notifications" subtitle="In-app alerts for bookings, cleaning, maintenance, billing, reports, and team activity">
-      <div className="stat-grid dense">
+    <AppLayout
+      title="Notifications"
+      subtitle="In-app alerts for bookings, cleaning, maintenance, billing, reports, inventory, and team activity."
+    >
+      <section className="stat-grid dense">
         <StatCard label="Total notifications" value={notifications.length} icon={Bell} />
-        <StatCard label="Unread" value={unreadCount} icon={Bell} tone={unreadCount ? 'warning' : 'accent'} />
+        <StatCard label="Unread" value={unreadCount} icon={AlertTriangle} tone={unreadCount ? 'warning' : 'accent'} />
         <StatCard label="Maintenance alerts" value={maintenanceCount} icon={Wrench} />
         <StatCard label="Billing alerts" value={billingCount} icon={CreditCard} />
-      </div>
+      </section>
 
-      <section className="card">
-        <div className="card-header">
-          <div>
-            <h3>Notification center</h3>
-            <p>
-              Workspace alerts for bookings, cleaning tasks, maintenance work orders, owner reports,
-              billing, inventory, and team activity.
-            </p>
-          </div>
-
-          <button type="button" onClick={() => navigate('/notification-settings')}>
-            <Settings size={16} />
-            Notification settings
-          </button>
+      <section className="card notifications-toolbar">
+        <div>
+          <h3>Notification center</h3>
+          <p>
+            Workspace alerts for bookings, cleaning tasks, maintenance work orders, owner reports,
+            billing, inventory, and team activity.
+          </p>
         </div>
 
-        <div className="filter-bar booking-filter">
-          <input
-            placeholder="Search notifications"
-            value={filters.query}
-            onChange={setFilter('query')}
-          />
+        <div className="notifications-toolbar-actions">
+          {canOpenSettings && (
+            <button type="button" onClick={() => navigate('/notification-settings')} data-skip-create-action="true">
+              <Settings size={16} />
+              Notification settings
+            </button>
+          )}
 
-          <select value={filters.type} onChange={setFilter('type')}>
-            <option value="all">All types</option>
-            {notificationTypes.map((type) => (
-              <option key={type} value={type}>
-                {formatLabel(type)}
-              </option>
-            ))}
-          </select>
+          <button type="button" onClick={clearFilters} data-skip-create-action="true">
+            Clear filters
+          </button>
+        </div>
+      </section>
 
-          <select value={filters.status} onChange={setFilter('status')}>
-            <option value="all">All statuses</option>
-            <option value="unread">Unread</option>
-            <option value="read">Read</option>
-          </select>
+      <section className="card">
+        <div className="notifications-filters">
+          <label className="notifications-search">
+            <Search size={16} />
+            <input
+              placeholder="Search notifications by title, message, type, channel, or status..."
+              value={filters.query}
+              onChange={setFilter('query')}
+              aria-label="Search notifications"
+            />
+
+            {filters.query && (
+              <button
+                type="button"
+                className="search-clear"
+                onClick={() => setFilters((current) => ({ ...current, query: '' }))}
+                aria-label="Clear notification search"
+                data-skip-create-action="true"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </label>
+
+          <label>
+            Type
+            <select value={filters.type} onChange={setFilter('type')}>
+              <option value="all">All types</option>
+              {notificationTypes.map((type) => (
+                <option key={type} value={type}>
+                  {formatLabel(type)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Status
+            <select value={filters.status} onChange={setFilter('status')}>
+              <option value="all">All statuses</option>
+              <option value="unread">Unread</option>
+              <option value="read">Read</option>
+            </select>
+          </label>
         </div>
       </section>
 
@@ -186,42 +307,26 @@ export function NotificationsPage() {
         </div>
 
         {filteredNotifications.length ? (
-          <div className="notification-list">
-            {filteredNotifications.map((notification) => {
-              const type = getNotificationType(notification);
-              const Icon = getIcon(type);
-
-              return (
-                <div className="notification" key={notification.id}>
-                  <Icon size={18} />
-
-                  <span>
-                    {getNotificationMessage(notification)}
-                    <small>
-                      {formatLabel(type)} · {formatDate(notification.created_at || notification.time)}
-                    </small>
-                  </span>
-
-                  <StatusBadge tone={getTone(notification)}>
-                    {isUnread(notification) ? 'unread' : 'read'}
-                  </StatusBadge>
-                </div>
-              );
-            })}
+          <div className="notifications-list">
+            {filteredNotifications.map((notification) => (
+              <NotificationRow key={notification.id} notification={notification} />
+            ))}
           </div>
         ) : (
           <EmptyState
-            title={notifications.length ? 'No notifications match the current filters.' : 'No notifications yet.'}
+            eyebrow="Notifications"
+            icon={Bell}
+            title={notifications.length ? 'No notifications match the current filters' : 'No notifications yet'}
             description={
               notifications.length
-                ? 'Adjust the filters to view more notification records.'
+                ? 'Adjust the search, type, or status filters to view more notification records.'
                 : 'PropFlow will show real workspace alerts here when bookings, cleaning tasks, maintenance work orders, billing updates, owner reports, inventory alerts, or team activity create notification records.'
             }
           />
         )}
       </section>
 
-      <div className="panel-grid two">
+      <section className="panel-grid two">
         <section className="card">
           <div className="card-header">
             <div>
@@ -230,31 +335,27 @@ export function NotificationsPage() {
             </div>
           </div>
 
-          <div className="list-row">
-            <Mail size={18} />
+          <div className="notification-provider-summary">
             <span>
-              Email via Resend
+              <Mail size={18} />
+              <strong>Email via Resend</strong>
               <small>Transactional email provider should be configured server-side.</small>
+              <StatusBadge tone="warning">pending</StatusBadge>
             </span>
-            <StatusBadge>pending</StatusBadge>
-          </div>
 
-          <div className="list-row">
-            <Smartphone size={18} />
             <span>
-              SMS via Twilio
+              <Smartphone size={18} />
+              <strong>SMS via Twilio</strong>
               <small>SMS notifications should use secure backend credentials.</small>
+              <StatusBadge tone="warning">pending</StatusBadge>
             </span>
-            <StatusBadge>pending</StatusBadge>
-          </div>
 
-          <div className="list-row">
-            <MessageCircle size={18} />
             <span>
-              WhatsApp via Twilio
+              <MessageCircle size={18} />
+              <strong>WhatsApp via Twilio</strong>
               <small>WhatsApp alerts should use secure backend credentials.</small>
+              <StatusBadge tone="warning">pending</StatusBadge>
             </span>
-            <StatusBadge>pending</StatusBadge>
           </div>
         </section>
 
@@ -266,13 +367,13 @@ export function NotificationsPage() {
             </div>
           </div>
 
-          <div className="metadata-grid">
+          <div className="notification-category-grid">
             <span>
               <CalendarCheck size={16} />
               Bookings
             </span>
             <span>
-              <CalendarCheck size={16} />
+              <CheckCircle2 size={16} />
               Cleaning
             </span>
             <span>
@@ -291,13 +392,17 @@ export function NotificationsPage() {
               <Bell size={16} />
               Owner reports
             </span>
+            <span>
+              <Package size={16} />
+              Inventory alerts
+            </span>
           </div>
 
           <div className="helper">
             Provider delivery logic should be added after the in-app notification records are stable.
           </div>
         </section>
-      </div>
+      </section>
     </AppLayout>
   );
 }
