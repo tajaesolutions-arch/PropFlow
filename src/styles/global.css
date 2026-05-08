@@ -6797,3 +6797,102 @@ label {
     grid-template-columns: 1fr;
   }
 }
+/* Restricted / suspended access page polish */
+
+.restriction-page {
+  padding: 28px 16px;
+  background:
+    radial-gradient(circle at top left, rgba(217, 119, 6, 0.13), transparent 34%),
+    radial-gradient(circle at top right, rgba(220, 38, 38, 0.08), transparent 28%),
+    linear-gradient(180deg, #f7f8fa 0%, #ffffff 100%);
+}
+
+.restriction-card {
+  display: grid;
+  gap: 18px;
+  width: min(760px, 100%);
+}
+
+.restriction-icon {
+  width: 68px;
+  height: 68px;
+  display: grid;
+  place-items: center;
+  border-radius: 22px;
+  background: rgba(217, 119, 6, 0.1);
+  color: var(--warning);
+}
+
+.restriction-error .restriction-icon {
+  background: rgba(220, 38, 38, 0.09);
+  color: var(--danger);
+}
+
+.restriction-card h1 {
+  margin-bottom: 8px;
+}
+
+.restriction-card p {
+  margin-bottom: 0;
+}
+
+.restriction-helper {
+  align-items: flex-start;
+}
+
+.restriction-steps-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.restriction-step {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+
+.restriction-step svg {
+  color: var(--accent);
+  margin-top: 1px;
+}
+
+.restriction-step span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.restriction-step strong {
+  color: var(--text);
+}
+
+.restriction-step small {
+  color: var(--muted);
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.restriction-actions {
+  justify-content: flex-start;
+}
+
+@media (max-width: 760px) {
+  .restriction-page {
+    padding: 18px 12px;
+  }
+
+  .restriction-steps-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .restriction-actions,
+  .restriction-actions button {
+    width: 100%;
+  }
+}
