@@ -5,9 +5,13 @@ import {
   CalendarCheck,
   ClipboardList,
   Download,
+  FileSpreadsheet,
   FileText,
   Receipt,
+  Search,
+  ShieldCheck,
   Wrench,
+  X,
 } from 'lucide-react';
 
 import { AppLayout } from '../components/layout/AppLayout.jsx';
@@ -16,7 +20,7 @@ import { EmptyState } from '../components/EmptyState.jsx';
 import { StatCard } from '../components/StatCard.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
 import { useApp } from '../lib/AppContext.jsx';
-import { formatCurrency } from '../lib/formatters.js';
+import { formatCurrency, formatDate } from '../lib/formatters.js';
 
 const cancelledStatuses = new Set(['cancelled', 'void', 'refunded']);
 const closedStatuses = new Set(['completed', 'cancelled']);
@@ -66,11 +70,80 @@ function getCleaningCost(task) {
   );
 }
 
+function getBookingDate(booking) {
+  return booking.checkIn || booking.check_in || booking.created_at || '';
+}
+
+function getCleaningDate(task) {
+  return task.scheduledFor || task.scheduled_for || task.created_at || '';
+}
+
+function getMaintenanceDate(workOrder) {
+  return workOrder.due || workOrder.due_date || workOrder.created_at || '';
+}
+
 function getPropertyName(record, properties) {
   const propertyId = getPropertyId(record);
   const property = properties.find((item) => item.id === propertyId);
 
   return record.property || property?.name || 'Unassigned property';
+}
+
+function getWorkspaceCurrency(currentWorkspace) {
+  return currentWorkspace?.defaultCurrency || currentWorkspace?.default_currency || 'USD';
+}
+
+function getDateValue(value) {
+  if (!value) return null;
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return null;
+
+  return date;
+}
+
+function isInDateRange(value, start, end) {
+  const date = getDateValue(value);
+
+  if (!date) return !start && !end;
+
+  if (start) {
+    const startDate = getDateValue(start);
+    if (startDate && date < startDate) return false;
+  }
+
+  if (end) {
+    const endDate = getDateValue(end);
+    if (endDate) {
+      endDate.setHours(23, 59, 59, 999);
+      if (date > endDate) return false;
+    }
+  }
+
+  return true;
+}
+
+function normalizeLabel(value) {
+  return String(value || 'unknown').replaceAll('_', ' ');
+}
+
+function statusTone(value) {
+  const status = String(value || '').toLowerCase();
+
+  if (['cancelled', 'failed', 'overdue', 'unpaid'].includes(status)) return 'error';
+  if (['pending', 'partially_paid', 'scheduled', 'reported', 'in_progress'].includes(status)) return 'warning';
+  if (['paid', 'completed', 'ready', 'active', 'guest_ready'].includes(status)) return 'success';
+
+  return 'info';
+}
+
+function matchesSearch(values, query) {
+  const normalizedQuery = String(query || '').trim().toLowerCase();
+
+  if (!normalizedQuery) return true;
+
+  return values.filter(Boolean).join(' ').toLowerCase().includes(normalizedQuery);
 }
 
 function buildPropertyFinanceRows({ properties, bookings, cleaningTasks, maintenanceWorkOrders, currency }) {
@@ -113,15 +186,125 @@ function buildPropertyFinanceRows({ properties, bookings, cleaningTasks, mainten
     });
 }
 
+function buildRecentTransactions({ bookings, maintenanceWorkOrders, cleaningTasks, properties, currency }) {
+  return [
+    ...bookings.map((booking) => ({
+      id: `booking-${booking.id}`,
+      type: 'Booking revenue',
+      property: getPropertyName(booking, properties),
+      date: getBookingDate(booking),
+      amount: getBookingAmount(booking),
+      currency: booking.currency || currency,
+      status: booking.paymentStatus || booking.payment_status || 'unpaid',
+    })),
+    ...maintenanceWorkOrders.map((workOrder) => ({
+      id: `maintenance-${workOrder.id}`,
+      type: 'Maintenance cost',
+      property: getPropertyName(workOrder, properties),
+      date: getMaintenanceDate(workOrder),
+      amount: -getMaintenanceCost(workOrder),
+      currency,
+      status: workOrder.status || 'reported',
+    })),
+    ...cleaningTasks.map((task) => ({
+      id: `cleaning-${task.id}`,
+      type: 'Cleaning cost',
+      property: getPropertyName(task, properties),
+      date: getCleaningDate(task),
+      amount: -getCleaningCost(task),
+      currency,
+      status: task.status || 'scheduled',
+    })),
+  ].sort((a, b) => {
+    const dateA = getDateValue(a.date);
+    const dateB = getDateValue(b.date);
+
+    if (!dateA && !dateB) return 0;
+    if (!dateA) return 1;
+    if (!dateB) return -1;
+
+    return dateB - dateA;
+  });
+}
+
+function toCsvValue(value) {
+  const text = String(value ?? '');
+  return `"${text.replaceAll('"', '""')}"`;
+}
+
+function downloadCsv(filename, rows) {
+  if (!rows.length) return;
+
+  const headers = Object.keys(rows[0]);
+  const csv = [
+    headers.map(toCsvValue).join(','),
+    ...rows.map((row) => headers.map((header) => toCsvValue(row[header])).join(',')),
+  ].join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+
+  URL.revokeObjectURL(url);
+}
+
+function buildFinanceCsvRows(propertyRows) {
+  return propertyRows.map((row) => ({
+    property: row.name || 'Unnamed property',
+    currency: row.currency,
+    bookings: row.bookings,
+    revenue: row.revenue,
+    owner_payout: row.ownerPayout,
+    cleaning_fees_collected: row.cleaningFees,
+    taxes_platform_fees: row.platformFees,
+    cleaning_costs: row.cleaningCosts,
+    maintenance_costs: row.maintenanceCosts,
+    total_expenses: row.expenses,
+    net_profit: row.netProfit,
+    open_maintenance: row.openMaintenance,
+  }));
+}
+
+function buildTransactionCsvRows(transactions) {
+  return transactions.map((row) => ({
+    type: row.type,
+    property: row.property,
+    date: row.date,
+    status: row.status,
+    currency: row.currency,
+    amount: row.amount,
+  }));
+}
+
 export function AccountantDashboardPage() {
   const { data, currentWorkspace } = useApp();
 
-  const currency = currentWorkspace?.defaultCurrency || currentWorkspace?.default_currency || 'USD';
+  const [filters, setFilters] = React.useState({
+    query: '',
+    start: '',
+    end: '',
+    transactionType: 'all',
+  });
+
+  const currency = getWorkspaceCurrency(currentWorkspace);
 
   const properties = data.properties || [];
-  const bookings = (data.bookings || []).filter((booking) => !cancelledStatuses.has(booking.status));
-  const cleaningTasks = data.cleaningTasks || [];
-  const maintenanceWorkOrders = data.maintenanceWorkOrders || [];
+  const bookings = (data.bookings || [])
+    .filter((booking) => !cancelledStatuses.has(booking.status))
+    .filter((booking) => isInDateRange(getBookingDate(booking), filters.start, filters.end));
+
+  const cleaningTasks = (data.cleaningTasks || []).filter((task) =>
+    isInDateRange(getCleaningDate(task), filters.start, filters.end),
+  );
+
+  const maintenanceWorkOrders = (data.maintenanceWorkOrders || []).filter((workOrder) =>
+    isInDateRange(getMaintenanceDate(workOrder), filters.start, filters.end),
+  );
+
   const reports = data.ownerReports || [];
 
   const propertyRows = buildPropertyFinanceRows({
@@ -130,7 +313,22 @@ export function AccountantDashboardPage() {
     cleaningTasks,
     maintenanceWorkOrders,
     currency,
-  }).sort((a, b) => b.revenue - a.revenue);
+  })
+    .filter((row) =>
+      matchesSearch(
+        [
+          row.name,
+          row.address,
+          row.city,
+          row.state,
+          row.country,
+          row.status,
+          row.currency,
+        ],
+        filters.query,
+      ),
+    )
+    .sort((a, b) => b.revenue - a.revenue);
 
   const grossRevenue = bookings.reduce((sum, booking) => sum + getBookingAmount(booking), 0);
   const ownerPayouts = bookings.reduce((sum, booking) => sum + getOwnerPayout(booking), 0);
@@ -145,41 +343,54 @@ export function AccountantDashboardPage() {
   const totalExpenses = cleaningCosts + maintenanceCosts + taxesFees;
   const netProfit = grossRevenue - totalExpenses;
 
-  const recentTransactions = [
-    ...bookings.map((booking) => ({
-      id: `booking-${booking.id}`,
-      type: 'Booking revenue',
-      property: getPropertyName(booking, properties),
-      date: booking.checkIn || booking.check_in || booking.created_at || '—',
-      amount: getBookingAmount(booking),
-      status: booking.paymentStatus || booking.payment_status || 'unpaid',
-    })),
-    ...maintenanceWorkOrders.map((workOrder) => ({
-      id: `maintenance-${workOrder.id}`,
-      type: 'Maintenance cost',
-      property: getPropertyName(workOrder, properties),
-      date: workOrder.due || workOrder.due_date || workOrder.created_at || '—',
-      amount: -getMaintenanceCost(workOrder),
-      status: workOrder.status || 'reported',
-    })),
-    ...cleaningTasks.map((task) => ({
-      id: `cleaning-${task.id}`,
-      type: 'Cleaning cost',
-      property: getPropertyName(task, properties),
-      date: task.scheduledFor || task.scheduled_for || task.created_at || '—',
-      amount: -getCleaningCost(task),
-      status: task.status || 'scheduled',
-    })),
-  ].slice(0, 10);
+  const allTransactions = buildRecentTransactions({
+    bookings,
+    maintenanceWorkOrders,
+    cleaningTasks,
+    properties,
+    currency,
+  });
+
+  const transactionTypes = [...new Set(allTransactions.map((transaction) => transaction.type))];
+
+  const recentTransactions = allTransactions
+    .filter((transaction) => filters.transactionType === 'all' || transaction.type === filters.transactionType)
+    .filter((transaction) =>
+      matchesSearch(
+        [transaction.type, transaction.property, transaction.status, transaction.date],
+        filters.query,
+      ),
+    );
+
+  const clearFilters = () => {
+    setFilters({
+      query: '',
+      start: '',
+      end: '',
+      transactionType: 'all',
+    });
+  };
 
   return (
-    <AppLayout title="Accountant dashboard" subtitle="Finance-only view for reports, payouts, expenses, and exports">
-      <p className="page-note">
-        Accountant / Bookkeeper access is finance-focused. This view avoids operational editing and
-        focuses on revenue, expenses, owner payouts, reports, receipts, and export preparation.
-      </p>
+    <AppLayout
+      title="Accountant dashboard"
+      subtitle="Finance-only view for revenue, expenses, owner payouts, reports, receipts, and exports."
+    >
+      <section className="card accountant-dashboard-notice">
+        <div className="card-header">
+          <div>
+            <h3>Finance-only access</h3>
+            <p>
+              Accountant / Bookkeeper access is finance-focused. This dashboard avoids operational
+              editing and focuses on revenue, expenses, owner payouts, receipts, reports, and export
+              preparation.
+            </p>
+          </div>
+          <ShieldCheck size={22} className="muted" />
+        </div>
+      </section>
 
-      <div className="stat-grid dense">
+      <section className="stat-grid dense">
         <StatCard label="Gross revenue" value={formatCurrency(grossRevenue, currency)} icon={Banknote} />
         <StatCard label="Total expenses" value={formatCurrency(totalExpenses, currency)} icon={Receipt} />
         <StatCard
@@ -189,37 +400,106 @@ export function AccountantDashboardPage() {
           tone={netProfit >= 0 ? 'accent' : 'warning'}
         />
         <StatCard label="Owner payouts" value={formatCurrency(ownerPayouts, currency)} icon={FileText} />
-      </div>
+      </section>
 
-      <div className="stat-grid dense">
+      <section className="stat-grid dense">
         <StatCard label="Cleaning costs" value={formatCurrency(cleaningCosts, currency)} icon={CalendarCheck} />
         <StatCard label="Maintenance costs" value={formatCurrency(maintenanceCosts, currency)} icon={Wrench} />
         <StatCard label="Taxes / platform fees" value={formatCurrency(taxesFees, currency)} icon={Receipt} />
         <StatCard label="Cleaning fees collected" value={formatCurrency(cleaningFees, currency)} icon={ClipboardList} />
-      </div>
+      </section>
 
-      <section className="card">
-        <div className="card-header">
-          <div>
-            <h3>Finance exports</h3>
-            <p>Export actions are placeholders for the MVP until PDF/CSV generation is wired.</p>
-          </div>
-
-          <div className="action-row">
-            <button type="button">
-              <Download size={16} />
-              Export CSV
-            </button>
-            <button type="button">
-              <Download size={16} />
-              Export PDF
-            </button>
-          </div>
+      <section className="card accountant-dashboard-toolbar">
+        <div>
+          <h3>Finance exports</h3>
+          <p>Export property finance and transaction records as CSV for bookkeeping review.</p>
         </div>
 
-        <div className="helper">
-          Export buttons are intentionally non-destructive placeholders. Next phase should connect
-          them to report generation and CSV/PDF download logic.
+        <div className="accountant-dashboard-toolbar-actions">
+          <button
+            type="button"
+            onClick={() => downloadCsv('propflow-finance-summary.csv', buildFinanceCsvRows(propertyRows))}
+            disabled={!propertyRows.length}
+            data-skip-create-action="true"
+          >
+            <Download size={16} />
+            Finance CSV
+          </button>
+
+          <button
+            type="button"
+            onClick={() => downloadCsv('propflow-transactions.csv', buildTransactionCsvRows(recentTransactions))}
+            disabled={!recentTransactions.length}
+            data-skip-create-action="true"
+          >
+            <Download size={16} />
+            Transaction CSV
+          </button>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="accountant-dashboard-filters">
+          <label className="accountant-dashboard-search">
+            <Search size={16} />
+            <input
+              value={filters.query}
+              onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value }))}
+              placeholder="Search property, transaction, status, date, or currency..."
+              aria-label="Search finance records"
+            />
+
+            {filters.query && (
+              <button
+                type="button"
+                className="search-clear"
+                onClick={() => setFilters((current) => ({ ...current, query: '' }))}
+                aria-label="Clear finance search"
+                data-skip-create-action="true"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </label>
+
+          <label>
+            Start
+            <input
+              type="date"
+              value={filters.start}
+              onChange={(event) => setFilters((current) => ({ ...current, start: event.target.value }))}
+            />
+          </label>
+
+          <label>
+            End
+            <input
+              type="date"
+              value={filters.end}
+              onChange={(event) => setFilters((current) => ({ ...current, end: event.target.value }))}
+            />
+          </label>
+
+          <label>
+            Transaction type
+            <select
+              value={filters.transactionType}
+              onChange={(event) =>
+                setFilters((current) => ({ ...current, transactionType: event.target.value }))
+              }
+            >
+              <option value="all">All transaction types</option>
+              {transactionTypes.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <button type="button" onClick={clearFilters} data-skip-create-action="true">
+            Clear filters
+          </button>
         </div>
       </section>
 
@@ -230,7 +510,7 @@ export function AccountantDashboardPage() {
               <h3>Property finance summary</h3>
               <p>Revenue, expenses, net profit, owner payout, and maintenance exposure by property.</p>
             </div>
-            <Building2 size={20} />
+            <Building2 size={20} className="muted" />
           </div>
 
           <DataTable
@@ -265,46 +545,70 @@ export function AccountantDashboardPage() {
                 render: (row) => formatCurrency(row.ownerPayout, row.currency),
               },
               {
+                key: 'cleaningCosts',
+                label: 'Cleaning costs',
+                render: (row) => formatCurrency(row.cleaningCosts, row.currency),
+              },
+              {
+                key: 'maintenanceCosts',
+                label: 'Maintenance costs',
+                render: (row) => formatCurrency(row.maintenanceCosts, row.currency),
+              },
+              {
                 key: 'openMaintenance',
                 label: 'Open repairs',
+                render: (row) =>
+                  row.openMaintenance ? (
+                    <StatusBadge tone="warning">{row.openMaintenance} open</StatusBadge>
+                  ) : (
+                    <StatusBadge tone="success">clear</StatusBadge>
+                  ),
               },
             ]}
           />
         </section>
       ) : (
         <EmptyState
-          title="No property finance records yet."
+          eyebrow="Finance"
+          icon={FileSpreadsheet}
+          title="No property finance records yet"
           description="Property finance summaries will appear once properties, bookings, cleaning tasks, and maintenance records exist."
         />
       )}
 
-      <div className="panel-grid two">
+      <section className="panel-grid two">
         <section className="card">
           <div className="card-header">
             <div>
               <h3>Recent finance activity</h3>
               <p>Revenue and cost records pulled from bookings, cleaning, and maintenance.</p>
             </div>
-            <Receipt size={20} />
+            <Receipt size={20} className="muted" />
           </div>
 
           {recentTransactions.length ? (
-            recentTransactions.map((transaction) => (
-              <div className="list-row" key={transaction.id}>
+            recentTransactions.slice(0, 10).map((transaction) => (
+              <div className="list-row accountant-transaction-row" key={transaction.id}>
                 <span>
-                  {transaction.type}
+                  <strong>{transaction.type}</strong>
                   <small>
-                    {transaction.property} · {transaction.date}
+                    {transaction.property} · {formatDate(transaction.date, transaction.date || '—')}
                   </small>
                 </span>
+
                 <span>
-                  <strong>{formatCurrency(transaction.amount, currency)}</strong>
-                  <StatusBadge>{transaction.status}</StatusBadge>
+                  <strong>{formatCurrency(transaction.amount, transaction.currency || currency)}</strong>
+                  <StatusBadge tone={statusTone(transaction.status)}>{normalizeLabel(transaction.status)}</StatusBadge>
                 </span>
               </div>
             ))
           ) : (
-            <p>No finance activity yet.</p>
+            <EmptyState
+              compact
+              icon={Receipt}
+              title="No finance activity yet"
+              description="Booking revenue and cost activity will appear here."
+            />
           )}
         </section>
 
@@ -314,24 +618,29 @@ export function AccountantDashboardPage() {
               <h3>Owner reports</h3>
               <p>Owner report records available to finance users.</p>
             </div>
-            <FileText size={20} />
+            <FileText size={20} className="muted" />
           </div>
 
           {reports.length ? (
             reports.slice(0, 8).map((report) => (
               <div className="list-row" key={report.id}>
                 <span>
-                  {report.title || 'Owner report'}
-                  <small>{report.period || report.created_at || 'Report period not set'}</small>
+                  <strong>{report.title || 'Owner report'}</strong>
+                  <small>{report.period || formatDate(report.created_at, 'Report period not set')}</small>
                 </span>
-                <StatusBadge>{report.status || 'ready'}</StatusBadge>
+                <StatusBadge tone={statusTone(report.status || 'ready')}>{report.status || 'ready'}</StatusBadge>
               </div>
             ))
           ) : (
-            <p>No owner reports generated yet.</p>
+            <EmptyState
+              compact
+              icon={FileText}
+              title="No owner reports generated"
+              description="Owner reports will appear here after report generation is connected."
+            />
           )}
         </section>
-      </div>
+      </section>
     </AppLayout>
   );
 }
