@@ -1,0 +1,91 @@
+/* PropFlow upload/file UI safety
+   Scope: safe placeholder/private-storage messaging only.
+   No Supabase Storage implementation, schema changes, RLS changes, fake files, or public URLs.
+*/
+
+.upload-safety-notice {
+  border-color: rgba(37, 99, 235, 0.18);
+  background:
+    linear-gradient(180deg, rgba(219, 234, 254, 0.26), rgba(255, 255, 255, 0.96)),
+    var(--surface);
+}
+
+.upload-safety-grid,
+.upload-placeholder-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.upload-placeholder-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 12px;
+}
+
+.upload-safety-card,
+.upload-placeholder-card {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.upload-safety-card svg,
+.upload-placeholder-card svg {
+  color: var(--info);
+}
+
+.upload-placeholder-card.restricted svg {
+  color: var(--error);
+}
+
+.upload-safety-card span,
+.upload-placeholder-card span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.upload-safety-card strong,
+.upload-placeholder-card strong,
+.upload-safety-card small,
+.upload-placeholder-card small {
+  overflow-wrap: anywhere;
+}
+
+.upload-safety-helper {
+  margin-top: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.upload-button[disabled],
+button.upload-button:disabled,
+.file-upload-button:disabled {
+  cursor: not-allowed;
+}
+
+@media (max-width: 960px) {
+  .upload-safety-grid,
+  .upload-placeholder-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .upload-safety-card,
+  .upload-placeholder-card {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+
+  .upload-safety-card .status-badge,
+  .upload-placeholder-card .status-badge {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
