@@ -67,7 +67,7 @@ const ownerNav = [
       ['/owner-dashboard', 'Owner Dashboard', Home],
       ['/properties', 'Assigned Properties', Building2],
       ['/reports', 'Reports', BarChart3],
-      ['/maintenance', 'Maintenance Updates', Wrench],
+      ['/owner-dashboard?section=maintenance', 'Maintenance Updates', Wrench],
     ],
   },
   {
@@ -165,12 +165,18 @@ function getSidebarNav(currentUser) {
 
 function normalizePath(pathname) {
   if (!pathname) return '/';
-  return pathname === '/' ? '/' : pathname.replace(/\/+$/, '') || '/';
+
+  const pathOnly = String(pathname).split(/[?#]/)[0];
+  return pathOnly === '/' ? '/' : pathOnly.replace(/\/+$/, '') || '/';
 }
 
 function isActivePath(currentPath, href) {
   const path = normalizePath(currentPath);
   const cleanHref = normalizePath(href);
+
+  if (href.includes('?section=')) {
+    return false;
+  }
 
   if (cleanHref === '/dashboard') {
     return path === '/dashboard';
