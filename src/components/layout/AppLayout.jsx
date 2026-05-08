@@ -6,7 +6,7 @@ import { Sidebar } from './Sidebar.jsx';
 import { TopBar } from './TopBar.jsx';
 
 const sidebarStorageKey = 'propflow.sidebarCollapsed';
-const setupNoticePaths = new Set(['/admin', '/settings', '/billing', '/notification-settings']);
+const setupNoticePaths = new Set(['/admin', '/settings', '/billing', '/notifications', '/notification-settings']);
 
 function getInitialCollapsedState() {
   if (typeof window === 'undefined') return false;

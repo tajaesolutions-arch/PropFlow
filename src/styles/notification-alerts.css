@@ -1,0 +1,93 @@
+/* PropFlow notification UI polish
+   Scope: in-app notification visuals only.
+   No provider integrations, schema changes, RLS changes, fake data, or notification writes.
+*/
+
+.topbar-notification-btn {
+  position: relative;
+}
+
+.topbar-notification-btn.has-alerts {
+  border-color: rgba(217, 119, 6, 0.36);
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.notification-count {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  min-width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 5px;
+  border: 2px solid var(--bg);
+  border-radius: 999px;
+  background: var(--error);
+  color: #FFFFFF;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.notification-row {
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.notification-row.unread {
+  border-color: rgba(217, 119, 6, 0.3);
+  background:
+    linear-gradient(90deg, rgba(254, 243, 199, 0.32), rgba(255, 255, 255, 0.96)),
+    var(--surface);
+}
+
+.notification-row.unread .notification-row-copy h3::after {
+  content: 'New';
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.notification-provider-summary span {
+  min-width: 0;
+}
+
+.notification-category-grid span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .notification-row {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .notification-row-status {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+
+  .notifications-toolbar,
+  .notifications-toolbar-actions,
+  .notifications-filters {
+    align-items: stretch;
+  }
+
+  .notifications-toolbar-actions,
+  .notifications-filters {
+    width: 100%;
+  }
+}
