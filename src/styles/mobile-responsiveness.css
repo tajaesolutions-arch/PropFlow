@@ -1,0 +1,272 @@
+/* PropFlow mobile responsiveness polish
+   Scope: CSS-only overrides for small screens.
+   No business logic, data flow, route, Supabase, or RLS changes.
+*/
+
+html,
+body,
+#root {
+  min-width: 0;
+}
+
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+}
+
+@media (max-width: 960px) {
+  .app-shell {
+    display: block;
+  }
+
+  .main,
+  .main-expanded {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .sidebar {
+    width: min(86vw, 320px);
+    transform: translateX(-105%);
+    z-index: 40;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .sidebar.collapsed {
+    width: min(86vw, 320px);
+  }
+
+  .sidebar.collapsed span,
+  .sidebar.collapsed .nav-label,
+  .sidebar.collapsed .brand span,
+  .sidebar.collapsed .brand-button span {
+    display: inline;
+  }
+
+  .sidebar.collapsed button {
+    justify-content: flex-start;
+    padding-left: 11px;
+    padding-right: 11px;
+  }
+
+  .mobile-menu,
+  .mobile-close {
+    display: inline-flex;
+  }
+
+  .collapse-btn {
+    display: none !important;
+  }
+
+  .content,
+  .page-content,
+  main {
+    min-width: 0;
+  }
+
+  .dashboard-grid,
+  .panel-grid,
+  .admin-metric-grid,
+  .owner-dashboard-property-grid,
+  .cleaner-dashboard-task-grid,
+  .maintenance-dashboard-job-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .stat-grid,
+  .stat-grid.dense {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .card,
+  .stat-card,
+  .modal-panel,
+  .table-wrap {
+    max-width: 100%;
+  }
+
+  .global-search-results {
+    left: 0;
+    right: 0;
+    width: auto;
+    max-height: min(420px, 58vh);
+    overflow-y: auto;
+  }
+
+  .account-dropdown,
+  .workspace-switcher-menu {
+    right: 0;
+    left: auto;
+    max-width: calc(100vw - 24px);
+  }
+
+  .modal-backdrop {
+    padding: 14px;
+    align-items: flex-start;
+    overflow-y: auto;
+  }
+
+  .modal-panel {
+    width: min(100%, 720px);
+    max-height: none;
+    margin: 10px auto;
+  }
+
+  .modal-body,
+  .modal-form {
+    min-width: 0;
+  }
+
+  .form-grid,
+  .filters-grid,
+  .filter-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    min-height: auto;
+  }
+
+  .topbar-title h1,
+  .topbar h1 {
+    max-width: 100%;
+  }
+
+  .stat-grid,
+  .stat-grid.dense {
+    grid-template-columns: 1fr;
+  }
+
+  .card-header,
+  .page-header,
+  .section-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .card-header > div,
+  .page-header > div,
+  .section-header > div {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .card-header button,
+  .page-header button,
+  .section-header button,
+  .empty-action button {
+    width: 100%;
+  }
+
+  .empty-action {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .data-table {
+    min-width: 640px;
+  }
+
+  .compact-table {
+    min-width: 520px;
+  }
+
+  .modal-panel {
+    border-radius: 18px;
+  }
+
+  .modal-header {
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .modal-header .icon-btn {
+    flex: 0 0 auto;
+  }
+
+  .modal-actions,
+  .cleaner-dashboard-actions,
+  .maintenance-dashboard-actions,
+  .cleaner-dashboard-secondary-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .modal-actions button,
+  .cleaner-dashboard-actions button,
+  .maintenance-dashboard-actions button,
+  .cleaner-dashboard-secondary-actions button,
+  .upload-button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  body {
+    font-size: 13px;
+  }
+
+  .topbar {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .content,
+  .app-content,
+  .page-content {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  .card,
+  .stat-card,
+  .empty-state,
+  .table-empty-state {
+    border-radius: 14px;
+  }
+
+  .global-search-results {
+    position: fixed;
+    top: 112px;
+    left: 12px;
+    right: 12px;
+    max-height: 56vh;
+    z-index: 30;
+  }
+
+  .account-dropdown {
+    position: fixed;
+    top: 62px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+  }
+
+  .topbar-filter {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .modal-backdrop {
+    padding: 10px;
+  }
+
+  .modal-panel {
+    width: 100%;
+    margin: 6px 0;
+  }
+}
