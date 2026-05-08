@@ -1,8 +1,8 @@
 import React from 'react';
 import { AlertTriangle, CheckCircle2, CreditCard, Mail, MessageCircle, ShieldCheck } from 'lucide-react';
 
-import { useApp } from '../lib/AppContext.jsx';
 import { StatusBadge } from './StatusBadge.jsx';
+import { isSupabaseConfigured } from '../lib/supabase.js';
 
 function getEnvValue(key) {
   return import.meta.env?.[key]?.trim?.() || '';
@@ -35,8 +35,6 @@ function ProviderRow({ icon: Icon, name, status, description, requiredKeys }) {
 }
 
 export function EnvironmentSetupNotice({ compact = false }) {
-  const { isSupabaseConfigured } = useApp();
-
   const providers = [
     {
       id: 'supabase',
