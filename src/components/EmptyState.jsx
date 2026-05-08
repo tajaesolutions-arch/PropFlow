@@ -3,10 +3,12 @@ import {
   Building2,
   CalendarPlus,
   ClipboardCheck,
+  DollarSign,
   FileText,
   Inbox,
   Plus,
   UserPlus,
+  Users,
   Wrench,
 } from 'lucide-react';
 
@@ -30,8 +32,8 @@ const smartActionRules = [
     className: 'primary',
   },
   {
-    keywords: ['maintenance', 'work order', 'repair', 'repairs', 'issue', 'issues'],
-    label: 'Add Work Order',
+    keywords: ['maintenance', 'work order', 'work orders', 'repair', 'repairs', 'issue', 'issues'],
+    label: 'Add Maintenance Work Order',
     icon: Wrench,
     className: 'primary',
   },
@@ -48,9 +50,21 @@ const smartActionRules = [
     className: 'primary',
   },
   {
-    keywords: ['report', 'reports', 'export', 'exports'],
+    keywords: ['expense', 'expenses', 'cost', 'costs', 'receipt', 'receipts', 'finance'],
+    label: 'Add Expense',
+    icon: DollarSign,
+    className: 'primary',
+  },
+  {
+    keywords: ['report', 'reports', 'export', 'exports', 'owner report'],
     label: 'Add Report',
     icon: FileText,
+    className: 'primary',
+  },
+  {
+    keywords: ['team', 'member', 'members', 'invite', 'invites', 'staff', 'user', 'users'],
+    label: 'Invite Team Member',
+    icon: Users,
     className: 'primary',
   },
 ];
@@ -92,7 +106,11 @@ function SmartActionButton({ action, index }) {
   const Icon = action.icon || Plus;
 
   return (
-    <button type="button" className={index === 0 ? action.className || 'primary' : 'secondary'}>
+    <button
+      type="button"
+      className={index === 0 ? action.className || 'primary' : 'secondary'}
+      aria-label={action.label}
+    >
       <Icon size={16} />
       {action.label}
     </button>
