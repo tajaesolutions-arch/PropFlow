@@ -4235,3 +4235,75 @@ label {
     display: grid;
   }
 }
+/* PropFlow Admin dashboard polish */
+
+.admin-notice-card {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.admin-metric-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.admin-metric-icon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 14px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.admin-metric-card span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.admin-metric-card strong {
+  color: var(--text);
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: -0.05em;
+}
+
+.admin-metric-card small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.admin-danger-zone {
+  border-color: rgba(220, 38, 38, 0.25);
+}
+
+.admin-control-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 1200px) {
+  .admin-metric-grid,
+  .admin-control-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .admin-metric-grid,
+  .admin-control-grid {
+    grid-template-columns: 1fr;
+  }
+}
