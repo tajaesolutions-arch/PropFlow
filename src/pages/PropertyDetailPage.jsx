@@ -8,10 +8,12 @@ import {
   ClipboardCheck,
   DollarSign,
   Edit3,
+  Eye,
   FileText,
   FileUp,
   Home,
   Image,
+  MapPin,
   RotateCcw,
   Wrench,
   X,
@@ -34,7 +36,7 @@ import {
 } from '../data/constants.js';
 import { navigate } from '../routes/AppRouter.jsx';
 
-const completedStatuses = new Set(['completed', 'cancelled']);
+const closedStatuses = new Set(['completed', 'cancelled', 'guest_ready']);
 const cancelledStatuses = new Set(['cancelled', 'void', 'refunded']);
 
 function cleanNumber(value) {
@@ -81,6 +83,29 @@ function getSquareFeet(property) {
   return property.square_feet ?? property.squareFeet;
 }
 
+function getOwnerId(property) {
+  return property.assignedOwnerId || property.assigned_owner_id || property.ownerId || property.owner_id || '';
+}
+
+function getOwnerName(property, contacts = [], members = []) {
+  const ownerId = getOwnerId(property);
+
+  if (!ownerId) return 'No owner assigned';
+
+  const contact = contacts.find((item) => item.id === ownerId);
+  const member = members.find((item) => item.user_id === ownerId || item.userId === ownerId || item.id === ownerId);
+
+  return (
+    contact?.full_name ||
+    contact?.fullName ||
+    contact?.name ||
+    member?.profile?.full_name ||
+    member?.profiles?.full_name ||
+    member?.email ||
+    ownerId
+  );
+}
+
 function getPropertyRate(property) {
   const rentalType = getRentalType(property);
   const currency = property.currency || 'USD';
@@ -105,12 +130,62 @@ function getBookingAmount(booking) {
   return toNumber(booking.totalAmount || booking.total_amount || booking.amount || booking.bookingAmount);
 }
 
+function getOwnerPayout(booking) {
+  return toNumber(booking.ownerPayout || booking.owner_payout);
+}
+
 function getCleaningCost(task) {
-  return toNumber(task.actualCost || task.actual_cost || task.estimatedCost || task.estimated_cost || task.cleaningFee || task.cleaning_fee);
+  return toNumber(
+    task.actualCost ||
+      task.actual_cost ||
+      task.estimatedCost ||
+      task.estimated_cost ||
+      task.cleaningFee ||
+      task.cleaning_fee,
+  );
 }
 
 function getMaintenanceCost(workOrder) {
-  return toNumber(workOrder.actualCost || workOrder.actual_cost || workOrder.estimatedCost || workOrder.estimated_cost);
+  return toNumber(
+    workOrder.actualCost ||
+      workOrder.actual_cost ||
+      workOrder.estimatedCost ||
+      workOrder.estimated_cost,
+  );
+}
+
+function getBookingCheckIn(booking) {
+  return booking.checkIn || booking.check_in || '';
+}
+
+function getBookingCheckOut(booking) {
+  return booking.checkOut || booking.check_out || '';
+}
+
+function getCleaningDate(task) {
+  return task.scheduledFor || task.scheduled_for || task.created_at || '';
+}
+
+function getMaintenanceDate(workOrder) {
+  return workOrder.due || workOrder.due_date || workOrder.created_at || '';
+}
+
+function getFileName(file) {
+  return file.file_name || file.filename || file.name || file.path || 'Workspace file';
+}
+
+function getFileCategory(file) {
+  return file.category || file.file_category || 'file';
+}
+
+function statusTone(value) {
+  const status = String(value || '').toLowerCase();
+
+  if (['archived', 'cancelled', 'urgent', 'missed', 'overdue'].includes(status)) return 'error';
+  if (['pending', 'scheduled', 'reported', 'in_progress', 'waiting_parts', 'needs_inspection'].includes(status)) return 'warning';
+  if (['active', 'confirmed', 'completed', 'guest_ready', 'paid'].includes(status)) return 'success';
+
+  return 'info';
 }
 
 function normalizePropertyForm(property) {
@@ -189,6 +264,18 @@ function PropertyEditModal({ property, onSubmit, onCancel, submitting, submitErr
     setErrors([]);
   }, [property.id]);
 
+  React.useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape' && !submitting) onCancel();
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [onCancel, submitting]);
+
   const set = (key) => (event) => {
     setForm((value) => ({ ...value, [key]: event.target.value }));
   };
@@ -218,67 +305,148 @@ function PropertyEditModal({ property, onSubmit, onCancel, submitting, submitErr
             <h3 id="property-edit-title">Edit property</h3>
             <p>Update the core property profile details used across PropFlow operations.</p>
           </div>
-          <button type="button" className="icon-btn" aria-label="Close edit form" onClick={onCancel} disabled={submitting}>
+
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Close edit form"
+            onClick={onCancel}
+            disabled={submitting}
+            data-skip-create-action="true"
+          >
             <X size={18} />
           </button>
         </header>
 
         <form className="modal-form" onSubmit={submit} noValidate>
           <div className="modal-body">
-            {submitError && <div className="modal-error" role="alert">{submitError}</div>}
+            {submitError && (
+              <div className="modal-error" role="alert">
+                {submitError}
+              </div>
+            )}
+
             {errors.length > 0 && (
               <div className="modal-error" role="alert">
                 <strong>Please fix these fields:</strong>
-                <ul>{errors.map((error) => <li key={error}>{error}</li>)}</ul>
+                <ul>
+                  {errors.map((error) => (
+                    <li key={error}>{error}</li>
+                  ))}
+                </ul>
               </div>
             )}
 
             <div className="form-grid">
-              <label>Property name<input value={form.name} onChange={set('name')} required /></label>
-              <label>Address/location<input value={form.address} onChange={set('address')} required /></label>
-              <label>City<input value={form.city} onChange={set('city')} /></label>
-              <label>State / parish<input value={form.state} onChange={set('state')} /></label>
-              <label>Country<input value={form.country} onChange={set('country')} required /></label>
+              <label>
+                Property name
+                <input value={form.name} onChange={set('name')} required />
+              </label>
+
+              <label>
+                Address/location
+                <input value={form.address} onChange={set('address')} required />
+              </label>
+
+              <label>
+                City
+                <input value={form.city} onChange={set('city')} />
+              </label>
+
+              <label>
+                State / parish
+                <input value={form.state} onChange={set('state')} />
+              </label>
+
+              <label>
+                Country
+                <input value={form.country} onChange={set('country')} required />
+              </label>
+
               <label>
                 Property type
                 <select value={form.property_type} onChange={set('property_type')} required>
-                  {propertyTypes.map((item) => <option key={item} value={item}>{formatLabel(item)}</option>)}
+                  {propertyTypes.map((item) => (
+                    <option key={item} value={item}>
+                      {formatLabel(item)}
+                    </option>
+                  ))}
                 </select>
               </label>
+
               <label>
                 Rental type
                 <select value={form.rental_type} onChange={set('rental_type')} required>
-                  {rentalTypes.map((item) => <option key={item} value={item}>{formatLabel(item)}</option>)}
+                  {rentalTypes.map((item) => (
+                    <option key={item} value={item}>
+                      {formatLabel(item)}
+                    </option>
+                  ))}
                 </select>
               </label>
+
               <label>
                 Status
                 <select value={form.status} onChange={set('status')} required>
-                  {propertyStatuses.map((item) => <option key={item} value={item}>{formatLabel(item)}</option>)}
+                  {propertyStatuses.map((item) => (
+                    <option key={item} value={item}>
+                      {formatLabel(item)}
+                    </option>
+                  ))}
                 </select>
               </label>
+
               <label>
                 Currency
                 <select value={form.currency} onChange={set('currency')} required>
-                  {currencies.map((currency) => <option key={currency} value={currency}>{currency}</option>)}
+                  {currencies.map((currency) => (
+                    <option key={currency} value={currency}>
+                      {currency}
+                    </option>
+                  ))}
                 </select>
               </label>
-              <label>Nightly rate<input value={form.nightly_rate} onChange={set('nightly_rate')} type="number" min="0" step="0.01" /></label>
-              <label>Monthly rent<input value={form.monthly_rent} onChange={set('monthly_rent')} type="number" min="0" step="0.01" /></label>
-              <label>Bedrooms<input value={form.bedrooms} onChange={set('bedrooms')} type="number" min="0" /></label>
-              <label>Bathrooms<input value={form.bathrooms} onChange={set('bathrooms')} type="number" min="0" step="0.5" /></label>
-              <label>Square footage<input value={form.square_feet} onChange={set('square_feet')} type="number" min="0" /></label>
-            </div>
 
-            <label className="full-width">
-              Notes
-              <textarea value={form.notes} onChange={set('notes')} rows={3} />
-            </label>
+              <label>
+                Nightly rate
+                <input value={form.nightly_rate} onChange={set('nightly_rate')} type="number" min="0" step="0.01" />
+              </label>
+
+              <label>
+                Monthly rent
+                <input value={form.monthly_rent} onChange={set('monthly_rent')} type="number" min="0" step="0.01" />
+              </label>
+
+              <label>
+                Bedrooms
+                <input value={form.bedrooms} onChange={set('bedrooms')} type="number" min="0" />
+              </label>
+
+              <label>
+                Bathrooms
+                <input value={form.bathrooms} onChange={set('bathrooms')} type="number" min="0" step="0.5" />
+              </label>
+
+              <label>
+                Square footage
+                <input value={form.square_feet} onChange={set('square_feet')} type="number" min="0" />
+              </label>
+
+              <label className="full">
+                Notes
+                <textarea value={form.notes} onChange={set('notes')} rows={3} />
+              </label>
+            </div>
           </div>
 
           <footer className="modal-actions">
-            <button type="button" onClick={onCancel} disabled={submitting}>Cancel</button>
-            <button className="primary" disabled={submitting}>{submitting ? 'Saving...' : 'Save changes'}</button>
+            <button type="button" onClick={onCancel} disabled={submitting} data-skip-create-action="true">
+              Cancel
+            </button>
+
+            <button className="primary" disabled={submitting} data-skip-create-action="true">
+              {submitting ? 'Saving…' : 'Save changes'}
+            </button>
           </footer>
         </form>
       </section>
@@ -305,12 +473,18 @@ export function PropertyDetailPage({ propertyId }) {
 
   if (!property) {
     return (
-      <AppLayout title="Property">
-        <section className="card">
-          <h3>Property not found</h3>
-          <p>This property does not exist, was removed, or is not available for your role.</p>
-          <button type="button" onClick={() => navigate('/properties')}>Back to properties</button>
-        </section>
+      <AppLayout title="Property" subtitle="Property profile">
+        <EmptyState
+          eyebrow="Property"
+          icon={Building2}
+          title="Property not found"
+          description="This property does not exist, was removed, or is not available for your role."
+          action={
+            <button type="button" onClick={() => navigate('/properties')} data-skip-create-action="true">
+              Back to properties
+            </button>
+          }
+        />
       </AppLayout>
     );
   }
@@ -321,15 +495,23 @@ export function PropertyDetailPage({ propertyId }) {
   const bookings = (data.bookings || []).filter((booking) => getPropertyId(booking) === property.id);
   const cleaning = (data.cleaningTasks || []).filter((task) => getPropertyId(task) === property.id);
   const maintenance = (data.maintenanceWorkOrders || []).filter((workOrder) => getPropertyId(workOrder) === property.id);
-  const files = (data.fileUploads || []).filter((file) => getPropertyId(file) === property.id || file.property_id === property.id);
+  const files = (data.fileUploads || data.files || []).filter(
+    (file) => getPropertyId(file) === property.id || file.property_id === property.id || file.propertyId === property.id,
+  );
 
   const activeBookings = bookings.filter((booking) => !cancelledStatuses.has(booking.status));
-  const openCleaning = cleaning.filter((task) => !completedStatuses.has(task.status));
-  const openMaintenance = maintenance.filter((workOrder) => !completedStatuses.has(workOrder.status));
+  const openCleaning = cleaning.filter((task) => !closedStatuses.has(task.status));
+  const openMaintenance = maintenance.filter((workOrder) => !closedStatuses.has(workOrder.status));
+
   const grossRevenue = activeBookings.reduce((total, booking) => total + getBookingAmount(booking), 0);
+  const ownerPayout = activeBookings.reduce((total, booking) => total + getOwnerPayout(booking), 0);
   const cleaningCost = cleaning.reduce((total, task) => total + getCleaningCost(task), 0);
   const maintenanceCost = maintenance.reduce((total, workOrder) => total + getMaintenanceCost(workOrder), 0);
   const netProfit = grossRevenue - cleaningCost - maintenanceCost;
+
+  const clearMessageSoon = () => {
+    window.setTimeout(() => setMessage(''), 3000);
+  };
 
   const save = async (payload) => {
     setSaving(true);
@@ -340,247 +522,431 @@ export function PropertyDetailPage({ propertyId }) {
       await updateProperty(property.id, payload);
       setEditing(false);
       setMessage('Property updated.');
+      clearMessageSoon();
     } catch (error) {
-      setSubmitError(error.message || 'Could not update property.');
+      setSubmitError(error.message || 'Property could not be updated.');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleArchiveToggle = async () => {
+  const toggleArchive = async () => {
+    if (!canEdit) return;
+
     setSaving(true);
     setMessage('');
-    setSubmitError('');
 
     try {
-      await archiveProperty(property.id, property.status !== 'archived');
-      setMessage(property.status === 'archived' ? 'Property restored.' : 'Property archived.');
+      const shouldArchive = property.status !== 'archived';
+      await archiveProperty(property.id, shouldArchive);
+      setMessage(shouldArchive ? 'Property archived.' : 'Property restored.');
+      clearMessageSoon();
     } catch (error) {
-      setSubmitError(error.message || 'Could not update property status.');
+      setMessage(error.message || 'Property archive status could not be changed.');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleUpload = async (event) => {
+  const uploadFile = async (event) => {
     const file = event.target.files?.[0];
+    event.currentTarget.value = '';
 
     if (!file) return;
 
+    if (!canEdit) {
+      setMessage('You do not have permission to upload files for this property.');
+      return;
+    }
+
     setUploading(true);
     setMessage('');
-    setSubmitError('');
 
     try {
       await uploadWorkspaceFile({
         file,
-        category: 'property_photo',
+        category: file.type?.startsWith('image/') ? 'property_photo' : 'property_document',
         relatedTable: 'properties',
         relatedId: property.id,
         propertyId: property.id,
       });
 
       setMessage('File uploaded to private workspace storage.');
+      clearMessageSoon();
     } catch (error) {
-      setSubmitError(error.message || 'File upload failed.');
+      setMessage(error.message || 'File upload failed.');
     } finally {
       setUploading(false);
-      event.target.value = '';
     }
   };
 
   return (
-    <AppLayout title={property.name} subtitle="Property profile, operations, files, and activity">
-      <div className="detail-hero card">
-        <div>
-          <p className="eyebrow">{formatLabel(getPropertyType(property))}</p>
-          <h2>{property.name}</h2>
-          <p>{getPropertyAddress(property) || 'Address not added'}</p>
+    <AppLayout
+      title={property.name || 'Property profile'}
+      subtitle={getPropertyAddress(property) || 'Property profile and operational records'}
+    >
+      {message && (
+        <section
+          className={
+            message.toLowerCase().includes('failed') || message.toLowerCase().includes('could not')
+              ? 'helper error-helper'
+              : 'helper'
+          }
+          role="status"
+        >
+          {message}
+        </section>
+      )}
 
-          <div className="action-row">
-            <StatusBadge>{property.status || 'active'}</StatusBadge>
-            <StatusBadge>{formatLabel(getRentalType(property))}</StatusBadge>
-            <StatusBadge>{propertyCurrency}</StatusBadge>
+      <section className="card property-detail-hero">
+        <div className="property-detail-hero-main">
+          <div className="property-detail-icon">
+            <Building2 size={26} />
           </div>
 
-          {property.status === 'archived' && (
-            <p className="helper">Archived property: restore it before adding new bookings, cleaning tasks, or maintenance work.</p>
-          )}
-        </div>
-
-        <div className="photo-placeholder">
-          <Image />
-          Private photos
-        </div>
-      </div>
-
-      <div className="stat-grid dense">
-        <StatCard label="Gross revenue" value={formatCurrency(grossRevenue, propertyCurrency)} icon={DollarSign} />
-        <StatCard label="Net profit" value={formatCurrency(netProfit, propertyCurrency)} icon={FileText} tone={netProfit >= 0 ? 'accent' : 'warning'} />
-        <StatCard label="Bookings" value={bookings.length} icon={CalendarCheck} />
-        <StatCard label="Open maintenance" value={openMaintenance.length} icon={Wrench} tone={openMaintenance.length ? 'warning' : 'accent'} />
-      </div>
-
-      <div className="metadata-grid">
-        <span><BedDouble size={16} />{property.bedrooms || 0} bedrooms</span>
-        <span><Bath size={16} />{property.bathrooms || 0} bathrooms</span>
-        <span><Building2 size={16} />{getSquareFeet(property) || 0} sq ft</span>
-        <span><Home size={16} />{getPropertyRate(property)}</span>
-      </div>
-
-      <section className="card">
-        <div className="card-header">
           <div>
-            <h3>Property details</h3>
-            <p>Core profile information used across bookings, cleaning, maintenance, owners, and reports.</p>
+            <p className="eyebrow">Property profile</p>
+            <h2>{property.name || 'Unnamed property'}</h2>
+            <p>
+              <MapPin size={15} />
+              {getPropertyAddress(property) || 'No address saved'}
+            </p>
           </div>
+        </div>
+
+        <div className="property-detail-hero-actions">
+          <StatusBadge tone={statusTone(property.status || 'active')}>{property.status || 'active'}</StatusBadge>
+
           {canEdit && (
-            <button className="primary" type="button" onClick={() => setEditing(true)}>
-              <Edit3 size={16} /> Edit property
-            </button>
+            <>
+              <button type="button" onClick={() => setEditing(true)} data-skip-create-action="true">
+                <Edit3 size={16} />
+                Edit
+              </button>
+
+              <button type="button" onClick={toggleArchive} disabled={saving} data-skip-create-action="true">
+                {property.status === 'archived' ? <RotateCcw size={16} /> : <Archive size={16} />}
+                {property.status === 'archived' ? 'Restore' : 'Archive'}
+              </button>
+            </>
           )}
         </div>
-
-        <div className="metadata-grid">
-          <span><strong>Address:</strong> {property.address || 'Not set'}</span>
-          <span><strong>City:</strong> {property.city || 'Not set'}</span>
-          <span><strong>State / parish:</strong> {property.state || 'Not set'}</span>
-          <span><strong>Country:</strong> {property.country || 'Not set'}</span>
-          <span><strong>Property type:</strong> {formatLabel(getPropertyType(property))}</span>
-          <span><strong>Rental type:</strong> {formatLabel(getRentalType(property))}</span>
-          <span><strong>Nightly rate:</strong> {getNightlyRate(property) ? formatCurrency(getNightlyRate(property), propertyCurrency) : 'Not set'}</span>
-          <span><strong>Monthly rent:</strong> {getMonthlyRent(property) ? formatCurrency(getMonthlyRent(property), propertyCurrency) : 'Not set'}</span>
-        </div>
-
-        <div className="helper">
-          <strong>Notes:</strong> {property.notes || 'No property notes added yet.'}
-        </div>
-
-        {(message || submitError) && <p className={submitError ? 'helper error-helper' : 'helper'}>{submitError || message}</p>}
       </section>
 
-      {canEdit && (
+      <section className="stat-grid dense">
+        <StatCard label="Gross revenue" value={formatCurrency(grossRevenue, propertyCurrency)} icon={DollarSign} />
+        <StatCard label="Net profit" value={formatCurrency(netProfit, propertyCurrency)} icon={DollarSign} />
+        <StatCard label="Open cleaning" value={openCleaning.length} icon={ClipboardCheck} />
+        <StatCard label="Open maintenance" value={openMaintenance.length} icon={Wrench} tone={openMaintenance.length ? 'warning' : 'accent'} />
+      </section>
+
+      <section className="property-detail-grid">
+        <section className="card property-detail-summary-card">
+          <div className="card-header">
+            <div>
+              <h3>Property details</h3>
+              <p>Core profile information used across bookings, reporting, cleaning, and maintenance.</p>
+            </div>
+            <Home size={20} className="muted" />
+          </div>
+
+          <div className="property-detail-metadata">
+            <span>
+              <Building2 size={16} />
+              <strong>{formatLabel(getPropertyType(property))}</strong>
+              <small>Property type</small>
+            </span>
+
+            <span>
+              <CalendarCheck size={16} />
+              <strong>{formatLabel(getRentalType(property))}</strong>
+              <small>Rental type</small>
+            </span>
+
+            <span>
+              <DollarSign size={16} />
+              <strong>{getPropertyRate(property)}</strong>
+              <small>Rate</small>
+            </span>
+
+            <span>
+              <BedDouble size={16} />
+              <strong>{property.bedrooms ?? '—'}</strong>
+              <small>Bedrooms</small>
+            </span>
+
+            <span>
+              <Bath size={16} />
+              <strong>{property.bathrooms ?? '—'}</strong>
+              <small>Bathrooms</small>
+            </span>
+
+            <span>
+              <Home size={16} />
+              <strong>{getSquareFeet(property) || '—'}</strong>
+              <small>Square feet</small>
+            </span>
+
+            <span>
+              <DollarSign size={16} />
+              <strong>{propertyCurrency}</strong>
+              <small>Currency</small>
+            </span>
+
+            <span>
+              <UsersPlaceholder />
+              <strong>{getOwnerName(property, data.contacts || [], data.members || [])}</strong>
+              <small>Assigned owner</small>
+            </span>
+          </div>
+
+          {property.notes && (
+            <div className="property-detail-notes">
+              <strong>Notes</strong>
+              <p>{property.notes}</p>
+            </div>
+          )}
+        </section>
+
         <section className="card">
           <div className="card-header">
             <div>
-              <h3>Property actions</h3>
-              <p>Archive/restorе status or upload private property files.</p>
+              <h3>Financial snapshot</h3>
+              <p>Revenue, owner payout, expenses, and profitability for this property.</p>
             </div>
+            <DollarSign size={20} className="muted" />
           </div>
 
-          <div className="action-row">
-            <button type="button" className={property.status === 'archived' ? '' : 'danger'} onClick={handleArchiveToggle} disabled={saving}>
-              {property.status === 'archived' ? <RotateCcw size={16} /> : <Archive size={16} />}
-              {property.status === 'archived' ? 'Restore property' : 'Archive property'}
-            </button>
+          <div className="property-detail-finance-grid">
+            <span>
+              <strong>{formatCurrency(grossRevenue, propertyCurrency)}</strong>
+              <small>Gross revenue</small>
+            </span>
 
-            <label className="upload-button">
-              <FileUp size={16} />
-              {uploading ? 'Uploading...' : 'Upload private file'}
-              <input type="file" onChange={handleUpload} disabled={uploading} />
-            </label>
-          </div>
-        </section>
-      )}
+            <span>
+              <strong>{formatCurrency(ownerPayout, propertyCurrency)}</strong>
+              <small>Owner payout</small>
+            </span>
 
-      <div className="panel-grid two">
-        <section className="card">
-          <div className="card-header"><div><h3>Financial summary</h3><p>Local summary from related bookings, cleaning, and maintenance records.</p></div></div>
-          <div className="stack-list">
-            <div className="stack-item"><strong>Revenue</strong><span>{formatCurrency(grossRevenue, propertyCurrency)}</span></div>
-            <div className="stack-item"><strong>Cleaning costs</strong><span>{formatCurrency(cleaningCost, propertyCurrency)}</span></div>
-            <div className="stack-item"><strong>Maintenance costs</strong><span>{formatCurrency(maintenanceCost, propertyCurrency)}</span></div>
-            <div className="stack-item"><strong>Net profit</strong><span>{formatCurrency(netProfit, propertyCurrency)}</span></div>
-          </div>
-        </section>
+            <span>
+              <strong>{formatCurrency(cleaningCost, propertyCurrency)}</strong>
+              <small>Cleaning cost</small>
+            </span>
 
-        <section className="card">
-          <div className="card-header"><div><h3>Operations summary</h3><p>Current operational records linked to this property.</p></div></div>
-          <div className="stack-list">
-            <div className="stack-item"><strong>Active bookings</strong><StatusBadge>{activeBookings.length}</StatusBadge></div>
-            <div className="stack-item"><strong>Open cleaning</strong><StatusBadge tone={openCleaning.length ? 'warning' : 'success'}>{openCleaning.length ? 'Due' : 'Clear'}</StatusBadge></div>
-            <div className="stack-item"><strong>Open maintenance</strong><StatusBadge tone={openMaintenance.length ? 'warning' : 'success'}>{openMaintenance.length ? 'Open' : 'Clear'}</StatusBadge></div>
-            <div className="stack-item"><strong>Private files</strong><span>{files.length}</span></div>
+            <span>
+              <strong>{formatCurrency(maintenanceCost, propertyCurrency)}</strong>
+              <small>Maintenance cost</small>
+            </span>
+
+            <span>
+              <strong>{formatCurrency(netProfit, propertyCurrency)}</strong>
+              <small>Net profit</small>
+            </span>
+
+            <span>
+              <strong>{activeBookings.length}</strong>
+              <small>Active bookings</small>
+            </span>
           </div>
         </section>
-      </div>
-
-      <section className="card">
-        <div className="card-header"><div><h3>Related bookings</h3><p>{bookings.length} booking records linked to this property.</p></div></div>
-        <DataTable
-          compact
-          rows={bookings.slice(0, 8)}
-          empty="No bookings linked to this property yet."
-          columns={[
-            { key: 'guest', label: 'Guest', render: (booking) => booking.guestName || booking.guest_name || 'Guest booking' },
-            { key: 'checkIn', label: 'Check-in', render: (booking) => formatDate(booking.checkIn || booking.check_in) },
-            { key: 'checkOut', label: 'Check-out', render: (booking) => formatDate(booking.checkOut || booking.check_out) },
-            { key: 'amount', label: 'Amount', render: (booking) => formatCurrency(getBookingAmount(booking), propertyCurrency) },
-            { key: 'status', label: 'Status', render: (booking) => <StatusBadge>{booking.status || 'confirmed'}</StatusBadge> },
-          ]}
-        />
       </section>
 
-      <section className="card">
-        <div className="card-header"><div><h3>Related cleaning tasks</h3><p>{cleaning.length} cleaning records linked to this property.</p></div></div>
-        <DataTable
-          compact
-          rows={cleaning.slice(0, 8)}
-          empty="No cleaning tasks linked to this property yet."
-          columns={[
-            { key: 'scheduledFor', label: 'Scheduled', render: (task) => formatDate(task.scheduledFor || task.scheduled_for) },
-            { key: 'status', label: 'Status', render: (task) => <StatusBadge>{task.status || 'scheduled'}</StatusBadge> },
-            { key: 'notes', label: 'Notes', render: (task) => task.cleanerNotes || task.cleaner_notes || '—' },
-            { key: 'cost', label: 'Cost', render: (task) => formatCurrency(getCleaningCost(task), propertyCurrency) },
-          ]}
-        />
+      <section className="property-detail-actions-grid">
+        <button type="button" data-create-action="booking">
+          <CalendarCheck size={16} />
+          Add Booking
+        </button>
+
+        <button type="button" data-create-action="cleaning">
+          <ClipboardCheck size={16} />
+          Add Cleaning Task
+        </button>
+
+        <button type="button" data-create-action="maintenance">
+          <Wrench size={16} />
+          Add Work Order
+        </button>
+
+        <button type="button" onClick={() => navigate('/calendar')} data-skip-create-action="true">
+          <Eye size={16} />
+          View Calendar
+        </button>
+
+        {canEdit && (
+          <label className="upload-button property-detail-upload">
+            <FileUp size={16} />
+            {uploading ? 'Uploading…' : 'Upload File'}
+            <input
+              type="file"
+              accept="image/*,video/*,.pdf,.doc,.docx,.csv,.xlsx"
+              disabled={uploading}
+              onChange={uploadFile}
+            />
+          </label>
+        )}
       </section>
 
-      <section className="card">
-        <div className="card-header"><div><h3>Related maintenance work orders</h3><p>{maintenance.length} maintenance records linked to this property.</p></div></div>
-        <DataTable
-          compact
-          rows={maintenance.slice(0, 8)}
-          empty="No maintenance work orders linked to this property yet."
-          columns={[
-            { key: 'title', label: 'Issue', render: (workOrder) => workOrder.title || 'Maintenance issue' },
-            { key: 'priority', label: 'Priority', render: (workOrder) => <StatusBadge>{workOrder.priority || 'medium'}</StatusBadge> },
-            { key: 'status', label: 'Status', render: (workOrder) => <StatusBadge>{workOrder.status || 'open'}</StatusBadge> },
-            { key: 'due', label: 'Due', render: (workOrder) => formatDate(workOrder.due || workOrder.due_date) },
-            { key: 'cost', label: 'Cost', render: (workOrder) => formatCurrency(getMaintenanceCost(workOrder), propertyCurrency) },
-          ]}
-        />
-      </section>
-
-      {files.length > 0 && (
+      <section className="panel-grid two">
         <section className="card">
-          <div className="card-header"><div><h3>Private files</h3><p>{files.length} uploaded files linked to this property.</p></div></div>
-          <div className="stack-list">
-            {files.slice(0, 8).map((file) => (
-              <div className="stack-item" key={file.id || file.path}>
-                <div><strong>{file.filename || file.path || 'Uploaded file'}</strong><small>{file.category || file.mime_type || 'Private workspace file'}</small></div>
-                <StatusBadge>{file.bucket || 'private'}</StatusBadge>
-              </div>
-            ))}
+          <div className="card-header">
+            <div>
+              <h3>Bookings</h3>
+              <p>Reservation and lease records linked to this property.</p>
+            </div>
+            <CalendarCheck size={20} className="muted" />
           </div>
-        </section>
-      )}
 
-      {!bookings.length && !cleaning.length && !maintenance.length && !files.length && (
-        <EmptyState
-          title="No linked operations yet"
-          description="Bookings, cleaning tasks, maintenance work orders, and uploaded files for this property will appear here."
-          compact
-        />
-      )}
+          <DataTable
+            rows={bookings.slice(0, 8)}
+            empty="No bookings linked to this property."
+            columns={[
+              {
+                key: 'guest',
+                label: 'Guest',
+                render: (row) => row.guestName || row.guest_name || row.tenantName || row.tenant_name || 'Guest',
+              },
+              {
+                key: 'dates',
+                label: 'Dates',
+                render: (row) => `${formatDate(getBookingCheckIn(row))} → ${formatDate(getBookingCheckOut(row))}`,
+              },
+              {
+                key: 'amount',
+                label: 'Amount',
+                render: (row) => formatCurrency(getBookingAmount(row), row.currency || propertyCurrency),
+              },
+              {
+                key: 'status',
+                label: 'Status',
+                render: (row) => <StatusBadge tone={statusTone(row.status || 'confirmed')}>{row.status || 'confirmed'}</StatusBadge>,
+              },
+            ]}
+          />
+        </section>
+
+        <section className="card">
+          <div className="card-header">
+            <div>
+              <h3>Cleaning history</h3>
+              <p>Cleaning tasks, guest-ready updates, and issue reports.</p>
+            </div>
+            <ClipboardCheck size={20} className="muted" />
+          </div>
+
+          <DataTable
+            rows={cleaning.slice(0, 8)}
+            empty="No cleaning tasks linked to this property."
+            columns={[
+              {
+                key: 'scheduled',
+                label: 'Scheduled',
+                render: (row) => formatDate(getCleaningDate(row)),
+              },
+              {
+                key: 'status',
+                label: 'Status',
+                render: (row) => <StatusBadge tone={statusTone(row.status || 'scheduled')}>{row.status || 'scheduled'}</StatusBadge>,
+              },
+              {
+                key: 'issue',
+                label: 'Issue',
+                render: (row) =>
+                  row.issue_reported ? (
+                    <StatusBadge tone="warning">reported</StatusBadge>
+                  ) : (
+                    <StatusBadge tone="success">clear</StatusBadge>
+                  ),
+              },
+              {
+                key: 'notes',
+                label: 'Notes',
+                render: (row) => row.cleanerNotes || row.cleaner_notes || row.notes || '—',
+              },
+            ]}
+          />
+        </section>
+      </section>
+
+      <section className="panel-grid two">
+        <section className="card">
+          <div className="card-header">
+            <div>
+              <h3>Maintenance history</h3>
+              <p>Work orders, repair status, costs, and priority issues.</p>
+            </div>
+            <Wrench size={20} className="muted" />
+          </div>
+
+          <DataTable
+            rows={maintenance.slice(0, 8)}
+            empty="No maintenance work orders linked to this property."
+            columns={[
+              {
+                key: 'title',
+                label: 'Issue',
+                render: (row) => row.title || 'Maintenance issue',
+              },
+              {
+                key: 'due',
+                label: 'Due',
+                render: (row) => formatDate(getMaintenanceDate(row)),
+              },
+              {
+                key: 'cost',
+                label: 'Cost',
+                render: (row) => formatCurrency(getMaintenanceCost(row), propertyCurrency),
+              },
+              {
+                key: 'status',
+                label: 'Status',
+                render: (row) => <StatusBadge tone={statusTone(row.status || row.priority || 'reported')}>{row.status || row.priority || 'reported'}</StatusBadge>,
+              },
+            ]}
+          />
+        </section>
+
+        <section className="card">
+          <div className="card-header">
+            <div>
+              <h3>Files and photos</h3>
+              <p>Private property files, photos, documents, receipts, leases, and contracts.</p>
+            </div>
+            <FileText size={20} className="muted" />
+          </div>
+
+          {files.length ? (
+            <div className="property-detail-file-list">
+              {files.slice(0, 10).map((file) => (
+                <div className="list-row" key={file.id || getFileName(file)}>
+                  <span>
+                    <strong>{getFileName(file)}</strong>
+                    <small>{formatLabel(getFileCategory(file))} · {formatDate(file.created_at || file.createdAt)}</small>
+                  </span>
+
+                  <StatusBadge tone="info">private</StatusBadge>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              compact
+              icon={Image}
+              title="No property files yet"
+              description="Private property photos, leases, contracts, receipts, and documents will appear here after upload."
+            />
+          )}
+        </section>
+      </section>
 
       {editing && (
         <PropertyEditModal
           property={property}
           onSubmit={save}
           onCancel={() => {
-            setEditing(false);
-            setSubmitError('');
+            if (!saving) {
+              setEditing(false);
+              setSubmitError('');
+            }
           }}
           submitting={saving}
           submitError={submitError}
@@ -588,4 +954,8 @@ export function PropertyDetailPage({ propertyId }) {
       )}
     </AppLayout>
   );
+}
+
+function UsersPlaceholder() {
+  return <Building2 size={16} />;
 }
