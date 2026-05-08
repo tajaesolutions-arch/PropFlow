@@ -23,6 +23,7 @@ import './styles/table-list-consistency.css';
 import './styles/calendar-schedule-safety.css';
 import './styles/inventory-safety.css';
 import './styles/public-booking-safety.css';
+import './styles/owner-assignment-safety.css';
 
 const routeAliases = {
   '/accounting-dashboard': '/accountant-dashboard',
