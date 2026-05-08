@@ -6997,3 +6997,108 @@ label {
     grid-template-columns: 1fr;
   }
 }
+/* Router loading, error, and 404 states */
+
+.router-state-page {
+  padding: 28px 16px;
+  background:
+    radial-gradient(circle at top left, rgba(27, 153, 139, 0.14), transparent 34%),
+    radial-gradient(circle at top right, rgba(37, 99, 235, 0.08), transparent 28%),
+    linear-gradient(180deg, #f7f8fa 0%, #ffffff 100%);
+}
+
+.router-error-page {
+  background:
+    radial-gradient(circle at top left, rgba(220, 38, 38, 0.1), transparent 34%),
+    radial-gradient(circle at top right, rgba(217, 119, 6, 0.08), transparent 28%),
+    linear-gradient(180deg, #f7f8fa 0%, #ffffff 100%);
+}
+
+.router-state-card {
+  display: grid;
+  gap: 16px;
+}
+
+.router-state-icon {
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  border-radius: 20px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.router-state-icon.error {
+  background: rgba(220, 38, 38, 0.09);
+  color: var(--danger);
+}
+
+.router-state-icon.warning {
+  background: rgba(217, 119, 6, 0.09);
+  color: var(--warning);
+}
+
+.router-spinner {
+  animation: router-spin 0.9s linear infinite;
+}
+
+.router-state-card h1 {
+  margin-bottom: 6px;
+}
+
+.router-state-card p {
+  margin-bottom: 0;
+}
+
+.router-state-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.router-state-grid span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.router-state-grid svg {
+  color: var(--accent);
+  flex: 0 0 auto;
+}
+
+.router-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+@keyframes router-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 760px) {
+  .router-state-page {
+    padding: 18px 12px;
+  }
+
+  .router-state-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .router-error-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}
