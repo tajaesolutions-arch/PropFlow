@@ -142,7 +142,10 @@ const priorityOptions = [
 
 const maintenanceStatusOptions = [
   ['open', 'Open'],
+  ['reported', 'Reported'],
+  ['assigned', 'Assigned'],
   ['in_progress', 'In progress'],
+  ['waiting_parts', 'Waiting for parts'],
   ['waiting_for_parts', 'Waiting for parts'],
   ['completed', 'Completed'],
 ];
@@ -168,7 +171,16 @@ function getActionFromLabel(label) {
 function cleanNumber(value) {
   if (value === '' || value === null || value === undefined) return null;
 
-  const numericValue = Number(value);
+  const cleanValue = String(value)
+    .replace(/,/g, '')
+    .replace(/[^\d.-]/g, '')
+    .trim();
+
+  if (!cleanValue || cleanValue === '-' || cleanValue === '.' || cleanValue === '-.') {
+    return null;
+  }
+
+  const numericValue = Number(cleanValue);
   return Number.isFinite(numericValue) ? numericValue : null;
 }
 
@@ -200,6 +212,12 @@ function closeOnEscape(onClose, disabled) {
   };
 }
 
+function labelFromValue(value) {
+  return String(value || '')
+    .replaceAll('_', ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 function OptionList({ options }) {
   return options.map((option) => {
     const value = Array.isArray(option) ? option[0] : option;
@@ -211,6 +229,60 @@ function OptionList({ options }) {
       </option>
     );
   });
+}
+
+function PropertyOptions({ properties, emptyLabel = 'Select property' }) {
+  if (!properties.length) {
+    return <option value="">{emptyLabel}</option>;
+  }
+
+  return properties.map((property) => (
+    <option key={property.id} value={property.id}>
+      {property.name || property.address || 'Unnamed property'}
+    </option>
+  ));
+}
+
+function MemberOptions({ members, fallbackLabel = 'Unassigned' }) {
+  return (
+    <>
+      <option value="">{fallbackLabel}</option>
+      {members.map((member) => {
+        const profile = member.profile || member.profiles || {};
+        const name =
+          profile.full_name ||
+          profile.name ||
+          profile.email ||
+          member.email ||
+          member.user_email ||
+          member.id;
+
+        return (
+          <option key={member.id || member.user_id || name} value={member.user_id || member.id}>
+            {name}
+          </option>
+        );
+      })}
+    </>
+  );
+}
+
+async function runAppAction(app, actionNames, payload) {
+  const actionName = actionNames.find((name) => typeof app?.[name] === 'function');
+
+  if (!actionName) {
+    throw new Error(
+      'This form is ready, but the save action is not connected in AppContext yet. The UI will stay safe instead of saving to the wrong table.',
+    );
+  }
+
+  return app[actionName](payload);
+}
+
+async function refreshAfterSave(app) {
+  if (typeof app?.refreshWorkspaceData === 'function') {
+    await app.refreshWorkspaceData();
+  }
 }
 
 function ModalShell({ action, error, children, onClose, submitting }) {
@@ -252,6 +324,7 @@ function ModalShell({ action, error, children, onClose, submitting }) {
             aria-label="Close modal"
             onClick={onClose}
             disabled={submitting}
+            data-skip-create-action="true"
           >
             <X size={18} />
           </button>
@@ -332,7 +405,7 @@ function PropertyForm({ app, close, submitting, setSubmitting, setError }) {
     try {
       setSubmitting(true);
 
-      await app.createProperty({
+      await runAppAction(app, ['createProperty'], {
         ...form,
         name: form.name.trim(),
         address: form.address.trim(),
@@ -347,6 +420,7 @@ function PropertyForm({ app, close, submitting, setSubmitting, setError }) {
         notes: form.notes.trim() || null,
       });
 
+      await refreshAfterSave(app);
       close();
     } catch (error) {
       setError(error?.message || 'Property could not be saved.');
@@ -417,22 +491,26 @@ function PropertyForm({ app, close, submitting, setSubmitting, setError }) {
           <label>
             Nightly rate
             <input
-              type="number"
+              type="text"
+              inputMode="decimal"
               min="0"
               step="0.01"
               value={form.nightly_rate}
               onChange={set('nightly_rate')}
+              data-comma-format="true"
             />
           </label>
 
           <label>
             Monthly rent
             <input
-              type="number"
+              type="text"
+              inputMode="decimal"
               min="0"
               step="0.01"
               value={form.monthly_rent}
               onChange={set('monthly_rent')}
+              data-comma-format="true"
             />
           </label>
 
@@ -455,10 +533,12 @@ function PropertyForm({ app, close, submitting, setSubmitting, setError }) {
           <label>
             Square feet
             <input
-              type="number"
+              type="text"
+              inputMode="numeric"
               min="0"
               value={form.square_feet}
               onChange={set('square_feet')}
+              data-comma-format="true"
             />
           </label>
 
@@ -470,10 +550,10 @@ function PropertyForm({ app, close, submitting, setSubmitting, setError }) {
       </div>
 
       <footer className="modal-actions">
-        <button type="button" onClick={close} disabled={submitting}>
+        <button type="button" onClick={close} disabled={submitting} data-skip-create-action="true">
           Cancel
         </button>
-        <button className="primary" type="submit" disabled={submitting}>
+        <button className="primary" type="submit" disabled={submitting} data-skip-create-action="true">
           {submitting ? 'Saving…' : 'Save property'}
         </button>
       </footer>
@@ -534,7 +614,7 @@ function BookingForm({ app, close, submitting, setSubmitting, setError }) {
     }
 
     if (!form.property_id) {
-      setError('Select a property before saving.');
+      setError('Select a property before saving the booking.');
       return;
     }
 
@@ -543,7 +623,12 @@ function BookingForm({ app, close, submitting, setSubmitting, setError }) {
       return;
     }
 
-    if (!form.check_in || !form.check_out || form.check_out <= form.check_in) {
+    if (!form.check_in || !form.check_out) {
+      setError('Check-in and check-out dates are required.');
+      return;
+    }
+
+    if (form.check_out <= form.check_in) {
       setError('Check-out must be after check-in.');
       return;
     }
@@ -551,7 +636,7 @@ function BookingForm({ app, close, submitting, setSubmitting, setError }) {
     try {
       setSubmitting(true);
 
-      await app.createBooking({
+      await runAppAction(app, ['createBooking'], {
         ...form,
         guest_name: form.guest_name.trim(),
         guest_email: form.guest_email.trim() || null,
@@ -564,6 +649,7 @@ function BookingForm({ app, close, submitting, setSubmitting, setError }) {
         notes: form.notes.trim() || null,
       });
 
+      await refreshAfterSave(app);
       close();
     } catch (error) {
       setError(error?.message || 'Booking could not be saved.');
@@ -576,7 +662,10 @@ function BookingForm({ app, close, submitting, setSubmitting, setError }) {
     <form className="modal-form" onSubmit={submit} noValidate>
       <div className="modal-body">
         <WorkspaceBlockedNotice app={app} />
-        {!properties.length && <EmptyDependencyNotice message="Add a property before creating bookings." />}
+
+        {!properties.length && (
+          <EmptyDependencyNotice message="Add your first property before creating bookings." />
+        )}
 
         <div className="form-grid">
           <label>
@@ -597,28 +686,28 @@ function BookingForm({ app, close, submitting, setSubmitting, setError }) {
           <label>
             Property
             <select value={form.property_id} onChange={set('property_id')} required>
-              <option value="">Select property</option>
-              {properties.map((property) => (
-                <option key={property.id} value={property.id}>
-                  {property.name}
-                </option>
-              ))}
+              <PropertyOptions properties={properties} emptyLabel="No properties available" />
             </select>
           </label>
 
           <label>
-            Check in
+            Check-in
             <input type="date" value={form.check_in} onChange={set('check_in')} required />
           </label>
 
           <label>
-            Check out
+            Check-out
             <input type="date" value={form.check_out} onChange={set('check_out')} required />
           </label>
 
           <label>
-            Guest count
-            <input type="number" min="1" value={form.guest_count} onChange={set('guest_count')} />
+            Guests
+            <input
+              type="number"
+              min="1"
+              value={form.guest_count}
+              onChange={set('guest_count')}
+            />
           </label>
 
           <label>
@@ -629,7 +718,7 @@ function BookingForm({ app, close, submitting, setSubmitting, setError }) {
           </label>
 
           <label>
-            Status
+            Booking status
             <select value={form.status} onChange={set('status')}>
               <OptionList options={bookingStatusOptions} />
             </select>
@@ -652,44 +741,44 @@ function BookingForm({ app, close, submitting, setSubmitting, setError }) {
           <label>
             Total amount
             <input
-              type="number"
-              min="0"
-              step="0.01"
+              type="text"
+              inputMode="decimal"
               value={form.total_amount}
               onChange={set('total_amount')}
+              data-comma-format="true"
             />
           </label>
 
           <label>
             Cleaning fee
             <input
-              type="number"
-              min="0"
-              step="0.01"
+              type="text"
+              inputMode="decimal"
               value={form.cleaning_fee}
               onChange={set('cleaning_fee')}
+              data-comma-format="true"
             />
           </label>
 
           <label>
             Taxes / fees
             <input
-              type="number"
-              min="0"
-              step="0.01"
+              type="text"
+              inputMode="decimal"
               value={form.taxes_fees}
               onChange={set('taxes_fees')}
+              data-comma-format="true"
             />
           </label>
 
           <label>
             Owner payout
             <input
-              type="number"
-              min="0"
-              step="0.01"
+              type="text"
+              inputMode="decimal"
               value={form.owner_payout}
               onChange={set('owner_payout')}
+              data-comma-format="true"
             />
           </label>
 
@@ -710,10 +799,10 @@ function BookingForm({ app, close, submitting, setSubmitting, setError }) {
       </div>
 
       <footer className="modal-actions">
-        <button type="button" onClick={close} disabled={submitting}>
+        <button type="button" onClick={close} disabled={submitting} data-skip-create-action="true">
           Cancel
         </button>
-        <button className="primary" type="submit" disabled={submitting}>
+        <button className="primary" type="submit" disabled={submitting} data-skip-create-action="true">
           {submitting ? 'Saving…' : 'Save booking'}
         </button>
       </footer>
@@ -723,12 +812,16 @@ function BookingForm({ app, close, submitting, setSubmitting, setError }) {
 
 function CleaningForm({ app, close, submitting, setSubmitting, setError }) {
   const properties = app.data.properties || [];
+  const members = app.data.members || [];
+  const initialPropertyId = firstPropertyId(properties);
 
   const [form, setForm] = React.useState({
-    property_id: firstPropertyId(properties),
+    property_id: initialPropertyId,
+    assigned_cleaner_id: '',
     scheduled_for: today(),
     status: 'scheduled',
-    checklist_items: '',
+    checklist_items: 'Strip beds\nSanitize bathrooms\nMop floors\nRestock supplies\nConfirm guest-ready condition',
+    supplies_used: '',
     cleaner_notes: '',
   });
 
@@ -755,22 +848,18 @@ function CleaningForm({ app, close, submitting, setSubmitting, setError }) {
       return;
     }
 
-    if (!form.scheduled_for) {
-      setError('Cleaning date is required.');
-      return;
-    }
-
     try {
       setSubmitting(true);
 
-      await app.createCleaningTask({
-        property_id: form.property_id,
-        scheduled_for: form.scheduled_for,
-        status: form.status,
+      await runAppAction(app, ['createCleaningTask'], {
+        ...form,
+        assigned_cleaner_id: form.assigned_cleaner_id || null,
         checklist_items: toLines(form.checklist_items),
+        supplies_used: form.supplies_used.trim() || null,
         cleaner_notes: form.cleaner_notes.trim() || null,
       });
 
+      await refreshAfterSave(app);
       close();
     } catch (error) {
       setError(error?.message || 'Cleaning task could not be saved.');
@@ -783,20 +872,23 @@ function CleaningForm({ app, close, submitting, setSubmitting, setError }) {
     <form className="modal-form" onSubmit={submit} noValidate>
       <div className="modal-body">
         <WorkspaceBlockedNotice app={app} />
+
         {!properties.length && (
-          <EmptyDependencyNotice message="Add a property before creating cleaning tasks." />
+          <EmptyDependencyNotice message="Add your first property before creating cleaning tasks." />
         )}
 
         <div className="form-grid">
           <label>
             Property
-            <select value={form.property_id} onChange={set('property_id')}>
-              <option value="">Select property</option>
-              {properties.map((property) => (
-                <option key={property.id} value={property.id}>
-                  {property.name}
-                </option>
-              ))}
+            <select value={form.property_id} onChange={set('property_id')} required>
+              <PropertyOptions properties={properties} emptyLabel="No properties available" />
+            </select>
+          </label>
+
+          <label>
+            Assigned cleaner
+            <select value={form.assigned_cleaner_id} onChange={set('assigned_cleaner_id')}>
+              <MemberOptions members={members} fallbackLabel="Unassigned cleaner" />
             </select>
           </label>
 
@@ -820,25 +912,30 @@ function CleaningForm({ app, close, submitting, setSubmitting, setError }) {
           <label className="full">
             Checklist items
             <textarea
-              rows={4}
+              rows={5}
               value={form.checklist_items}
               onChange={set('checklist_items')}
               placeholder="One checklist item per line"
             />
           </label>
 
-          <label className="full">
+          <label>
+            Supplies used / low supplies
+            <input value={form.supplies_used} onChange={set('supplies_used')} />
+          </label>
+
+          <label>
             Cleaner notes
-            <textarea rows={3} value={form.cleaner_notes} onChange={set('cleaner_notes')} />
+            <input value={form.cleaner_notes} onChange={set('cleaner_notes')} />
           </label>
         </div>
       </div>
 
       <footer className="modal-actions">
-        <button type="button" onClick={close} disabled={submitting}>
+        <button type="button" onClick={close} disabled={submitting} data-skip-create-action="true">
           Cancel
         </button>
-        <button className="primary" type="submit" disabled={submitting}>
+        <button className="primary" type="submit" disabled={submitting} data-skip-create-action="true">
           {submitting ? 'Saving…' : 'Save cleaning task'}
         </button>
       </footer>
@@ -848,21 +945,35 @@ function CleaningForm({ app, close, submitting, setSubmitting, setError }) {
 
 function MaintenanceForm({ app, close, submitting, setSubmitting, setError }) {
   const properties = app.data.properties || [];
+  const members = app.data.members || [];
+  const initialPropertyId = firstPropertyId(properties);
+  const currency = propertyCurrency(properties, app.currentWorkspace, initialPropertyId);
 
   const [form, setForm] = React.useState({
-    property_id: firstPropertyId(properties),
+    property_id: initialPropertyId,
+    assigned_maintenance_id: '',
     title: '',
     issue_description: '',
     priority: 'medium',
     status: 'open',
-    due_date: today(),
     estimated_cost: '',
+    actual_cost: '',
     parts_needed: '',
+    due_date: inDays(2),
     notes: '',
+    currency,
   });
 
   const set = (key) => (event) => {
-    setForm((current) => ({ ...current, [key]: event.target.value }));
+    setForm((current) => {
+      const next = { ...current, [key]: event.target.value };
+
+      if (key === 'property_id') {
+        next.currency = propertyCurrency(properties, app.currentWorkspace, event.target.value);
+      }
+
+      return next;
+    });
   };
 
   const submit = async (event) => {
@@ -892,18 +1003,19 @@ function MaintenanceForm({ app, close, submitting, setSubmitting, setError }) {
     try {
       setSubmitting(true);
 
-      await app.createMaintenanceWorkOrder({
-        property_id: form.property_id,
+      await runAppAction(app, ['createMaintenanceWorkOrder'], {
+        ...form,
         title: form.title.trim(),
         issue_description: form.issue_description.trim() || null,
-        priority: form.priority,
-        status: form.status,
-        due_date: form.due_date || null,
+        assigned_maintenance_id: form.assigned_maintenance_id || null,
         estimated_cost: cleanNumber(form.estimated_cost),
+        actual_cost: cleanNumber(form.actual_cost),
         parts_needed: form.parts_needed.trim() || null,
+        due_date: form.due_date || null,
         notes: form.notes.trim() || null,
       });
 
+      await refreshAfterSave(app);
       close();
     } catch (error) {
       setError(error?.message || 'Maintenance work order could not be saved.');
@@ -916,20 +1028,23 @@ function MaintenanceForm({ app, close, submitting, setSubmitting, setError }) {
     <form className="modal-form" onSubmit={submit} noValidate>
       <div className="modal-body">
         <WorkspaceBlockedNotice app={app} />
+
         {!properties.length && (
-          <EmptyDependencyNotice message="Add a property before creating maintenance work orders." />
+          <EmptyDependencyNotice message="Add your first property before creating maintenance work orders." />
         )}
 
         <div className="form-grid">
           <label>
             Property
-            <select value={form.property_id} onChange={set('property_id')}>
-              <option value="">Select property</option>
-              {properties.map((property) => (
-                <option key={property.id} value={property.id}>
-                  {property.name}
-                </option>
-              ))}
+            <select value={form.property_id} onChange={set('property_id')} required>
+              <PropertyOptions properties={properties} emptyLabel="No properties available" />
+            </select>
+          </label>
+
+          <label>
+            Assigned maintenance person
+            <select value={form.assigned_maintenance_id} onChange={set('assigned_maintenance_id')}>
+              <MemberOptions members={members} fallbackLabel="Unassigned maintenance" />
             </select>
           </label>
 
@@ -960,26 +1075,33 @@ function MaintenanceForm({ app, close, submitting, setSubmitting, setError }) {
           <label>
             Estimated cost
             <input
-              type="number"
-              min="0"
-              step="0.01"
+              type="text"
+              inputMode="decimal"
               value={form.estimated_cost}
               onChange={set('estimated_cost')}
+              data-comma-format="true"
+            />
+          </label>
+
+          <label>
+            Actual cost
+            <input
+              type="text"
+              inputMode="decimal"
+              value={form.actual_cost}
+              onChange={set('actual_cost')}
+              data-comma-format="true"
             />
           </label>
 
           <label className="full">
             Issue description
-            <textarea
-              rows={3}
-              value={form.issue_description}
-              onChange={set('issue_description')}
-            />
+            <textarea rows={4} value={form.issue_description} onChange={set('issue_description')} />
           </label>
 
           <label className="full">
-            Parts needed
-            <textarea rows={2} value={form.parts_needed} onChange={set('parts_needed')} />
+            Parts / materials needed
+            <textarea rows={3} value={form.parts_needed} onChange={set('parts_needed')} />
           </label>
 
           <label className="full">
@@ -990,10 +1112,10 @@ function MaintenanceForm({ app, close, submitting, setSubmitting, setError }) {
       </div>
 
       <footer className="modal-actions">
-        <button type="button" onClick={close} disabled={submitting}>
+        <button type="button" onClick={close} disabled={submitting} data-skip-create-action="true">
           Cancel
         </button>
-        <button className="primary" type="submit" disabled={submitting}>
+        <button className="primary" type="submit" disabled={submitting} data-skip-create-action="true">
           {submitting ? 'Saving…' : 'Save work order'}
         </button>
       </footer>
@@ -1005,9 +1127,11 @@ function ContactForm({ app, close, submitting, setSubmitting, setError, type }) 
   const isOwner = type === 'owner';
 
   const [form, setForm] = React.useState({
-    full_name: '',
+    contact_type: isOwner ? 'owner' : 'guest',
+    name: '',
     email: '',
     phone: '',
+    company_name: '',
     notes: '',
   });
 
@@ -1024,7 +1148,7 @@ function ContactForm({ app, close, submitting, setSubmitting, setError, type }) 
       return;
     }
 
-    if (!form.full_name.trim()) {
+    if (!form.name.trim()) {
       setError(`${isOwner ? 'Owner' : 'Guest'} name is required.`);
       return;
     }
@@ -1032,15 +1156,23 @@ function ContactForm({ app, close, submitting, setSubmitting, setError, type }) 
     try {
       setSubmitting(true);
 
-      await app.upsertContact({
-        full_name: form.full_name.trim(),
-        email: form.email.trim() || null,
-        phone: form.phone.trim() || null,
-        contact_type: isOwner ? 'owner' : 'guest',
-        notes: form.notes.trim() || null,
-      });
+      await runAppAction(
+        app,
+        isOwner
+          ? ['createOwner', 'createContact', 'createOwnerContact']
+          : ['createGuest', 'createContact', 'createGuestContact'],
+        {
+          ...form,
+          name: form.name.trim(),
+          full_name: form.name.trim(),
+          email: form.email.trim() || null,
+          phone: form.phone.trim() || null,
+          company_name: form.company_name.trim() || null,
+          notes: form.notes.trim() || null,
+        },
+      );
 
-      await app.refreshWorkspaceData?.();
+      await refreshAfterSave(app);
       close();
     } catch (error) {
       setError(error?.message || `${isOwner ? 'Owner' : 'Guest'} could not be saved.`);
@@ -1056,8 +1188,8 @@ function ContactForm({ app, close, submitting, setSubmitting, setError, type }) 
 
         <div className="form-grid">
           <label>
-            {isOwner ? 'Owner' : 'Guest'} name
-            <input value={form.full_name} onChange={set('full_name')} required />
+            {isOwner ? 'Owner name' : 'Guest name'}
+            <input value={form.name} onChange={set('name')} required />
           </label>
 
           <label>
@@ -1070,18 +1202,23 @@ function ContactForm({ app, close, submitting, setSubmitting, setError, type }) 
             <input value={form.phone} onChange={set('phone')} />
           </label>
 
+          <label>
+            Company / business name
+            <input value={form.company_name} onChange={set('company_name')} />
+          </label>
+
           <label className="full">
             Notes
-            <textarea rows={3} value={form.notes} onChange={set('notes')} />
+            <textarea rows={4} value={form.notes} onChange={set('notes')} />
           </label>
         </div>
       </div>
 
       <footer className="modal-actions">
-        <button type="button" onClick={close} disabled={submitting}>
+        <button type="button" onClick={close} disabled={submitting} data-skip-create-action="true">
           Cancel
         </button>
-        <button className="primary" type="submit" disabled={submitting}>
+        <button className="primary" type="submit" disabled={submitting} data-skip-create-action="true">
           {submitting ? 'Saving…' : `Save ${isOwner ? 'owner' : 'guest'}`}
         </button>
       </footer>
@@ -1090,10 +1227,14 @@ function ContactForm({ app, close, submitting, setSubmitting, setError, type }) 
 }
 
 function InviteForm({ app, close, submitting, setSubmitting, setError }) {
+  const properties = app.data.properties || [];
+
   const [form, setForm] = React.useState({
     email: '',
-    role: inviteRoleOptions[1] || 'property_manager',
-    expires_at: '',
+    role: inviteRoleOptions[0] || 'property_manager',
+    property_id: '',
+    expires_at: inDays(7),
+    permission_level: 'standard',
     message: '',
   });
 
@@ -1106,7 +1247,7 @@ function InviteForm({ app, close, submitting, setSubmitting, setError }) {
     setError('');
 
     if (!app.currentWorkspace?.id) {
-      setError('Select or create a workspace before sending an invite.');
+      setError('Select or create a workspace before inviting a team member.');
       return;
     }
 
@@ -1118,16 +1259,22 @@ function InviteForm({ app, close, submitting, setSubmitting, setError }) {
     try {
       setSubmitting(true);
 
-      await app.createInvite({
-        email: form.email.trim(),
+      await runAppAction(app, ['createInvite', 'createWorkspaceInvite', 'inviteTeamMember'], {
+        ...form,
+        email: form.email.trim().toLowerCase(),
+        role: form.role,
         roles: [form.role],
+        property_id: form.property_id || null,
+        assigned_property_id: form.property_id || null,
         expires_at: form.expires_at || null,
+        permission_level: form.permission_level,
         message: form.message.trim() || null,
       });
 
+      await refreshAfterSave(app);
       close();
     } catch (error) {
-      setError(error?.message || 'Team invite could not be saved.');
+      setError(error?.message || 'Invite could not be saved.');
     } finally {
       setSubmitting(false);
     }
@@ -1140,7 +1287,7 @@ function InviteForm({ app, close, submitting, setSubmitting, setError }) {
 
         <div className="form-grid">
           <label>
-            Email
+            Invitee email
             <input type="email" value={form.email} onChange={set('email')} required />
           </label>
 
@@ -1149,9 +1296,17 @@ function InviteForm({ app, close, submitting, setSubmitting, setError }) {
             <select value={form.role} onChange={set('role')}>
               {inviteRoleOptions.map((role) => (
                 <option key={role} value={role}>
-                  {roleLabels[role] || role}
+                  {roleLabels[role] || labelFromValue(role)}
                 </option>
               ))}
+            </select>
+          </label>
+
+          <label>
+            Assigned property, if relevant
+            <select value={form.property_id} onChange={set('property_id')}>
+              <option value="">No specific property</option>
+              <PropertyOptions properties={properties} />
             </select>
           </label>
 
@@ -1160,70 +1315,152 @@ function InviteForm({ app, close, submitting, setSubmitting, setError }) {
             <input type="date" value={form.expires_at} onChange={set('expires_at')} />
           </label>
 
+          <label>
+            Permission level
+            <select value={form.permission_level} onChange={set('permission_level')}>
+              <option value="standard">Standard role permissions</option>
+              <option value="limited">Limited access</option>
+              <option value="manager">Manager-level access</option>
+            </select>
+          </label>
+
           <label className="full">
             Optional message
-            <textarea rows={3} value={form.message} onChange={set('message')} />
+            <textarea rows={4} value={form.message} onChange={set('message')} />
           </label>
         </div>
       </div>
 
       <footer className="modal-actions">
-        <button type="button" onClick={close} disabled={submitting}>
+        <button type="button" onClick={close} disabled={submitting} data-skip-create-action="true">
           Cancel
         </button>
-        <button className="primary" type="submit" disabled={submitting}>
-          {submitting ? 'Saving…' : 'Send invite'}
+        <button className="primary" type="submit" disabled={submitting} data-skip-create-action="true">
+          {submitting ? 'Saving…' : 'Create invite'}
         </button>
       </footer>
     </form>
   );
 }
 
-function PlaceholderForm({ close, action }) {
-  const isExpense = action === 'expense';
+function ExpenseForm({ app, close, submitting, setSubmitting, setError }) {
+  const properties = app.data.properties || [];
+  const initialPropertyId = firstPropertyId(properties);
 
   const [form, setForm] = React.useState({
+    property_id: initialPropertyId,
     title: '',
+    category: 'maintenance',
     amount: '',
-    date: today(),
+    currency: propertyCurrency(properties, app.currentWorkspace, initialPropertyId),
+    expense_date: today(),
     notes: '',
   });
 
   const set = (key) => (event) => {
-    setForm((current) => ({ ...current, [key]: event.target.value }));
+    setForm((current) => {
+      const next = { ...current, [key]: event.target.value };
+
+      if (key === 'property_id') {
+        next.currency = propertyCurrency(properties, app.currentWorkspace, event.target.value);
+      }
+
+      return next;
+    });
+  };
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setError('');
+
+    if (!app.currentWorkspace?.id) {
+      setError('Select or create a workspace before saving an expense.');
+      return;
+    }
+
+    if (!form.title.trim()) {
+      setError('Expense title is required.');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+
+      await runAppAction(app, ['createExpense', 'createWorkspaceExpense'], {
+        ...form,
+        property_id: form.property_id || null,
+        title: form.title.trim(),
+        amount: cleanNumber(form.amount),
+        notes: form.notes.trim() || null,
+      });
+
+      await refreshAfterSave(app);
+      close();
+    } catch (error) {
+      setError(
+        error?.message ||
+          'Expense saving is not connected yet. The finance table/action needs to be added before this form can save.',
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
-    <form className="modal-form" onSubmit={(event) => event.preventDefault()} noValidate>
+    <form className="modal-form" onSubmit={submit} noValidate>
       <div className="modal-body">
-        <EmptyDependencyNotice
-          message={`${
-            isExpense ? 'Expense' : 'Report'
-          } saving is intentionally blocked until the matching database table is connected. The modal opens now so the workflow is not broken.`}
-        />
+        <WorkspaceBlockedNotice app={app} />
+
+        <EmptyDependencyNotice message="Finance/expense saving may require a dedicated expenses table. This form will only save if the matching AppContext action exists." />
 
         <div className="form-grid">
           <label>
-            {isExpense ? 'Expense title' : 'Report name'}
-            <input value={form.title} onChange={set('title')} />
+            Property
+            <select value={form.property_id} onChange={set('property_id')}>
+              <option value="">Workspace-level expense</option>
+              <PropertyOptions properties={properties} />
+            </select>
           </label>
 
-          {isExpense && (
-            <label>
-              Amount
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.amount}
-                onChange={set('amount')}
-              />
-            </label>
-          )}
+          <label>
+            Expense title
+            <input value={form.title} onChange={set('title')} required />
+          </label>
 
           <label>
-            Date
-            <input type="date" value={form.date} onChange={set('date')} />
+            Category
+            <select value={form.category} onChange={set('category')}>
+              <option value="maintenance">Maintenance</option>
+              <option value="cleaning">Cleaning</option>
+              <option value="supplies">Supplies</option>
+              <option value="utilities">Utilities</option>
+              <option value="platform_fee">Platform fee</option>
+              <option value="taxes">Taxes</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+
+          <label>
+            Amount
+            <input
+              type="text"
+              inputMode="decimal"
+              value={form.amount}
+              onChange={set('amount')}
+              data-comma-format="true"
+            />
+          </label>
+
+          <label>
+            Currency
+            <select value={form.currency} onChange={set('currency')}>
+              <OptionList options={currencies} />
+            </select>
+          </label>
+
+          <label>
+            Expense date
+            <input type="date" value={form.expense_date} onChange={set('expense_date')} />
           </label>
 
           <label className="full">
@@ -1234,103 +1471,250 @@ function PlaceholderForm({ close, action }) {
       </div>
 
       <footer className="modal-actions">
-        <button type="button" className="primary" onClick={close}>
-          Close
+        <button type="button" onClick={close} disabled={submitting} data-skip-create-action="true">
+          Cancel
+        </button>
+        <button className="primary" type="submit" disabled={submitting} data-skip-create-action="true">
+          {submitting ? 'Saving…' : 'Save expense'}
         </button>
       </footer>
     </form>
   );
 }
 
-function CreateActionModal({ action, app, close }) {
-  const [error, setError] = React.useState('');
-  const [submitting, setSubmitting] = React.useState(false);
+function ReportForm({ app, close, submitting, setSubmitting, setError }) {
+  const properties = app.data.properties || [];
 
-  React.useEffect(() => {
+  const [form, setForm] = React.useState({
+    title: '',
+    report_type: 'owner_report',
+    property_id: '',
+    start_date: today(),
+    end_date: today(),
+    notes: '',
+  });
+
+  const set = (key) => (event) => {
+    setForm((current) => ({ ...current, [key]: event.target.value }));
+  };
+
+  const submit = async (event) => {
+    event.preventDefault();
     setError('');
-  }, [action]);
 
-  const sharedProps = {
-    app,
-    close,
-    submitting,
-    setSubmitting,
-    setError,
+    if (!app.currentWorkspace?.id) {
+      setError('Select or create a workspace before creating a report.');
+      return;
+    }
+
+    if (!form.title.trim()) {
+      setError('Report title is required.');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+
+      await runAppAction(app, ['createReport', 'createOwnerReport'], {
+        ...form,
+        title: form.title.trim(),
+        property_id: form.property_id || null,
+        notes: form.notes.trim() || null,
+      });
+
+      await refreshAfterSave(app);
+      close();
+    } catch (error) {
+      setError(
+        error?.message ||
+          'Report saving is not connected yet. The reports table/action needs to be connected before this form can save.',
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
-    <ModalShell action={action} error={error} onClose={close} submitting={submitting}>
-      {action === 'property' && <PropertyForm {...sharedProps} />}
-      {action === 'booking' && <BookingForm {...sharedProps} />}
-      {action === 'cleaning' && <CleaningForm {...sharedProps} />}
-      {action === 'maintenance' && <MaintenanceForm {...sharedProps} />}
-      {action === 'owner' && <ContactForm {...sharedProps} type="owner" />}
-      {action === 'guest' && <ContactForm {...sharedProps} type="guest" />}
-      {action === 'invite' && <InviteForm {...sharedProps} />}
-      {['expense', 'report'].includes(action) && (
-        <PlaceholderForm close={close} action={action} />
-      )}
-    </ModalShell>
+    <form className="modal-form" onSubmit={submit} noValidate>
+      <div className="modal-body">
+        <WorkspaceBlockedNotice app={app} />
+
+        <EmptyDependencyNotice message="Report creation may require the reports/owner_reports action to be connected. This form will only save if the matching AppContext action exists." />
+
+        <div className="form-grid">
+          <label>
+            Report title
+            <input value={form.title} onChange={set('title')} required />
+          </label>
+
+          <label>
+            Report type
+            <select value={form.report_type} onChange={set('report_type')}>
+              <option value="owner_report">Owner report</option>
+              <option value="revenue_report">Revenue report</option>
+              <option value="expense_report">Expense report</option>
+              <option value="maintenance_report">Maintenance cost report</option>
+              <option value="cleaning_report">Cleaning cost report</option>
+              <option value="occupancy_report">Occupancy report</option>
+            </select>
+          </label>
+
+          <label>
+            Property
+            <select value={form.property_id} onChange={set('property_id')}>
+              <option value="">All properties</option>
+              <PropertyOptions properties={properties} />
+            </select>
+          </label>
+
+          <label>
+            Start date
+            <input type="date" value={form.start_date} onChange={set('start_date')} />
+          </label>
+
+          <label>
+            End date
+            <input type="date" value={form.end_date} onChange={set('end_date')} />
+          </label>
+
+          <label className="full">
+            Notes
+            <textarea rows={4} value={form.notes} onChange={set('notes')} />
+          </label>
+        </div>
+      </div>
+
+      <footer className="modal-actions">
+        <button type="button" onClick={close} disabled={submitting} data-skip-create-action="true">
+          Cancel
+        </button>
+        <button className="primary" type="submit" disabled={submitting} data-skip-create-action="true">
+          {submitting ? 'Saving…' : 'Create report'}
+        </button>
+      </footer>
+    </form>
   );
+}
+
+function CreateForm({ action, app, close, submitting, setSubmitting, setError }) {
+  const sharedProps = { app, close, submitting, setSubmitting, setError };
+
+  if (action === 'property') return <PropertyForm {...sharedProps} />;
+  if (action === 'booking') return <BookingForm {...sharedProps} />;
+  if (action === 'cleaning') return <CleaningForm {...sharedProps} />;
+  if (action === 'maintenance') return <MaintenanceForm {...sharedProps} />;
+  if (action === 'owner') return <ContactForm {...sharedProps} type="owner" />;
+  if (action === 'guest') return <ContactForm {...sharedProps} type="guest" />;
+  if (action === 'invite') return <InviteForm {...sharedProps} />;
+  if (action === 'expense') return <ExpenseForm {...sharedProps} />;
+  if (action === 'report') return <ReportForm {...sharedProps} />;
+
+  return (
+    <div className="modal-body">
+      <EmptyDependencyNotice message="This create action is not available yet." />
+    </div>
+  );
+}
+
+function getTextFromElement(element) {
+  return normalizeText(
+    [
+      element.getAttribute('aria-label'),
+      element.getAttribute('title'),
+      element.dataset?.createAction,
+      element.textContent,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+}
+
+function shouldIgnoreClickTarget(target) {
+  const element = target?.closest?.('button, a, [role="button"]');
+
+  if (!element) return true;
+  if (element.closest('.modal-panel')) return true;
+  if (element.closest('form')) return true;
+  if (element.dataset.skipCreateAction === 'true') return true;
+  if (element.getAttribute('type') === 'submit') return true;
+  if (element.hasAttribute('disabled')) return true;
+
+  const href = element.getAttribute('href');
+  if (href && href !== '#' && !href.toLowerCase().startsWith('javascript:')) {
+    return true;
+  }
+
+  return false;
 }
 
 export function CreateActionProvider({ children }) {
   const app = useApp();
-  const [activeAction, setActiveAction] = React.useState(null);
+  const [action, setAction] = React.useState(null);
+  const [error, setError] = React.useState('');
+  const [submitting, setSubmitting] = React.useState(false);
 
-  const openCreateAction = React.useCallback((action) => {
-    if (!actionMeta[action]) return;
-    setActiveAction(action);
+  const openCreateAction = React.useCallback((nextAction) => {
+    if (!nextAction) return;
+
+    setError('');
+    setSubmitting(false);
+    setAction(nextAction);
   }, []);
 
-  const closeCreateAction = React.useCallback(() => {
-    setActiveAction(null);
-  }, []);
+  const close = React.useCallback(() => {
+    if (submitting) return;
+
+    setAction(null);
+    setError('');
+  }, [submitting]);
 
   React.useEffect(() => {
-    const onDocumentClick = (event) => {
-      const target =
-        event.target instanceof Element
-          ? event.target.closest('button, a, [role="button"]')
-          : null;
+    const handleClick = (event) => {
+      if (shouldIgnoreClickTarget(event.target)) return;
 
-      if (!target) return;
-      if (target.closest('.modal-backdrop')) return;
-      if (target.dataset?.skipCreateAction === 'true') return;
+      const element = event.target.closest('button, a, [role="button"]');
+      const directAction = element?.dataset?.createAction;
+      const matchedAction = directAction || getActionFromLabel(getTextFromElement(element));
 
-      const action =
-        target.dataset?.createAction ||
-        getActionFromLabel(target.getAttribute('aria-label') || target.textContent);
-
-      if (!action || !actionMeta[action]) return;
+      if (!matchedAction) return;
 
       event.preventDefault();
       event.stopPropagation();
-      event.stopImmediatePropagation?.();
 
-      openCreateAction(action);
+      openCreateAction(matchedAction);
     };
 
-    document.addEventListener('click', onDocumentClick, true);
+    document.addEventListener('click', handleClick, true);
 
     return () => {
-      document.removeEventListener('click', onDocumentClick, true);
+      document.removeEventListener('click', handleClick, true);
     };
   }, [openCreateAction]);
 
-  const value = React.useMemo(
+  const contextValue = React.useMemo(
     () => ({
       openCreateAction,
-      closeCreateAction,
+      closeCreateAction: close,
+      activeCreateAction: action,
     }),
-    [openCreateAction, closeCreateAction],
+    [action, close, openCreateAction],
   );
 
   return (
-    <CreateActionContext.Provider value={value}>
+    <CreateActionContext.Provider value={contextValue}>
       {children}
-      {activeAction && (
-        <CreateActionModal action={activeAction} app={app} close={closeCreateAction} />
+
+      {action && (
+        <ModalShell action={action} error={error} onClose={close} submitting={submitting}>
+          <CreateForm
+            action={action}
+            app={app}
+            close={close}
+            submitting={submitting}
+            setSubmitting={setSubmitting}
+            setError={setError}
+          />
+        </ModalShell>
       )}
     </CreateActionContext.Provider>
   );
@@ -1340,7 +1724,7 @@ export function useCreateAction() {
   const context = React.useContext(CreateActionContext);
 
   if (!context) {
-    throw new Error('useCreateAction must be used inside CreateActionProvider');
+    throw new Error('useCreateAction must be used inside CreateActionProvider.');
   }
 
   return context;
