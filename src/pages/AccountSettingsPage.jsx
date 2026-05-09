@@ -22,6 +22,7 @@ import { hasAnyRole, resolvePrimaryRole } from '../lib/auth.js';
 import { navigate } from '../routes/AppRouter.jsx';
 
 const workspaceSettingsRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
+const companyCodeVisibilityRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER];
 
 function roleList(roles = []) {
   if (!Array.isArray(roles) || !roles.length) {
@@ -168,6 +169,7 @@ export function AccountSettingsPage() {
   const userWorkspaces = workspaces || [];
   const userMemberships = memberships || [];
   const canOpenWorkspaceSettings = hasAnyRole(currentUser, workspaceSettingsRoles);
+  const canViewCompanyCode = hasAnyRole(currentUser, companyCodeVisibilityRoles);
 
   const handleSignOut = async () => {
     setBusy(true);
@@ -183,8 +185,8 @@ export function AccountSettingsPage() {
   };
 
   const copyWorkspaceCode = async () => {
-    if (!canOpenWorkspaceSettings) {
-      setMessage('Workspace code is available to workspace administrators only.');
+    if (!canViewCompanyCode) {
+      setMessage('Workspace code is available to workspace owners and property managers only.');
       window.setTimeout(() => setMessage(''), 3000);
       return;
     }
@@ -278,7 +280,7 @@ export function AccountSettingsPage() {
                 <small>Default currency</small>
               </span>
 
-              {canOpenWorkspaceSettings ? (
+              {canViewCompanyCode ? (
                 <span>
                   <Copy size={16} />
                   <strong>{getWorkspaceCode(currentWorkspace)}</strong>
@@ -288,33 +290,39 @@ export function AccountSettingsPage() {
                 <span>
                   <Lock size={16} />
                   <strong>Hidden</strong>
-                  <small>Company code is admin-only</small>
+                  <small>Company code is owner/manager only</small>
                 </span>
               )}
 
-              {canOpenWorkspaceSettings ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={copyWorkspaceCode}
-                    disabled={!currentWorkspace}
-                    data-skip-create-action="true"
-                  >
-                    <Copy size={16} />
-                    Copy workspace code
-                  </button>
+              {canViewCompanyCode && (
+                <button
+                  type="button"
+                  onClick={copyWorkspaceCode}
+                  disabled={!currentWorkspace}
+                  data-skip-create-action="true"
+                >
+                  <Copy size={16} />
+                  Copy workspace code
+                </button>
+              )}
 
-                  <button
-                    type="button"
-                    onClick={() => navigate('/settings')}
-                    data-skip-create-action="true"
-                  >
-                    Open workspace settings
-                  </button>
-                </>
+              {canOpenWorkspaceSettings ? (
+                <button
+                  type="button"
+                  onClick={() => navigate('/settings')}
+                  data-skip-create-action="true"
+                >
+                  Open workspace settings
+                </button>
               ) : (
                 <div className="helper">
-                  Workspace code and workspace settings are managed by authorized workspace administrators.
+                  Workspace settings are managed by authorized workspace administrators.
+                </div>
+              )}
+
+              {!canViewCompanyCode && (
+                <div className="helper">
+                  Workspace codes are visible to workspace owners and property managers only.
                 </div>
               )}
             </div>
