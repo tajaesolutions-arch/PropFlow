@@ -11,6 +11,7 @@ const ownerVisibleRoles = [...operationalRoles, roles.OWNER, roles.ACCOUNTANT];
 const propertyDetailRoles = ownerVisibleRoles;
 const maintenancePageRoles = [...operationalRoles, roles.MAINTENANCE];
 const financeRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
+const inventoryPageRoles = financeRoles;
 const calendarManagerRoles = [...operationalRoles, roles.ACCOUNTANT];
 
 const routeAccess = {
@@ -24,7 +25,7 @@ const routeAccess = {
   '/owners': financeRoles,
   '/guests': operationalRoles,
   '/reports': [...operationalRoles, roles.OWNER, roles.ACCOUNTANT],
-  '/inventory': [...operationalRoles, roles.ACCOUNTANT, roles.CLEANER],
+  '/inventory': inventoryPageRoles,
   '/settings': operationalRoles,
   '/billing': [roles.ADMIN, roles.OWNER_ADMIN, roles.ACCOUNTANT],
 };
@@ -345,7 +346,7 @@ function buildResults(data, query, user) {
   const visibleLeases = getVisibleLeases(data, user);
   const visibleCleaningTasks = getVisibleCleaningTasks(data, user);
   const visibleMaintenanceWorkOrders = getVisibleMaintenanceWorkOrders(data, user);
-  const visibleSupplies = getVisibleSupplies(data, user);
+  const visibleSupplies = canAccessPath(user, '/inventory') ? getVisibleSupplies(data, user) : [];
   const visibleReports = getVisibleReports(data, user);
 
   roleSafeQuickLinks.forEach((link) => {

@@ -108,6 +108,7 @@ const ownerVisibleRoles = [...operationalRoles, roles.OWNER, roles.ACCOUNTANT];
 const propertyDetailRoles = ownerVisibleRoles;
 const maintenancePageRoles = [...operationalRoles, roles.MAINTENANCE];
 const financeRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
+const inventoryPageRoles = financeRoles;
 const calendarManagerRoles = [...operationalRoles, roles.ACCOUNTANT];
 
 const dashboardAccess = {
@@ -153,7 +154,7 @@ const protectedRoutes = {
   '/accountant-dashboard': { Page: AccountantDashboardPage, access: [roles.ACCOUNTANT] },
   '/inventory': {
     Page: InventoryPage,
-    access: [...operationalRoles, roles.ACCOUNTANT, roles.CLEANER],
+    access: inventoryPageRoles,
   },
   '/team': { Page: SettingsPage, access: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER] },
   '/billing': { Page: BillingPage, access: [roles.ADMIN, roles.OWNER_ADMIN, roles.ACCOUNTANT] },
