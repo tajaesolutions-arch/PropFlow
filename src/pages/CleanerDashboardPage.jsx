@@ -55,7 +55,26 @@ function getTaskPropertyId(task) {
 }
 
 function getAssignedCleanerId(task) {
-  return task.assignedCleanerId || task.assigned_cleaner_id;
+  return task.assignedCleanerId || task.assigned_cleaner_id || task.cleanerId || task.cleaner_id || '';
+}
+
+function hasCleanerAssignmentData(tasks = []) {
+  return tasks.some((task) => Boolean(getAssignedCleanerId(task)));
+}
+
+function isAssignedToCurrentCleaner(task, currentUser) {
+  const assignedCleanerId = getAssignedCleanerId(task);
+  if (!assignedCleanerId) return false;
+
+  return assignedCleanerId === currentUser?.id;
+}
+
+function canUpdateCleanerTask(task, currentUser, allTasks = []) {
+  if (!currentUser?.roles?.includes(roles.CLEANER)) return true;
+
+  if (!hasCleanerAssignmentData(allTasks)) return true;
+
+  return isAssignedToCurrentCleaner(task, currentUser);
 }
 
 function getPropertyName(task, properties = []) {
@@ -102,13 +121,11 @@ function getVisibleCleanerTasks(tasks, currentUser) {
     return tasks;
   }
 
-  const hasAssignmentData = tasks.some((task) => Boolean(getAssignedCleanerId(task)));
-
-  if (!hasAssignmentData) {
+  if (!hasCleanerAssignmentData(tasks)) {
     return tasks;
   }
 
-  return tasks.filter((task) => getAssignedCleanerId(task) === currentUser?.id);
+  return tasks.filter((task) => isAssignedToCurrentCleaner(task, currentUser));
 }
 
 function matchesSearch(task, properties, query) {
@@ -358,6 +375,11 @@ export function CleanerDashboardPage() {
   };
 
   const changeStatus = async (task, status) => {
+    if (!canUpdateCleanerTask(task, currentUser, allTasks)) {
+      setMessage('You do not have permission to update this cleaning task.');
+      return;
+    }
+
     setUpdatingTaskId(task.id);
     setMessage('');
 
@@ -378,6 +400,11 @@ export function CleanerDashboardPage() {
   };
 
   const updateNotes = async (task, notes) => {
+    if (!canUpdateCleanerTask(task, currentUser, allTasks)) {
+      setMessage('You do not have permission to update notes for this cleaning task.');
+      return;
+    }
+
     setUpdatingTaskId(task.id);
 
     try {
@@ -395,6 +422,11 @@ export function CleanerDashboardPage() {
   };
 
   const reportIssue = async (task, issueReported) => {
+    if (!canUpdateCleanerTask(task, currentUser, allTasks)) {
+      setMessage('You do not have permission to report an issue for this cleaning task.');
+      return;
+    }
+
     setUpdatingTaskId(task.id);
     setMessage('');
 
@@ -414,6 +446,11 @@ export function CleanerDashboardPage() {
 
   const handleUpload = async (task, file) => {
     if (!file) return;
+
+    if (!canUpdateCleanerTask(task, currentUser, allTasks)) {
+      setMessage('You do not have permission to upload photos for this cleaning task.');
+      return;
+    }
 
     setUploadingTaskId(task.id);
     setMessage('');
