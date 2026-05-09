@@ -19,9 +19,9 @@ function getContent(variant) {
     return {
       icon: ShieldAlert,
       eyebrow: 'Access restricted',
-      title: 'You do not have access to this area',
+      title: 'This page is not available for your role',
       description:
-        'Your current role does not have permission to view this workspace page. Use the dashboard assigned to your role or contact your Workspace Owner if your access looks incorrect.',
+        'Some shared buttons or older links may point to a page your current role cannot use. Your account is still active. Use your role dashboard or account page instead.',
       primaryAction: 'Go to my dashboard',
       primaryPath: '/login/redirect',
       secondaryAction: 'Account settings',
@@ -59,6 +59,22 @@ function getContent(variant) {
   };
 }
 
+function getHelperCopy(variant) {
+  if (variant === 'denied') {
+    return 'PropFlow blocks role-mismatched routes so users only access pages that match their saved workspace permissions.';
+  }
+
+  return 'PropFlow blocks restricted users from dashboards, properties, bookings, cleaning, maintenance, reports, team data, and workspace records until access is restored.';
+}
+
+function getPageNote(variant) {
+  if (variant === 'denied') {
+    return 'Contact your Workspace Owner if you believe your role should include this page.';
+  }
+
+  return 'Contact your Workspace Owner or PropFlow support if this restriction is unexpected.';
+}
+
 function RestrictionStep({ icon: Icon, title, description }) {
   return (
     <article className="restriction-step">
@@ -90,15 +106,14 @@ export function SuspendedPage({ variant }) {
 
         <div className="helper restriction-helper">
           <AlertTriangle size={16} />
-          PropFlow blocks restricted users from dashboards, properties, bookings, cleaning,
-          maintenance, reports, team data, and workspace records until access is restored.
+          {getHelperCopy(variant)}
         </div>
 
         <div className="restriction-steps-grid">
           <RestrictionStep
             icon={ShieldCheck}
             title="Workspace data protected"
-            description="Restricted users cannot view or edit operational records."
+            description="Users cannot view or edit records outside their role."
           />
 
           <RestrictionStep
@@ -110,7 +125,7 @@ export function SuspendedPage({ variant }) {
           <RestrictionStep
             icon={Building2}
             title="Workspace scoped"
-            description="Restrictions apply to the current account, membership, or workspace."
+            description="Access checks apply inside the current workspace context."
           />
 
           <RestrictionStep
@@ -137,7 +152,7 @@ export function SuspendedPage({ variant }) {
         </div>
 
         <p className="page-note">
-          Contact your Workspace Owner or PropFlow support if this restriction is unexpected.
+          {getPageNote(variant)}
         </p>
       </section>
     </div>
