@@ -13,7 +13,7 @@ const bookingPageRoles = [...operationalRoles, roles.ACCOUNTANT];
 const maintenancePageRoles = operationalRoles;
 const financeRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
 const inventoryPageRoles = financeRoles;
-const calendarManagerRoles = [...operationalRoles, roles.ACCOUNTANT];
+const calendarManagerRoles = operationalRoles;
 
 const routeAccess = {
   '/dashboard': operationalRoles,
