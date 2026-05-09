@@ -9,6 +9,7 @@ import {
   Plus,
   RotateCcw,
   Search,
+  ShieldCheck,
   X,
 } from 'lucide-react';
 
@@ -26,6 +27,7 @@ import {
   propertyStatuses,
   propertyTypes,
   rentalTypes,
+  roles,
 } from '../data/constants.js';
 import { hasAnyRole } from '../lib/auth.js';
 
@@ -62,6 +64,19 @@ function getField(property, camelKey, snakeKey, fallback = '') {
   if (property?.[camelKey] !== undefined && property?.[camelKey] !== null) return property[camelKey];
   if (property?.[snakeKey] !== undefined && property?.[snakeKey] !== null) return property[snakeKey];
   return fallback;
+}
+
+function getOwnerId(property) {
+  return property.assignedOwnerId || property.assigned_owner_id || property.ownerId || property.owner_id || '';
+}
+
+function isOwnerRole(currentUser) {
+  return Boolean(currentUser?.roles?.includes(roles.OWNER));
+}
+
+function canOwnerSeeProperty(property, currentUser) {
+  if (!isOwnerRole(currentUser)) return true;
+  return getOwnerId(property) === currentUser?.id;
 }
 
 function normalizePropertyForm(property, defaultCurrency) {
@@ -475,9 +490,11 @@ export function PropertiesPage() {
   const [submitting, setSubmitting] = React.useState(false);
 
   const canEdit = hasAnyRole(currentUser, propertyEditorRoles);
+  const ownerView = isOwnerRole(currentUser);
   const workspaceCurrency = currentWorkspace?.defaultCurrency || currentWorkspace?.default_currency || 'USD';
 
-  const properties = data.properties || [];
+  const allProperties = data.properties || [];
+  const properties = allProperties.filter((property) => canOwnerSeeProperty(property, currentUser));
   const activeProperties = properties.filter((property) => property.status !== 'archived');
   const archivedProperties = properties.filter((property) => property.status === 'archived');
 
@@ -553,7 +570,9 @@ export function PropertiesPage() {
   return (
     <AppLayout
       title="Properties"
-      subtitle="Manage every short-term rental, long-term rental, villa, unit, and commercial property in this workspace."
+      subtitle={ownerView
+        ? 'Assigned property records, property status, and owner-visible property details.'
+        : 'Manage every short-term rental, long-term rental, villa, unit, and commercial property in this workspace.'}
     >
       {message && (
         <section className="helper" role="status">
@@ -561,9 +580,24 @@ export function PropertiesPage() {
         </section>
       )}
 
+      {ownerView && (
+        <section className="card owner-dashboard-notice">
+          <div className="card-header">
+            <div>
+              <p className="eyebrow">Owner visibility</p>
+              <h3>Property list is scoped to assigned properties</h3>
+              <p>
+                This page only shows properties assigned to your owner account. Workspace-wide property records stay hidden.
+              </p>
+            </div>
+            <ShieldCheck size={22} className="muted" />
+          </div>
+        </section>
+      )}
+
       <section className="stat-grid">
         <StatCard
-          label="Active properties"
+          label={ownerView ? 'Assigned active properties' : 'Active properties'}
           value={activeProperties.length}
           subtitle={`${archivedProperties.length} archived`}
           icon={Building2}
@@ -584,7 +618,7 @@ export function PropertiesPage() {
         />
 
         <StatCard
-          label="Potential monthly revenue"
+          label={ownerView ? 'Assigned monthly potential' : 'Potential monthly revenue'}
           value={formatCurrency(potentialMonthlyRevenue, workspaceCurrency)}
           subtitle={`${maintenanceIssueProperties.length} properties need maintenance review`}
           icon={Building2}
@@ -593,8 +627,12 @@ export function PropertiesPage() {
 
       <section className="card properties-toolbar">
         <div>
-          <h3>Property portfolio</h3>
-          <p>Search, filter, view, and update workspace-scoped property records.</p>
+          <h3>{ownerView ? 'Assigned property portfolio' : 'Property portfolio'}</h3>
+          <p>
+            {ownerView
+              ? 'Search, filter, and view properties assigned to this owner account.'
+              : 'Search, filter, view, and update workspace-scoped property records.'}
+          </p>
         </div>
 
         <div className="properties-toolbar-actions">
@@ -618,7 +656,9 @@ export function PropertiesPage() {
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search by property name, address, city, country, type, or status..."
+              placeholder={ownerView
+                ? 'Search assigned properties by name, address, city, country, type, or status...'
+                : 'Search by property name, address, city, country, type, or status...'}
               aria-label="Search properties"
             />
             {query && (
@@ -735,7 +775,7 @@ export function PropertiesPage() {
           <section className="card">
             <div className="card-header">
               <div>
-                <h3>All properties</h3>
+                <h3>{ownerView ? 'Assigned properties' : 'All properties'}</h3>
                 <p>{rows.length} property record{rows.length === 1 ? '' : 's'} match the current filters.</p>
               </div>
             </div>
@@ -840,11 +880,13 @@ export function PropertiesPage() {
         <EmptyState
           eyebrow="Properties"
           icon={Building2}
-          title={properties.length ? 'No properties match your filters' : 'Add your first property'}
+          title={properties.length ? 'No properties match your filters' : ownerView ? 'No assigned properties yet' : 'Add your first property'}
           description={
             properties.length
               ? 'Adjust the search, status, rental type, or archived filter to find a property.'
-              : 'Create a real property record before adding bookings, cleaning tasks, maintenance work orders, or owner reports.'
+              : ownerView
+                ? 'Your property manager has not assigned properties to this owner account yet.'
+                : 'Create a real property record before adding bookings, cleaning tasks, maintenance work orders, or owner reports.'
           }
           action={
             canEdit ? (
