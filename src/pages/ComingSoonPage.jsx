@@ -80,7 +80,7 @@ const helpTopics = [
 
 const operationalRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
 const ownerVisibleRoles = [...operationalRoles, roles.OWNER, roles.ACCOUNTANT];
-const bookingVisibleRoles = [...operationalRoles, roles.OWNER, roles.ACCOUNTANT];
+const bookingVisibleRoles = [...operationalRoles, roles.ACCOUNTANT];
 const reportVisibleRoles = [...operationalRoles, roles.OWNER, roles.ACCOUNTANT];
 
 function isSmartToolsPage(title) {
