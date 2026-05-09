@@ -49,7 +49,7 @@ const blankPropertyForm = {
   notes: '',
 };
 
-const calendarAccessRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
+const calendarAccessRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
 
 function cleanNumber(value) {
   if (value === '' || value === null || value === undefined) return null;
