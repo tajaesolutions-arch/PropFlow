@@ -230,8 +230,8 @@ export function NotificationsPage() {
         <div>
           <h3>Notification center</h3>
           <p>
-            Workspace alerts for bookings, cleaning tasks, maintenance work orders, owner reports,
-            billing, inventory, and team activity.
+            In-app workspace alerts for bookings, cleaning tasks, maintenance work orders, owner reports,
+            billing, inventory, and team activity. Email, SMS, and WhatsApp delivery are not active yet.
           </p>
         </div>
 
@@ -249,12 +249,25 @@ export function NotificationsPage() {
         </div>
       </section>
 
+      <section className="card notification-warning-card">
+        <div className="card-header">
+          <div>
+            <p className="eyebrow">Delivery status</p>
+            <h3>External notification delivery is pending backend setup</h3>
+            <p>
+              This page displays in-app notification records only. Email, SMS, WhatsApp, delivery logs, provider retries, and sent-message status should be connected in a later backend notification phase.
+            </p>
+          </div>
+          <AlertTriangle size={22} className="muted" />
+        </div>
+      </section>
+
       <section className="card">
         <div className="notifications-filters">
           <label className="notifications-search">
             <Search size={16} />
             <input
-              placeholder="Search notifications by title, message, type, channel, or status..."
+              placeholder="Search in-app notifications by title, message, type, channel, or status..."
               value={filters.query}
               onChange={setFilter('query')}
               aria-label="Search notifications"
@@ -300,7 +313,7 @@ export function NotificationsPage() {
         <div className="card-header">
           <div>
             <h3>In-app notifications</h3>
-            <p>Real notification records from the current workspace.</p>
+            <p>Workspace notification records shown inside PropFlow. External delivery is not connected yet.</p>
           </div>
 
           <StatusBadge tone="info">{filteredNotifications.length} shown</StatusBadge>
@@ -319,8 +332,8 @@ export function NotificationsPage() {
             title={notifications.length ? 'No notifications match the current filters' : 'No notifications yet'}
             description={
               notifications.length
-                ? 'Adjust the search, type, or status filters to view more notification records.'
-                : 'PropFlow will show real workspace alerts here when bookings, cleaning tasks, maintenance work orders, billing updates, owner reports, inventory alerts, or team activity create notification records.'
+                ? 'Adjust the search, type, or status filters to view more in-app notification records.'
+                : 'PropFlow will show in-app workspace alerts here when bookings, cleaning tasks, maintenance work orders, billing updates, owner reports, inventory alerts, or team activity create notification records. Email, SMS, and WhatsApp delivery are not active yet.'
             }
           />
         )}
