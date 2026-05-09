@@ -49,6 +49,8 @@ const blankPropertyForm = {
   notes: '',
 };
 
+const calendarAccessRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
+
 function cleanNumber(value) {
   if (value === '' || value === null || value === undefined) return null;
 
@@ -490,6 +492,7 @@ export function PropertiesPage() {
   const [submitting, setSubmitting] = React.useState(false);
 
   const canEdit = hasAnyRole(currentUser, propertyEditorRoles);
+  const canOpenCalendar = hasAnyRole(currentUser, calendarAccessRoles);
   const ownerView = isOwnerRole(currentUser);
   const workspaceCurrency = currentWorkspace?.defaultCurrency || currentWorkspace?.default_currency || 'USD';
 
@@ -643,9 +646,11 @@ export function PropertiesPage() {
             </button>
           )}
 
-          <button type="button" onClick={() => navigate('/calendar')} data-skip-create-action="true">
-            View Calendar
-          </button>
+          {canOpenCalendar && (
+            <button type="button" onClick={() => navigate('/calendar')} data-skip-create-action="true">
+              View Calendar
+            </button>
+          )}
         </div>
       </section>
 
