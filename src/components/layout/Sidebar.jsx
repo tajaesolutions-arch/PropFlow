@@ -107,7 +107,6 @@ const maintenanceNav = [
     section: 'Maintenance Portal',
     items: [
       ['/maintenance-dashboard', 'Maintenance Dashboard', Wrench],
-      ['/maintenance', 'Work Orders', Wrench],
     ],
   },
   {
@@ -188,7 +187,7 @@ function getSidebarSearchTarget(currentUser) {
   if (primaryRole === roles.ADMIN) return '/admin';
   if (primaryRole === roles.OWNER) return '/properties';
   if (primaryRole === roles.CLEANER) return '/cleaning';
-  if (primaryRole === roles.MAINTENANCE) return '/maintenance';
+  if (primaryRole === roles.MAINTENANCE) return '/maintenance-dashboard';
   if (primaryRole === roles.ACCOUNTANT) return '/properties';
 
   return '/properties';
@@ -200,7 +199,7 @@ function getSidebarSearchLabel(currentUser) {
   if (primaryRole === roles.ADMIN) return 'Search platform';
   if (primaryRole === roles.OWNER) return 'Search assigned properties';
   if (primaryRole === roles.CLEANER) return 'Search cleaning tasks';
-  if (primaryRole === roles.MAINTENANCE) return 'Search work orders';
+  if (primaryRole === roles.MAINTENANCE) return 'Search assigned work orders';
   if (primaryRole === roles.ACCOUNTANT) return 'Search finance properties';
 
   return 'Search workspace';

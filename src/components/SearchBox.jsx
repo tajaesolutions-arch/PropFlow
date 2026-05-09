@@ -10,7 +10,7 @@ const operationalRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST]
 const ownerVisibleRoles = [...operationalRoles, roles.OWNER, roles.ACCOUNTANT];
 const propertyDetailRoles = ownerVisibleRoles;
 const bookingPageRoles = [...operationalRoles, roles.ACCOUNTANT];
-const maintenancePageRoles = [...operationalRoles, roles.MAINTENANCE];
+const maintenancePageRoles = operationalRoles;
 const financeRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
 const inventoryPageRoles = financeRoles;
 const calendarManagerRoles = [...operationalRoles, roles.ACCOUNTANT];
@@ -203,6 +203,8 @@ function getVisibleMaintenanceWorkOrders(data, user) {
   const workOrders = data.maintenanceWorkOrders || [];
 
   if (!isMaintenanceRole(user)) return workOrders;
+
+  if (!canAccessPath(user, '/maintenance')) return [];
 
   if (!hasAssignmentData(workOrders, getAssignedMaintenanceId)) return workOrders;
 
