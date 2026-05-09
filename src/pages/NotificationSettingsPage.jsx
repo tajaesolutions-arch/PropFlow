@@ -152,7 +152,7 @@ function providerTone(configured) {
 }
 
 function providerStatus(configured) {
-  return configured ? 'configured' : 'not configured';
+  return configured ? 'preview only' : 'not configured';
 }
 
 function countEnabledPreferences(preferences) {
@@ -202,7 +202,7 @@ function ChannelCard({ channel, enabled, onToggle }) {
           <strong>{enabled ? 'Enabled' : 'Disabled'}</strong>
           <small>
             {channel.configured
-              ? 'Ready for in-app display. Preference persistence will be connected in a later backend phase.'
+              ? 'This is a local UI preview only. Saved preferences and delivery behavior will be connected in a later backend phase.'
               : 'Disabled until backend provider credentials and secure delivery functions are connected.'}
           </small>
         </span>
@@ -250,12 +250,12 @@ export function NotificationSettingsPage() {
 
   if (!currentWorkspace) {
     return (
-      <AppLayout title="Notification Settings" subtitle="Workspace notification preferences.">
+      <AppLayout title="Notification Settings" subtitle="Workspace notification settings preview.">
         <EmptyState
           eyebrow="Workspace required"
           icon={Bell}
           title="Workspace required"
-          description="Create or join a workspace before configuring notification preferences."
+          description="Create or join a workspace before previewing notification preferences."
         />
       </AppLayout>
     );
@@ -278,13 +278,13 @@ export function NotificationSettingsPage() {
   return (
     <AppLayout
       title="Notification Settings"
-      subtitle="Configure in-app, email, SMS, and WhatsApp notification preferences."
+      subtitle="Preview in-app, email, SMS, and WhatsApp notification settings. Preference saving and external delivery are not active yet."
     >
       <section className="stat-grid dense">
         <StatCard
-          label="Enabled channels"
+          label="Enabled previews"
           value={`${enabledChannels}/4`}
-          subtitle="Only configured providers can be enabled"
+          subtitle="Only local UI previews can be toggled"
           icon={Bell}
         />
 
@@ -401,7 +401,7 @@ export function NotificationSettingsPage() {
             <span>
               <Bell size={16} />
               <strong>In-app notifications</strong>
-              <StatusBadge tone="info">frontend-ready</StatusBadge>
+              <StatusBadge tone="info">preview only</StatusBadge>
             </span>
           </div>
         </section>
