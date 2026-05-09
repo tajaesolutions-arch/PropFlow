@@ -227,57 +227,13 @@ function buildRecentTransactions({ bookings, maintenanceWorkOrders, cleaningTask
   });
 }
 
-function toCsvValue(value) {
-  const text = String(value ?? '');
-  return `"${text.replaceAll('"', '""')}"`;
-}
-
-function downloadCsv(filename, rows) {
-  if (!rows.length) return;
-
-  const headers = Object.keys(rows[0]);
-  const csv = [
-    headers.map(toCsvValue).join(','),
-    ...rows.map((row) => headers.map((header) => toCsvValue(row[header])).join(',')),
-  ].join('\n');
-
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-
-  URL.revokeObjectURL(url);
-}
-
-function buildFinanceCsvRows(propertyRows) {
-  return propertyRows.map((row) => ({
-    property: row.name || 'Unnamed property',
-    currency: row.currency,
-    bookings: row.bookings,
-    revenue: row.revenue,
-    owner_payout: row.ownerPayout,
-    cleaning_fees_collected: row.cleaningFees,
-    taxes_platform_fees: row.platformFees,
-    cleaning_costs: row.cleaningCosts,
-    maintenance_costs: row.maintenanceCosts,
-    total_expenses: row.expenses,
-    net_profit: row.netProfit,
-    open_maintenance: row.openMaintenance,
-  }));
-}
-
-function buildTransactionCsvRows(transactions) {
-  return transactions.map((row) => ({
-    type: row.type,
-    property: row.property,
-    date: row.date,
-    status: row.status,
-    currency: row.currency,
-    amount: row.amount,
-  }));
+function DisabledExportButton({ label, icon: Icon = Download }) {
+  return (
+    <button type="button" disabled data-skip-create-action="true" title="Finance exports are not active yet.">
+      <Icon size={16} />
+      {label}
+    </button>
+  );
 }
 
 export function AccountantDashboardPage() {
@@ -374,9 +330,9 @@ export function AccountantDashboardPage() {
   return (
     <AppLayout
       title="Accountant dashboard"
-      subtitle="Finance-only view for revenue, expenses, owner payouts, reports, receipts, and exports."
+      subtitle="Finance-only view for revenue, expenses, owner payouts, reports, receipts, and export placeholders."
     >
-      <section className="card accountant-dashboard-notice">
+      <section className="card accountant-dashboard-notice finance-safety-notice">
         <div className="card-header">
           <div>
             <h3>Finance-only access</h3>
@@ -387,6 +343,19 @@ export function AccountantDashboardPage() {
             </p>
           </div>
           <ShieldCheck size={22} className="muted" />
+        </div>
+      </section>
+
+      <section className="card finance-safety-notice">
+        <div className="card-header">
+          <div>
+            <p className="eyebrow">Export safety</p>
+            <h3>Finance CSV and PDF exports are not active yet</h3>
+            <p>
+              Finance export will be connected after finance records are safely stored and backend-generated files are ready. This dashboard does not generate or download finance files yet.
+            </p>
+          </div>
+          <FileSpreadsheet size={22} className="muted" />
         </div>
       </section>
 
@@ -409,32 +378,16 @@ export function AccountantDashboardPage() {
         <StatCard label="Cleaning fees collected" value={formatCurrency(cleaningFees, currency)} icon={ClipboardList} />
       </section>
 
-      <section className="card accountant-dashboard-toolbar">
+      <section className="card accountant-dashboard-toolbar finance-actions-toolbar">
         <div>
           <h3>Finance exports</h3>
-          <p>Export property finance and transaction records as CSV for bookkeeping review.</p>
+          <p>CSV and PDF exports are disabled until backend-generated finance exports are connected.</p>
         </div>
 
         <div className="accountant-dashboard-toolbar-actions">
-          <button
-            type="button"
-            onClick={() => downloadCsv('propflow-finance-summary.csv', buildFinanceCsvRows(propertyRows))}
-            disabled={!propertyRows.length}
-            data-skip-create-action="true"
-          >
-            <Download size={16} />
-            Finance CSV
-          </button>
-
-          <button
-            type="button"
-            onClick={() => downloadCsv('propflow-transactions.csv', buildTransactionCsvRows(recentTransactions))}
-            disabled={!recentTransactions.length}
-            data-skip-create-action="true"
-          >
-            <Download size={16} />
-            Transaction CSV
-          </button>
+          <DisabledExportButton label="Finance CSV disabled" />
+          <DisabledExportButton label="Transaction CSV disabled" />
+          <DisabledExportButton label="PDF disabled" icon={FileText} />
         </div>
       </section>
 
@@ -572,7 +525,7 @@ export function AccountantDashboardPage() {
           eyebrow="Finance"
           icon={FileSpreadsheet}
           title="No property finance records yet"
-          description="Property finance summaries will appear once properties, bookings, cleaning tasks, and maintenance records exist."
+          description="Property finance summaries will appear once properties, bookings, cleaning tasks, and maintenance records exist. No export files are generated yet."
         />
       )}
 
@@ -581,7 +534,7 @@ export function AccountantDashboardPage() {
           <div className="card-header">
             <div>
               <h3>Recent finance activity</h3>
-              <p>Revenue and cost records pulled from bookings, cleaning, and maintenance.</p>
+              <p>Revenue and cost previews pulled from bookings, cleaning, and maintenance.</p>
             </div>
             <Receipt size={20} className="muted" />
           </div>
@@ -607,7 +560,7 @@ export function AccountantDashboardPage() {
               compact
               icon={Receipt}
               title="No finance activity yet"
-              description="Booking revenue and cost activity will appear here."
+              description="Booking revenue and cost activity will appear here. CSV/PDF exports are not active yet."
             />
           )}
         </section>
@@ -636,7 +589,7 @@ export function AccountantDashboardPage() {
               compact
               icon={FileText}
               title="No owner reports generated"
-              description="Owner reports will appear here after report generation is connected."
+              description="Owner reports will appear here after report generation is connected. Export files are not generated yet."
             />
           )}
         </section>
