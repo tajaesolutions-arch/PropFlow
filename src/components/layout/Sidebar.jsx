@@ -25,7 +25,7 @@ import {
 import { navigate } from '../../routes/AppRouter.jsx';
 import { useApp } from '../../lib/AppContext.jsx';
 import { roles, roleLabels } from '../../data/constants.js';
-import { resolvePrimaryRole } from '../../lib/auth.js';
+import { getPostLoginPath, resolvePrimaryRole } from '../../lib/auth.js';
 
 const operationalNav = [
   {
@@ -268,7 +268,7 @@ export function Sidebar({ collapsed = false, setCollapsed, mobileOpen = false, s
           type="button"
           className="brand-button"
           onClick={() => {
-            goTo(currentUser?.roles?.includes(roles.ADMIN) ? '/admin' : '/dashboard');
+            goTo(getPostLoginPath(currentUser));
           }}
           aria-label="Go to dashboard"
           data-skip-create-action="true"
