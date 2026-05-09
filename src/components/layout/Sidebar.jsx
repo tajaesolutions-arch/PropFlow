@@ -123,6 +123,7 @@ const accountantNav = [
       ['/properties', 'Properties', Building2],
       ['/expenses', 'Expenses', Receipt],
       ['/reports', 'Reports', BarChart3],
+      ['/inventory', 'Supplies / Inventory', Boxes],
       ['/billing', 'Billing', CreditCard],
     ],
   },
