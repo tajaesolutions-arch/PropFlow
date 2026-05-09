@@ -44,6 +44,7 @@ const assignmentRoleOptions = [
 ];
 
 const billingAccessRoles = [roles.ADMIN, roles.OWNER_ADMIN, roles.ACCOUNTANT];
+const teamVisibilityRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER];
 
 const defaultAssignment = {
   userId: '',
@@ -171,6 +172,7 @@ export function SettingsPage() {
   const canInvite = hasAnyRole(currentUser, [roles.OWNER_ADMIN]);
   const canManageAssignments = hasAnyRole(currentUser, [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER]);
   const canOpenBilling = hasAnyRole(currentUser, billingAccessRoles);
+  const canViewTeamAccess = hasAnyRole(currentUser, teamVisibilityRoles);
 
   const activeProperties = (data.properties || []).filter((property) => property.status !== 'archived');
   const members = data.members || [];
@@ -182,7 +184,7 @@ export function SettingsPage() {
   const workspaceCurrency = getWorkspaceCurrency(currentWorkspace);
 
   const loadPropertyAssignments = React.useCallback(async () => {
-    if (!isSupabaseConfigured || !supabase || !currentWorkspace?.id) {
+    if (!canViewTeamAccess || !isSupabaseConfigured || !supabase || !currentWorkspace?.id) {
       setPropertyAssignments([]);
       return;
     }
@@ -206,7 +208,7 @@ export function SettingsPage() {
     } finally {
       setAssignmentsLoading(false);
     }
-  }, [currentWorkspace?.id, isSupabaseConfigured]);
+  }, [canViewTeamAccess, currentWorkspace?.id, isSupabaseConfigured]);
 
   React.useEffect(() => {
     loadPropertyAssignments();
@@ -418,8 +420,18 @@ export function SettingsPage() {
 
       <section className="stat-grid dense">
         <StatCard label="Workspace" value={workspaceName} subtitle={workspaceCode || 'No company code'} icon={Globe2} />
-        <StatCard label="Team members" value={members.length} subtitle={`${invites.length} invites tracked`} icon={Users} />
-        <StatCard label="Properties" value={activeProperties.length} subtitle={`${propertyAssignments.length} assignments`} icon={Building2} />
+        <StatCard
+          label="Team access"
+          value={canViewTeamAccess ? members.length : 'Restricted'}
+          subtitle={canViewTeamAccess ? `${invites.length} invites tracked` : 'Owner/manager only'}
+          icon={Users}
+        />
+        <StatCard
+          label="Properties"
+          value={activeProperties.length}
+          subtitle={canViewTeamAccess ? `${propertyAssignments.length} assignments` : 'Assignment history restricted'}
+          icon={Building2}
+        />
         <StatCard
           label="Supabase"
           value={isSupabaseConfigured ? 'Connected' : 'Missing'}
@@ -655,7 +667,7 @@ export function SettingsPage() {
           />
         )}
 
-        {lastLink && (
+        {lastLink && canInvite && (
           <div className="settings-invite-link">
             <Link2 size={16} />
             <input value={lastLink} readOnly />
@@ -667,220 +679,242 @@ export function SettingsPage() {
         )}
       </section>
 
-      <section className="panel-grid two">
-        <section className="card">
-          <div className="card-header">
-            <div>
-              <h3>Workspace members</h3>
-              <p>Current users connected to this workspace.</p>
+      {canViewTeamAccess ? (
+        <section className="panel-grid two">
+          <section className="card">
+            <div className="card-header">
+              <div>
+                <h3>Workspace members</h3>
+                <p>Current users connected to this workspace.</p>
+              </div>
+              <Users size={20} className="muted" />
             </div>
-            <Users size={20} className="muted" />
-          </div>
 
-          {members.length ? (
-            <DataTable
-              rows={members}
-              columns={[
-                {
-                  key: 'member',
-                  label: 'Member',
-                  render: (row) => (
-                    <span>
-                      <strong>{getMemberName(row)}</strong>
-                      <small>{getMemberEmail(row)}</small>
-                    </span>
-                  ),
-                },
-                {
-                  key: 'roles',
-                  label: 'Roles',
-                  render: (row) => roleList(row.roles),
-                },
-                {
-                  key: 'status',
-                  label: 'Status',
-                  render: (row) => <StatusBadge>{row.status || 'active'}</StatusBadge>,
-                },
-                {
-                  key: 'created_at',
-                  label: 'Joined',
-                  render: (row) => formatDate(row.created_at),
-                },
-              ]}
-            />
-          ) : (
-            <EmptyState
-              compact
-              icon={Users}
-              title="No team members loaded"
-              description="Workspace members will appear here after invites are accepted."
-            />
-          )}
-        </section>
+            {members.length ? (
+              <DataTable
+                rows={members}
+                columns={[
+                  {
+                    key: 'member',
+                    label: 'Member',
+                    render: (row) => (
+                      <span>
+                        <strong>{getMemberName(row)}</strong>
+                        <small>{getMemberEmail(row)}</small>
+                      </span>
+                    ),
+                  },
+                  {
+                    key: 'roles',
+                    label: 'Roles',
+                    render: (row) => roleList(row.roles),
+                  },
+                  {
+                    key: 'status',
+                    label: 'Status',
+                    render: (row) => <StatusBadge>{row.status || 'active'}</StatusBadge>,
+                  },
+                  {
+                    key: 'created_at',
+                    label: 'Joined',
+                    render: (row) => formatDate(row.created_at),
+                  },
+                ]}
+              />
+            ) : (
+              <EmptyState
+                compact
+                icon={Users}
+                title="No team members loaded"
+                description="Workspace members will appear here after invites are accepted."
+              />
+            )}
+          </section>
 
-        <section className="card">
-          <div className="card-header">
-            <div>
-              <h3>Invite history</h3>
-              <p>Pending, accepted, expired, and revoked invites.</p>
+          <section className="card">
+            <div className="card-header">
+              <div>
+                <h3>Invite history</h3>
+                <p>Pending, accepted, expired, and revoked invites.</p>
+              </div>
+              <Send size={20} className="muted" />
             </div>
-            <Send size={20} className="muted" />
-          </div>
 
-          {invites.length ? (
-            <DataTable
-              rows={invites}
-              columns={[
-                {
-                  key: 'email',
-                  label: 'Email',
-                },
-                {
-                  key: 'roles',
-                  label: 'Roles',
-                  render: (row) => roleList(row.roles),
-                },
-                {
-                  key: 'status',
-                  label: 'Status',
-                  render: (row) => <StatusBadge>{row.status || 'pending'}</StatusBadge>,
-                },
-                {
-                  key: 'expires_at',
-                  label: 'Expires',
-                  render: (row) => formatDate(row.expires_at),
-                },
-              ]}
-            />
-          ) : (
-            <EmptyState
-              compact
-              icon={Send}
-              title="No invites yet"
-              description="Created invites will appear here."
-            />
-          )}
+            {canInvite ? (
+              invites.length ? (
+                <DataTable
+                  rows={invites}
+                  columns={[
+                    {
+                      key: 'email',
+                      label: 'Email',
+                    },
+                    {
+                      key: 'roles',
+                      label: 'Roles',
+                      render: (row) => roleList(row.roles),
+                    },
+                    {
+                      key: 'status',
+                      label: 'Status',
+                      render: (row) => <StatusBadge>{row.status || 'pending'}</StatusBadge>,
+                    },
+                    {
+                      key: 'expires_at',
+                      label: 'Expires',
+                      render: (row) => formatDate(row.expires_at),
+                    },
+                  ]}
+                />
+              ) : (
+                <EmptyState
+                  compact
+                  icon={Send}
+                  title="No invites yet"
+                  description="Created invites will appear here."
+                />
+              )
+            ) : (
+              <EmptyState
+                compact
+                icon={Send}
+                title="Invite history restricted"
+                description="Invite history is visible to workspace owners/company admins only."
+              />
+            )}
+          </section>
         </section>
-      </section>
-
-      <section className="card">
-        <div className="card-header">
-          <div>
-            <h3>Property assignments</h3>
-            <p>Assign owners, cleaners, maintenance crew, hosts, or accountants to specific properties.</p>
-          </div>
-
-          <Building2 size={20} className="muted" />
-        </div>
-
-        {canManageAssignments ? (
-          <form className="settings-assignment-form" onSubmit={submitAssignment}>
-            <label>
-              Member
-              <select value={assignment.userId} onChange={setAssignmentField('userId')} required>
-                <option value="">Select member</option>
-                {assignableMembers.map((member) => (
-                  <option key={getMemberId(member)} value={getMemberId(member)}>
-                    {getMemberName(member)} — {roleList(member.roles)}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label>
-              Property
-              <select value={assignment.propertyId} onChange={setAssignmentField('propertyId')} required>
-                <option value="">Select property</option>
-                {activeProperties.map((property) => (
-                  <option key={property.id} value={property.id}>
-                    {property.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label>
-              Assignment role
-              <select value={assignment.assignmentRole} onChange={setAssignmentField('assignmentRole')} required>
-                {assignmentRoleOptions.map((role) => (
-                  <option key={role} value={role}>
-                    {roleLabels[role] || role}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <button type="submit" className="primary" disabled={assignmentBusy} data-skip-create-action="true">
-              <CheckCircle2 size={16} />
-              {assignmentBusy ? 'Saving…' : 'Save assignment'}
-            </button>
-          </form>
-        ) : (
+      ) : (
+        <section className="card">
           <EmptyState
             compact
-            icon={Building2}
-            title="Assignment access restricted"
-            description="Only workspace owners and property managers can manage property assignments."
+            icon={Users}
+            title="Team access is restricted"
+            description="Workspace member lists, member emails, invite history, and assignment history are visible to workspace owners and property managers only."
           />
-        )}
+        </section>
+      )}
 
-        <div className="settings-assignment-table">
-          {assignmentsLoading ? (
-            <div className="helper">Loading property assignments…</div>
-          ) : propertyAssignments.length ? (
-            <DataTable
-              rows={propertyAssignments}
-              columns={[
-                {
-                  key: 'member',
-                  label: 'Member',
-                  render: (row) => getAssignmentMemberName(members, row.user_id || row.userId),
-                },
-                {
-                  key: 'property',
-                  label: 'Property',
-                  render: (row) => getPropertyName(activeProperties, row.property_id || row.propertyId),
-                },
-                {
-                  key: 'assignment_role',
-                  label: 'Role',
-                  render: (row) => roleLabels[row.assignment_role] || row.assignment_role || '—',
-                },
-                {
-                  key: 'created_at',
-                  label: 'Created',
-                  render: (row) => formatDate(row.created_at),
-                },
-                {
-                  key: 'actions',
-                  label: 'Actions',
-                  render: (row) =>
-                    canManageAssignments ? (
-                      <button
-                        type="button"
-                        onClick={() => removeAssignment(row.id)}
-                        disabled={assignmentBusy}
-                        data-skip-create-action="true"
-                      >
-                        <Trash2 size={16} />
-                        Remove
-                      </button>
-                    ) : (
-                      '—'
-                    ),
-                },
-              ]}
-            />
+      {canViewTeamAccess && (
+        <section className="card">
+          <div className="card-header">
+            <div>
+              <h3>Property assignments</h3>
+              <p>Assign owners, cleaners, maintenance crew, hosts, or accountants to specific properties.</p>
+            </div>
+
+            <Building2 size={20} className="muted" />
+          </div>
+
+          {canManageAssignments ? (
+            <form className="settings-assignment-form" onSubmit={submitAssignment}>
+              <label>
+                Member
+                <select value={assignment.userId} onChange={setAssignmentField('userId')} required>
+                  <option value="">Select member</option>
+                  {assignableMembers.map((member) => (
+                    <option key={getMemberId(member)} value={getMemberId(member)}>
+                      {getMemberName(member)} — {roleList(member.roles)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Property
+                <select value={assignment.propertyId} onChange={setAssignmentField('propertyId')} required>
+                  <option value="">Select property</option>
+                  {activeProperties.map((property) => (
+                    <option key={property.id} value={property.id}>
+                      {property.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Assignment role
+                <select value={assignment.assignmentRole} onChange={setAssignmentField('assignmentRole')} required>
+                  {assignmentRoleOptions.map((role) => (
+                    <option key={role} value={role}>
+                      {roleLabels[role] || role}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <button type="submit" className="primary" disabled={assignmentBusy} data-skip-create-action="true">
+                <CheckCircle2 size={16} />
+                {assignmentBusy ? 'Saving…' : 'Save assignment'}
+              </button>
+            </form>
           ) : (
             <EmptyState
               compact
               icon={Building2}
-              title="No property assignments yet"
-              description="Saved property assignments will appear here."
+              title="Assignment access restricted"
+              description="Only workspace owners and property managers can manage property assignments."
             />
           )}
-        </div>
-      </section>
+
+          <div className="settings-assignment-table">
+            {assignmentsLoading ? (
+              <div className="helper">Loading property assignments…</div>
+            ) : propertyAssignments.length ? (
+              <DataTable
+                rows={propertyAssignments}
+                columns={[
+                  {
+                    key: 'member',
+                    label: 'Member',
+                    render: (row) => getAssignmentMemberName(members, row.user_id || row.userId),
+                  },
+                  {
+                    key: 'property',
+                    label: 'Property',
+                    render: (row) => getPropertyName(activeProperties, row.property_id || row.propertyId),
+                  },
+                  {
+                    key: 'assignment_role',
+                    label: 'Role',
+                    render: (row) => roleLabels[row.assignment_role] || row.assignment_role || '—',
+                  },
+                  {
+                    key: 'created_at',
+                    label: 'Created',
+                    render: (row) => formatDate(row.created_at),
+                  },
+                  {
+                    key: 'actions',
+                    label: 'Actions',
+                    render: (row) =>
+                      canManageAssignments ? (
+                        <button
+                          type="button"
+                          onClick={() => removeAssignment(row.id)}
+                          disabled={assignmentBusy}
+                          data-skip-create-action="true"
+                        >
+                          <Trash2 size={16} />
+                          Remove
+                        </button>
+                      ) : (
+                        '—'
+                      ),
+                  },
+                ]}
+              />
+            ) : (
+              <EmptyState
+                compact
+                icon={Building2}
+                title="No property assignments yet"
+                description="Saved property assignments will appear here."
+              />
+            )}
+          </div>
+        </section>
+      )}
     </AppLayout>
   );
 }
