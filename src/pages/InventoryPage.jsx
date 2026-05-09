@@ -25,7 +25,7 @@ import { hasAnyRole } from '../lib/auth.js';
 import { roles } from '../data/constants.js';
 import { formatCurrency } from '../lib/formatters.js';
 
-const inventoryManagerRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
+const inventoryManagerRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
 const inventoryCostRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
 const supplierDetailRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
 
@@ -542,6 +542,7 @@ export function InventoryPage() {
   const canManageInventory = hasAnyRole(currentUser, inventoryManagerRoles);
   const canSeeInventoryCosts = hasAnyRole(currentUser, inventoryCostRoles);
   const canSeeSupplierDetails = hasAnyRole(currentUser, supplierDetailRoles);
+  const accountantView = Boolean(currentUser?.roles?.includes(roles.ACCOUNTANT));
 
   const set = (key) => (event) => {
     setFilters((value) => ({ ...value, [key]: event.target.value }));
@@ -593,6 +594,11 @@ export function InventoryPage() {
   };
 
   const saveSupply = async (payload) => {
+    if (!canManageInventory) {
+      setSubmitError('You do not have permission to change inventory records.');
+      return;
+    }
+
     setSubmitting(true);
     setSubmitError('');
     setMessage('');
@@ -659,6 +665,21 @@ export function InventoryPage() {
         </section>
       )}
 
+      {accountantView && (
+        <section className="card inventory-visibility-notice">
+          <div className="card-header">
+            <div>
+              <p className="eyebrow">Accountant visibility</p>
+              <h3>Inventory is view-only for accountant users</h3>
+              <p>
+                Accountant users can review stock counts, supplier details, estimated unit cost, and total inventory value, but they cannot add, edit, archive, or restore inventory records.
+              </p>
+            </div>
+            <ShieldCheck size={22} className="muted" />
+          </div>
+        </section>
+      )}
+
       {!canSeeInventoryCosts && (
         <section className="card inventory-visibility-notice">
           <div className="card-header">
@@ -698,7 +719,9 @@ export function InventoryPage() {
       <section className="card inventory-toolbar">
         <div>
           <h3>Inventory management</h3>
-          <p>Monitor supplies for cleaning, guest readiness, maintenance, and property operations.</p>
+          <p>{accountantView
+            ? 'Review supplies, low-stock alerts, supplier details, and inventory value without changing operational records.'
+            : 'Monitor supplies for cleaning, guest readiness, maintenance, and property operations.'}</p>
         </div>
 
         <div className="inventory-toolbar-actions">
@@ -799,7 +822,9 @@ export function InventoryPage() {
           eyebrow="Inventory"
           icon={PackagePlus}
           title="No inventory items yet"
-          description="Add supplies such as linens, toiletries, cleaning products, maintenance parts, or guest-ready essentials."
+          description={accountantView
+            ? 'Inventory records will appear here after authorized workspace users add supplies. Accountant users can review inventory but cannot create supply records.'
+            : 'Add supplies such as linens, toiletries, cleaning products, maintenance parts, or guest-ready essentials.'}
           action={
             canManageInventory ? (
               <button
