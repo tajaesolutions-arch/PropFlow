@@ -10,6 +10,7 @@ import {
   Package,
   Plus,
   Search,
+  ShieldCheck,
   Wrench,
   X,
 } from 'lucide-react';
@@ -64,6 +65,50 @@ function dateOnly(value) {
 
 function getWorkOrderPropertyId(workOrder) {
   return workOrder.propertyId || workOrder.property_id;
+}
+
+function getAssignedMaintenanceId(workOrder) {
+  return (
+    workOrder.assignedMaintenanceId ||
+    workOrder.assigned_maintenance_id ||
+    workOrder.maintenanceId ||
+    workOrder.maintenance_id ||
+    ''
+  );
+}
+
+function isMaintenanceRole(currentUser) {
+  return Boolean(currentUser?.roles?.includes(roles.MAINTENANCE));
+}
+
+function hasMaintenanceAssignmentData(workOrders = []) {
+  return workOrders.some((workOrder) => Boolean(getAssignedMaintenanceId(workOrder)));
+}
+
+function isAssignedToCurrentMaintenance(workOrder, currentUser) {
+  if (!isMaintenanceRole(currentUser)) return true;
+
+  const assignedMaintenanceId = getAssignedMaintenanceId(workOrder);
+  if (!assignedMaintenanceId) return false;
+
+  return assignedMaintenanceId === currentUser?.id;
+}
+
+function getVisibleWorkOrders(workOrders = [], currentUser) {
+  if (!isMaintenanceRole(currentUser)) return workOrders;
+
+  if (!hasMaintenanceAssignmentData(workOrders)) return workOrders;
+
+  return workOrders.filter((workOrder) => isAssignedToCurrentMaintenance(workOrder, currentUser));
+}
+
+function canUpdateSpecificWorkOrder(currentUser, workOrder, allWorkOrders = []) {
+  if (hasAnyRole(currentUser, taskManagerRoles)) return true;
+  if (!isMaintenanceRole(currentUser)) return false;
+
+  if (!hasMaintenanceAssignmentData(allWorkOrders)) return true;
+
+  return isAssignedToCurrentMaintenance(workOrder, currentUser);
 }
 
 function getWorkOrderPropertyName(workOrder, properties = []) {
@@ -200,13 +245,13 @@ function WorkOrderCard({
         <span>
           <DollarSign size={16} />
           <strong>{formatCurrency(estimatedCost, currency)}</strong>
-          <small>Estimated</small>
+          <small>Repair estimate</small>
         </span>
 
         <span>
           <CheckCircle2 size={16} />
           <strong>{formatCurrency(actualCost, currency)}</strong>
-          <small>Actual</small>
+          <small>Repair actual</small>
         </span>
       </div>
 
@@ -249,7 +294,7 @@ function WorkOrderCard({
           </label>
 
           <label>
-            Actual cost
+            Actual repair cost
             <input
               type="number"
               min="0"
@@ -338,8 +383,13 @@ export function MaintenancePage() {
   });
 
   const properties = data.properties || [];
-  const activeProperties = properties.filter((property) => property.status !== 'archived');
-  const workOrders = data.maintenanceWorkOrders || [];
+  const allWorkOrders = data.maintenanceWorkOrders || [];
+  const workOrders = getVisibleWorkOrders(allWorkOrders, currentUser);
+  const maintenanceView = isMaintenanceRole(currentUser);
+  const visiblePropertyIds = new Set(workOrders.map((workOrder) => getWorkOrderPropertyId(workOrder)).filter(Boolean));
+  const activeProperties = properties.filter(
+    (property) => property.status !== 'archived' && (!maintenanceView || visiblePropertyIds.has(property.id)),
+  );
   const currency = currentWorkspace?.defaultCurrency || currentWorkspace?.default_currency || 'USD';
 
   const canCreate = canManageWorkOrders(currentUser);
@@ -375,8 +425,8 @@ export function MaintenancePage() {
   };
 
   const updateStatus = async (workOrder, status) => {
-    if (!canUpdate) {
-      setMessage('You do not have permission to update work orders.');
+    if (!canUpdateSpecificWorkOrder(currentUser, workOrder, allWorkOrders)) {
+      setMessage('You do not have permission to update this work order.');
       return;
     }
 
@@ -399,7 +449,7 @@ export function MaintenancePage() {
   };
 
   const updateActualCost = async (workOrder, value) => {
-    if (!canUpdate) return;
+    if (!canUpdateSpecificWorkOrder(currentUser, workOrder, allWorkOrders)) return;
 
     const nextActualCost = cleanNumber(value);
     const currentActualCost = cleanNumber(workOrder.actualCost ?? workOrder.actual_cost);
@@ -416,7 +466,7 @@ export function MaintenancePage() {
       setMessage('Actual repair cost updated.');
       clearMessageSoon();
     } catch (error) {
-      setMessage(error?.message || 'Could not update actual cost.');
+      setMessage(error?.message || 'Could not update actual repair cost.');
     } finally {
       setUpdatingWorkOrderId('');
     }
@@ -425,8 +475,8 @@ export function MaintenancePage() {
   const handleUpload = async (workOrder, file) => {
     if (!file) return;
 
-    if (!canUpdate) {
-      setMessage('You do not have permission to upload maintenance files.');
+    if (!canUpdateSpecificWorkOrder(currentUser, workOrder, allWorkOrders)) {
+      setMessage('You do not have permission to upload maintenance files for this work order.');
       return;
     }
 
@@ -476,7 +526,9 @@ export function MaintenancePage() {
   return (
     <AppLayout
       title="Maintenance"
-      subtitle="Track repairs, urgent issues, work orders, parts, costs, private uploads, and completion status."
+      subtitle={maintenanceView
+        ? 'Assigned repairs, urgent issues, parts, repair costs, private uploads, and completion status.'
+        : 'Track repairs, urgent issues, work orders, parts, costs, private uploads, and completion status.'}
     >
       {message && (
         <section
@@ -491,18 +543,33 @@ export function MaintenancePage() {
         </section>
       )}
 
+      {maintenanceView && (
+        <section className="card owner-dashboard-notice">
+          <div className="card-header">
+            <div>
+              <p className="eyebrow">Maintenance visibility</p>
+              <h3>Work orders are scoped to assigned repairs</h3>
+              <p>
+                This page shows work orders assigned to your maintenance account when assignment data exists. Workspace-wide maintenance records stay hidden from maintenance-only users.
+              </p>
+            </div>
+            <ShieldCheck size={22} className="muted" />
+          </div>
+        </section>
+      )}
+
       <section className="stat-grid dense">
         <StatCard label="Open work orders" value={openWorkOrders.length} icon={Wrench} />
         <StatCard label="Urgent issues" value={urgent.length} icon={AlertTriangle} tone="warning" />
         <StatCard label="Waiting for parts" value={waitingParts.length} icon={Package} />
-        <StatCard label="Estimated cost" value={formatCurrency(totalEstimated, currency)} icon={DollarSign} />
+        <StatCard label="Repair estimate" value={formatCurrency(totalEstimated, currency)} icon={DollarSign} />
       </section>
 
       <section className="card maintenance-toolbar">
         <div>
-          <h3>Maintenance operations</h3>
+          <h3>{maintenanceView ? 'Assigned maintenance work' : 'Maintenance operations'}</h3>
           <p>
-            Manage reported issues, repair priority, due dates, parts needed, actual cost, and
+            Manage reported issues, repair priority, due dates, parts needed, actual repair cost, and
             completion proof.
           </p>
         </div>
@@ -529,7 +596,7 @@ export function MaintenancePage() {
         <div className="card-header">
           <div>
             <h3>Urgent issues</h3>
-            <p>Urgent open work orders appear here for operational triage.</p>
+            <p>Urgent visible work orders appear here for operational triage.</p>
           </div>
 
           <StatusBadge tone={urgent.length ? 'error' : 'success'}>
@@ -556,7 +623,7 @@ export function MaintenancePage() {
             compact
             icon={CheckCircle2}
             title="No urgent maintenance alerts"
-            description="Urgent issues will appear here when reported."
+            description="Urgent visible issues will appear here when reported."
           />
         )}
       </section>
@@ -588,7 +655,7 @@ export function MaintenancePage() {
           <label>
             Property
             <select value={filters.property} onChange={setFilter('property')}>
-              <option value="all">All properties</option>
+              <option value="all">All visible properties</option>
               {activeProperties.map((property) => (
                 <option key={property.id} value={property.id}>
                   {property.name}
@@ -630,8 +697,10 @@ export function MaintenancePage() {
         <EmptyState
           eyebrow="Maintenance"
           icon={Wrench}
-          title="No maintenance work orders yet"
-          description="Create a work order to track property repairs, urgent issues, parts, cost, and completion proof."
+          title={maintenanceView ? 'No assigned maintenance work orders right now' : 'No maintenance work orders yet'}
+          description={maintenanceView
+            ? 'Assigned repairs will appear here when your workspace manager assigns work orders to your maintenance account.'
+            : 'Create a work order to track property repairs, urgent issues, parts, cost, and completion proof.'}
           action={
             canCreate ? (
               <button type="button" className="primary" data-create-action="maintenance">
@@ -649,7 +718,7 @@ export function MaintenancePage() {
               workOrder={workOrder}
               properties={properties}
               currency={currency}
-              canUpdate={canUpdate}
+              canUpdate={canUpdateSpecificWorkOrder(currentUser, workOrder, allWorkOrders)}
               updating={updatingWorkOrderId === workOrder.id}
               uploading={uploadingWorkOrderId === workOrder.id}
               onStatusUpdate={updateStatus}
@@ -663,7 +732,7 @@ export function MaintenancePage() {
           eyebrow="Maintenance filters"
           icon={Wrench}
           title="No work orders match your filters"
-          description="Adjust the search, property, priority, or status filter to find maintenance work orders."
+          description="Adjust the search, property, priority, or status filter to find visible maintenance work orders."
           action={
             <button type="button" onClick={clearFilters} data-skip-create-action="true">
               Clear filters
@@ -676,8 +745,8 @@ export function MaintenancePage() {
         <div className="card">
           <div className="card-header">
             <div>
-              <h3>Maintenance cost summary</h3>
-              <p>Track estimated vs. actual repair spend for the workspace.</p>
+              <h3>{maintenanceView ? 'Assigned repair cost summary' : 'Maintenance cost summary'}</h3>
+              <p>Track estimated vs. actual repair spend for visible work orders.</p>
             </div>
             <DollarSign size={20} className="muted" />
           </div>
@@ -686,13 +755,13 @@ export function MaintenancePage() {
             <span>
               <DollarSign size={16} />
               <strong>{formatCurrency(totalEstimated, currency)}</strong>
-              <small>Estimated</small>
+              <small>Repair estimate</small>
             </span>
 
             <span>
               <DollarSign size={16} />
               <strong>{formatCurrency(totalActual, currency)}</strong>
-              <small>Actual</small>
+              <small>Repair actual</small>
             </span>
 
             <span>
