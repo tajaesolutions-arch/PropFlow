@@ -8,6 +8,7 @@ import {
   Home,
   Plus,
   Search,
+  ShieldCheck,
   Sparkles,
   X,
 } from 'lucide-react';
@@ -72,6 +73,44 @@ function isOverdue(task) {
 
 function getTaskPropertyId(task) {
   return task.propertyId || task.property_id;
+}
+
+function getAssignedCleanerId(task) {
+  return task.assignedCleanerId || task.assigned_cleaner_id || task.cleanerId || task.cleaner_id || '';
+}
+
+function isCleanerRole(currentUser) {
+  return Boolean(currentUser?.roles?.includes(roles.CLEANER));
+}
+
+function hasCleanerAssignmentData(tasks = []) {
+  return tasks.some((task) => Boolean(getAssignedCleanerId(task)));
+}
+
+function isAssignedToCurrentCleaner(task, currentUser) {
+  if (!isCleanerRole(currentUser)) return true;
+
+  const assignedCleanerId = getAssignedCleanerId(task);
+  if (!assignedCleanerId) return false;
+
+  return assignedCleanerId === currentUser?.id;
+}
+
+function getVisibleCleaningTasks(tasks = [], currentUser) {
+  if (!isCleanerRole(currentUser)) return tasks;
+
+  if (!hasCleanerAssignmentData(tasks)) return tasks;
+
+  return tasks.filter((task) => isAssignedToCurrentCleaner(task, currentUser));
+}
+
+function canUpdateSpecificCleaningTask(currentUser, task, allTasks = []) {
+  if (hasAnyRole(currentUser, taskManagerRoles)) return true;
+  if (!isCleanerRole(currentUser)) return false;
+
+  if (!hasCleanerAssignmentData(allTasks)) return true;
+
+  return isAssignedToCurrentCleaner(task, currentUser);
 }
 
 function getTaskPropertyName(task, properties = []) {
@@ -304,8 +343,13 @@ export function CleaningPage() {
   });
 
   const properties = data.properties || [];
-  const activeProperties = properties.filter((property) => property.status !== 'archived');
-  const tasks = data.cleaningTasks || [];
+  const allTasks = data.cleaningTasks || [];
+  const tasks = getVisibleCleaningTasks(allTasks, currentUser);
+  const cleanerView = isCleanerRole(currentUser);
+  const visiblePropertyIds = new Set(tasks.map((task) => getTaskPropertyId(task)).filter(Boolean));
+  const activeProperties = properties.filter(
+    (property) => property.status !== 'archived' && (!cleanerView || visiblePropertyIds.has(property.id)),
+  );
 
   const canCreate = hasAnyRole(currentUser, taskManagerRoles);
   const canUpdate = canUpdateCleaningTask(currentUser);
@@ -322,8 +366,8 @@ export function CleaningPage() {
   };
 
   const changeStatus = async (task, status) => {
-    if (!canUpdate) {
-      setMessage('You do not have permission to update cleaning tasks.');
+    if (!canUpdateSpecificCleaningTask(currentUser, task, allTasks)) {
+      setMessage('You do not have permission to update this cleaning task.');
       return;
     }
 
@@ -347,7 +391,7 @@ export function CleaningPage() {
   };
 
   const updateNotes = async (task, notes) => {
-    if (!canUpdate) return;
+    if (!canUpdateSpecificCleaningTask(currentUser, task, allTasks)) return;
 
     setUpdatingTaskId(task.id);
 
@@ -366,7 +410,7 @@ export function CleaningPage() {
   };
 
   const updateIssueReported = async (task, issueReported) => {
-    if (!canUpdate) return;
+    if (!canUpdateSpecificCleaningTask(currentUser, task, allTasks)) return;
 
     setUpdatingTaskId(task.id);
     setMessage('');
@@ -388,8 +432,8 @@ export function CleaningPage() {
   const handleUpload = async (task, file) => {
     if (!file) return;
 
-    if (!canUpdate) {
-      setMessage('You do not have permission to upload cleaning photos.');
+    if (!canUpdateSpecificCleaningTask(currentUser, task, allTasks)) {
+      setMessage('You do not have permission to upload cleaning photos for this task.');
       return;
     }
 
@@ -435,7 +479,9 @@ export function CleaningPage() {
   return (
     <AppLayout
       title="Cleaning"
-      subtitle="Schedule, track, inspect, and confirm guest-ready cleanings across assigned properties."
+      subtitle={cleanerView
+        ? 'Assigned cleanings, checklist progress, issue reports, private photo uploads, and guest-ready confirmations.'
+        : 'Schedule, track, inspect, and confirm guest-ready cleanings across assigned properties.'}
     >
       {message && (
         <section
@@ -443,6 +489,21 @@ export function CleaningPage() {
           role="status"
         >
           {message}
+        </section>
+      )}
+
+      {cleanerView && (
+        <section className="card owner-dashboard-notice">
+          <div className="card-header">
+            <div>
+              <p className="eyebrow">Cleaner visibility</p>
+              <h3>Cleaning tasks are scoped to assigned work</h3>
+              <p>
+                This page shows cleaning tasks assigned to your cleaner account when assignment data exists. Workspace-wide cleaning records stay hidden from cleaner-only users.
+              </p>
+            </div>
+            <ShieldCheck size={22} className="muted" />
+          </div>
         </section>
       )}
 
@@ -455,7 +516,7 @@ export function CleaningPage() {
 
       <section className="card cleaning-toolbar">
         <div>
-          <h3>Cleaning operations</h3>
+          <h3>{cleanerView ? 'Assigned cleaning work' : 'Cleaning operations'}</h3>
           <p>
             Track turnover tasks, checklist progress, issue reports, private photo uploads, and
             guest-ready confirmations.
@@ -503,7 +564,7 @@ export function CleaningPage() {
           <label>
             Property
             <select value={filters.property} onChange={setFilter('property')}>
-              <option value="all">All properties</option>
+              <option value="all">All visible properties</option>
               {activeProperties.map((property) => (
                 <option key={property.id} value={property.id}>
                   {property.name}
@@ -541,8 +602,10 @@ export function CleaningPage() {
         <EmptyState
           eyebrow="Cleaning"
           icon={Sparkles}
-          title="No cleaning tasks yet"
-          description="Create the first cleaning task after adding a property or booking. Cleaning tasks should be tied to real workspace properties."
+          title={cleanerView ? 'No assigned cleaning tasks right now' : 'No cleaning tasks yet'}
+          description={cleanerView
+            ? 'Assigned cleaning tasks will appear here when your workspace manager assigns work to your cleaner account.'
+            : 'Create the first cleaning task after adding a property or booking. Cleaning tasks should be tied to real workspace properties.'}
           action={
             canCreate ? (
               <button type="button" className="primary" data-create-action="cleaning">
@@ -564,7 +627,7 @@ export function CleaningPage() {
               key={task.id}
               task={task}
               properties={properties}
-              canUpdate={canUpdate}
+              canUpdate={canUpdateSpecificCleaningTask(currentUser, task, allTasks)}
               uploading={uploadingTaskId === task.id}
               updating={updatingTaskId === task.id}
               onStatusChange={changeStatus}
@@ -579,7 +642,7 @@ export function CleaningPage() {
           eyebrow="Cleaning filters"
           icon={ClipboardCheck}
           title="No cleaning tasks match your filters"
-          description="Adjust the search, property, status, or view filter to find cleaning tasks."
+          description="Adjust the search, property, status, or view filter to find visible cleaning tasks."
           action={
             <button
               type="button"
@@ -603,8 +666,8 @@ export function CleaningPage() {
         <div className="card">
           <div className="card-header">
             <div>
-              <h3>Properties with active cleaning</h3>
-              <p>Quick view of properties that currently have open cleaning tasks.</p>
+              <h3>{cleanerView ? 'Assigned properties with active cleaning' : 'Properties with active cleaning'}</h3>
+              <p>Quick view of properties that currently have open visible cleaning tasks.</p>
             </div>
             <Home size={20} className="muted" />
           </div>
@@ -624,7 +687,7 @@ export function CleaningPage() {
               compact
               icon={CheckCircle2}
               title="No active cleaning"
-              description="Open cleaning tasks will appear here."
+              description="Open visible cleaning tasks will appear here."
             />
           )}
         </div>
@@ -633,7 +696,7 @@ export function CleaningPage() {
           <div className="card-header">
             <div>
               <h3>Issue reports</h3>
-              <p>Cleaning tasks where the cleaner reported a property issue.</p>
+              <p>Visible cleaning tasks where the cleaner reported a property issue.</p>
             </div>
             <AlertTriangle size={20} className="muted" />
           </div>
