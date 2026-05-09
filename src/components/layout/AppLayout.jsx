@@ -12,6 +12,8 @@ import { SettingsAccountSafetyNotice } from '../SettingsAccountSafetyNotice.jsx'
 import { TeamWorkspaceSafetyNotice } from '../TeamWorkspaceSafetyNotice.jsx';
 import { UploadSafetyNotice } from '../UploadSafetyNotice.jsx';
 import { useApp } from '../../lib/AppContext.jsx';
+import { hasAnyRole } from '../../lib/auth.js';
+import { roles } from '../../data/constants.js';
 import { Sidebar } from './Sidebar.jsx';
 import { TopBar } from './TopBar.jsx';
 
@@ -25,6 +27,13 @@ const settingsAccountNoticePaths = new Set(['/account', '/settings', '/notificat
 const inventoryNoticePaths = new Set(['/inventory']);
 const ownerAssignmentNoticePaths = new Set(['/owner-dashboard', '/owners', '/reports']);
 const calendarScheduleNoticePaths = new Set(['/calendar', '/dashboard', '/owner-dashboard', '/cleaner-dashboard', '/maintenance-dashboard']);
+const ownerAssignmentNoticeRoles = [
+  roles.OWNER_ADMIN,
+  roles.PROPERTY_MANAGER,
+  roles.HOST,
+  roles.ACCOUNTANT,
+  roles.OWNER,
+];
 
 function getInitialCollapsedState() {
   if (typeof window === 'undefined') return false;
@@ -46,12 +55,17 @@ function shouldShowTeamWorkspaceSafetyNotice() { return teamWorkspaceNoticePaths
 function shouldShowSettingsAccountSafetyNotice() { return settingsAccountNoticePaths.has(getCurrentPath()); }
 function shouldShowCalendarScheduleSafetyNotice() { return calendarScheduleNoticePaths.has(getCurrentPath()); }
 function shouldShowInventorySafetyNotice() { return inventoryNoticePaths.has(getCurrentPath()); }
-function shouldShowOwnerAssignmentSafetyNotice() { const path = getCurrentPath(); return ownerAssignmentNoticePaths.has(path) || path.startsWith('/properties/'); }
+function shouldShowOwnerAssignmentSafetyNotice(currentUser) {
+  if (!hasAnyRole(currentUser, ownerAssignmentNoticeRoles)) return false;
+
+  const path = getCurrentPath();
+  return ownerAssignmentNoticePaths.has(path) || path.startsWith('/properties/');
+}
 
 export function AppLayout({ title = 'Dashboard', subtitle = 'Workspace-scoped operational command center', children }) {
   const [collapsed, setCollapsed] = React.useState(getInitialCollapsedState);
   const [mobileOpen, setMobileOpen] = React.useState(false);
-  const { error } = useApp();
+  const { error, currentUser } = useApp();
   const showEnvironmentSetupNotice = shouldShowEnvironmentSetupNotice();
   const showReportsExportNotice = shouldShowReportsExportNotice();
   const showBillingSafetyNotice = shouldShowBillingSafetyNotice();
@@ -62,7 +76,7 @@ export function AppLayout({ title = 'Dashboard', subtitle = 'Workspace-scoped op
   const showSettingsAccountSafetyNotice = shouldShowSettingsAccountSafetyNotice();
   const showCalendarScheduleSafetyNotice = shouldShowCalendarScheduleSafetyNotice();
   const showInventorySafetyNotice = shouldShowInventorySafetyNotice();
-  const showOwnerAssignmentSafetyNotice = shouldShowOwnerAssignmentSafetyNotice();
+  const showOwnerAssignmentSafetyNotice = shouldShowOwnerAssignmentSafetyNotice(currentUser);
 
   React.useEffect(() => {
     window.localStorage.setItem(sidebarStorageKey, String(collapsed));
