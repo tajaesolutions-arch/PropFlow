@@ -98,6 +98,7 @@ function getVisibleCleaningTasks(tasks = [], currentUser) {
 }
 
 function canUpdateSpecificCleaningTask(currentUser, task) {
+  if (closedStatuses.has(task.status)) return false;
   if (hasAnyRole(currentUser, taskManagerRoles)) return true;
   if (!isCleanerRole(currentUser)) return false;
   return isAssignedToCurrentCleaner(task, currentUser);
@@ -184,18 +185,26 @@ function CleaningTaskCard({
   const overdue = isOverdue(task);
   const dueToday = isDueToday(task);
   const status = task.status || 'scheduled';
+  const closed = closedStatuses.has(status);
 
   return (
     <article className={`card cleaning-task-card ${overdue ? 'urgent' : ''}`}>
       <div className="cleaning-task-top">
         <div>
-          <p className="eyebrow">{overdue ? 'Overdue cleaning' : dueToday ? 'Due today' : 'Cleaning task'}</p>
+          <p className="eyebrow">{closed ? 'Closed cleaning' : overdue ? 'Overdue cleaning' : dueToday ? 'Due today' : 'Cleaning task'}</p>
           <h3>{propertyName}</h3>
           <p>{formatDateTime(task.scheduledFor || task.scheduled_for)}</p>
         </div>
 
         <StatusBadge tone={overdue ? 'error' : statusTone(status)}>{overdue ? 'overdue' : status}</StatusBadge>
       </div>
+
+      {closed && (
+        <div className="helper">
+          <ShieldCheck size={16} />
+          This cleaning is closed. Status, notes, issue reporting, and upload controls are read-only here.
+        </div>
+      )}
 
       <div className="cleaning-task-meta">
         <span>
@@ -246,7 +255,7 @@ function CleaningTaskCard({
         <textarea
           defaultValue={notes}
           rows={3}
-          disabled={!canUpdate}
+          disabled={!canUpdate || closed}
           onBlur={(event) => {
             if (event.target.value !== notes) {
               onNotesSave(task, event.target.value);
@@ -256,9 +265,9 @@ function CleaningTaskCard({
       </label>
 
       <div className="cleaning-card-actions">
-        {canUpdate && (
+        {canUpdate && !closed && (
           <>
-            {status !== 'in_progress' && !closedStatuses.has(status) && (
+            {status !== 'in_progress' && (
               <TaskActionButton
                 task={task}
                 status="in_progress"
@@ -267,14 +276,12 @@ function CleaningTaskCard({
               />
             )}
 
-            {!closedStatuses.has(status) && (
-              <TaskActionButton
-                task={task}
-                status="needs_inspection"
-                label="Needs inspection"
-                onClick={onStatusChange}
-              />
-            )}
+            <TaskActionButton
+              task={task}
+              status="needs_inspection"
+              label="Needs inspection"
+              onClick={onStatusChange}
+            />
 
             {status !== 'guest_ready' && (
               <TaskActionButton
@@ -342,7 +349,6 @@ export function CleaningPage() {
   );
 
   const canCreate = hasAnyRole(currentUser, taskManagerRoles);
-  const canUpdate = canUpdateCleaningTask(currentUser);
 
   const setFilter = (key) => (event) => {
     setFilters((value) => ({
@@ -357,7 +363,7 @@ export function CleaningPage() {
 
   const changeStatus = async (task, status) => {
     if (!canUpdateSpecificCleaningTask(currentUser, task)) {
-      setMessage('You do not have permission to update this cleaning task.');
+      setMessage('You do not have permission to update this cleaning task, or this cleaning is already closed.');
       return;
     }
 
@@ -381,7 +387,10 @@ export function CleaningPage() {
   };
 
   const updateNotes = async (task, notes) => {
-    if (!canUpdateSpecificCleaningTask(currentUser, task)) return;
+    if (!canUpdateSpecificCleaningTask(currentUser, task)) {
+      setMessage('You do not have permission to update notes for this cleaning task, or this cleaning is already closed.');
+      return;
+    }
 
     setUpdatingTaskId(task.id);
 
@@ -400,7 +409,10 @@ export function CleaningPage() {
   };
 
   const updateIssueReported = async (task, issueReported) => {
-    if (!canUpdateSpecificCleaningTask(currentUser, task)) return;
+    if (!canUpdateSpecificCleaningTask(currentUser, task)) {
+      setMessage('You do not have permission to update issue status for this cleaning task, or this cleaning is already closed.');
+      return;
+    }
 
     setUpdatingTaskId(task.id);
     setMessage('');
@@ -423,7 +435,7 @@ export function CleaningPage() {
     if (!file) return;
 
     if (!canUpdateSpecificCleaningTask(currentUser, task)) {
-      setMessage('You do not have permission to upload cleaning photos for this task.');
+      setMessage('You do not have permission to upload cleaning photos for this task, or this cleaning is already closed.');
       return;
     }
 
@@ -475,7 +487,7 @@ export function CleaningPage() {
     >
       {message && (
         <section
-          className={message.toLowerCase().includes('could not') || message.toLowerCase().includes('failed') ? 'helper error-helper' : 'helper'}
+          className={message.toLowerCase().includes('could not') || message.toLowerCase().includes('failed') || message.toLowerCase().includes('permission') ? 'helper error-helper' : 'helper'}
           role="status"
         >
           {message}
@@ -509,7 +521,7 @@ export function CleaningPage() {
           <h3>{cleanerView ? 'Assigned cleaning work' : 'Cleaning operations'}</h3>
           <p>
             Track turnover tasks, checklist progress, issue reports, private photo uploads, and
-            guest-ready confirmations.
+            guest-ready confirmations. Completed and guest-ready cleaning records stay read-only.
           </p>
         </div>
 
