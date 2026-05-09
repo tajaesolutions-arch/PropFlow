@@ -50,8 +50,8 @@ function getAssignedMaintenanceId(workOrder) {
   );
 }
 
-function hasMaintenanceAssignmentData(workOrders = []) {
-  return workOrders.some((workOrder) => Boolean(getAssignedMaintenanceId(workOrder)));
+function isMaintenanceUser(currentUser) {
+  return Boolean(currentUser?.roles?.includes(roles.MAINTENANCE));
 }
 
 function isAssignedToCurrentMaintenance(workOrder, currentUser) {
@@ -61,11 +61,8 @@ function isAssignedToCurrentMaintenance(workOrder, currentUser) {
   return assignedMaintenanceId === currentUser?.id;
 }
 
-function canUpdateMaintenanceJob(workOrder, currentUser, allWorkOrders = []) {
-  if (!currentUser?.roles?.includes(roles.MAINTENANCE)) return true;
-
-  if (!hasMaintenanceAssignmentData(allWorkOrders)) return true;
-
+function canUpdateMaintenanceJob(workOrder, currentUser) {
+  if (!isMaintenanceUser(currentUser)) return true;
   return isAssignedToCurrentMaintenance(workOrder, currentUser);
 }
 
@@ -109,16 +106,7 @@ function getPartsNeeded(workOrder) {
 }
 
 function getVisibleMaintenanceJobs(workOrders, currentUser) {
-  const isMaintenanceCrew = currentUser?.roles?.includes(roles.MAINTENANCE);
-
-  if (!isMaintenanceCrew) {
-    return workOrders;
-  }
-
-  if (!hasMaintenanceAssignmentData(workOrders)) {
-    return workOrders;
-  }
-
+  if (!isMaintenanceUser(currentUser)) return workOrders;
   return workOrders.filter((workOrder) => isAssignedToCurrentMaintenance(workOrder, currentUser));
 }
 
@@ -394,6 +382,7 @@ export function MaintenanceDashboardPage() {
   const properties = data.properties || [];
   const allWorkOrders = data.maintenanceWorkOrders || [];
   const visibleWorkOrders = getVisibleMaintenanceJobs(allWorkOrders, currentUser);
+  const isMaintenanceCrew = isMaintenanceUser(currentUser);
 
   const openJobs = visibleWorkOrders.filter((workOrder) => !closedStatuses.has(workOrder.status));
   const urgentJobs = visibleWorkOrders.filter(
@@ -435,7 +424,7 @@ export function MaintenanceDashboardPage() {
   };
 
   const updateStatus = async (workOrder, status) => {
-    if (!canUpdateMaintenanceJob(workOrder, currentUser, allWorkOrders)) {
+    if (!canUpdateMaintenanceJob(workOrder, currentUser)) {
       setMessage('You do not have permission to update this maintenance work order.');
       return;
     }
@@ -459,7 +448,7 @@ export function MaintenanceDashboardPage() {
   };
 
   const updateField = async (workOrder, payload) => {
-    if (!canUpdateMaintenanceJob(workOrder, currentUser, allWorkOrders)) {
+    if (!canUpdateMaintenanceJob(workOrder, currentUser)) {
       setMessage('You do not have permission to update this maintenance work order.');
       return;
     }
@@ -481,7 +470,7 @@ export function MaintenanceDashboardPage() {
   const handleUpload = async (workOrder, file) => {
     if (!file) return;
 
-    if (!canUpdateMaintenanceJob(workOrder, currentUser, allWorkOrders)) {
+    if (!canUpdateMaintenanceJob(workOrder, currentUser)) {
       setMessage('You do not have permission to upload files for this maintenance work order.');
       return;
     }
@@ -541,6 +530,21 @@ export function MaintenanceDashboardPage() {
         </section>
       )}
 
+      {isMaintenanceCrew && (
+        <section className="card maintenance-dashboard-hero">
+          <div className="card-header">
+            <div>
+              <p className="eyebrow">Assignment visibility</p>
+              <h3>Only assigned maintenance work orders are shown</h3>
+              <p>
+                Maintenance users only see work orders explicitly assigned to their user account. Unassigned maintenance work orders stay hidden until a workspace owner or property manager assigns them.
+              </p>
+            </div>
+            <ShieldCheck size={22} className="muted" />
+          </div>
+        </section>
+      )}
+
       <section className="card maintenance-dashboard-hero">
         <div>
           <p className="eyebrow">Repair cost visibility</p>
@@ -583,7 +587,7 @@ export function MaintenanceDashboardPage() {
               value={filters.query}
               onChange={setFilter('query')}
               placeholder="Search repair title, property, parts, notes, priority, or status..."
-              aria-label="Search maintenance jobs"
+              aria-label="Search assigned maintenance jobs"
             />
 
             {filters.query && (
@@ -603,7 +607,7 @@ export function MaintenanceDashboardPage() {
             Status
             <select value={filters.status} onChange={setFilter('status')}>
               <option value="open">Open repairs</option>
-              <option value="all">All repairs</option>
+              <option value="all">All visible repairs</option>
               {statuses.map((status) => (
                 <option key={status} value={status}>
                   {formatLabel(status)}
@@ -674,7 +678,7 @@ export function MaintenanceDashboardPage() {
           eyebrow="Maintenance dashboard"
           icon={Wrench}
           title="No assigned maintenance work orders right now"
-          description="Assigned repairs, urgent issues, parts, work-order costs, and completion updates will appear here."
+          description="Assigned repairs, urgent issues, parts, work-order costs, and completion updates will appear here after a workspace owner or property manager assigns work orders to your account."
         />
       )}
 
