@@ -18,7 +18,7 @@ import { Sidebar } from './Sidebar.jsx';
 import { TopBar } from './TopBar.jsx';
 
 const sidebarStorageKey = 'propflow.sidebarCollapsed';
-const setupNoticePaths = new Set(['/admin', '/settings', '/billing', '/notifications', '/notification-settings']);
+const setupNoticePaths = new Set(['/admin', '/settings', '/billing', '/notification-settings']);
 const uploadNoticePaths = new Set(['/properties', '/cleaning', '/maintenance', '/reports', '/billing']);
 const auditNoticePaths = new Set(['/admin', '/settings', '/notification-settings']);
 const onboardingNoticePaths = new Set(['/dashboard', '/workspace-setup']);
@@ -34,6 +34,13 @@ const ownerAssignmentNoticeRoles = [
   roles.ACCOUNTANT,
   roles.OWNER,
 ];
+const environmentSetupNoticeRoles = [
+  roles.ADMIN,
+  roles.OWNER_ADMIN,
+  roles.PROPERTY_MANAGER,
+  roles.HOST,
+  roles.ACCOUNTANT,
+];
 
 function getInitialCollapsedState() {
   if (typeof window === 'undefined') return false;
@@ -45,7 +52,9 @@ function getCurrentPath() {
   return window.location.pathname.replace(/\/+$/, '') || '/';
 }
 
-function shouldShowEnvironmentSetupNotice() { return setupNoticePaths.has(getCurrentPath()); }
+function shouldShowEnvironmentSetupNotice(currentUser) {
+  return hasAnyRole(currentUser, environmentSetupNoticeRoles) && setupNoticePaths.has(getCurrentPath());
+}
 function shouldShowReportsExportNotice() { return getCurrentPath() === '/reports'; }
 function shouldShowBillingSafetyNotice() { return getCurrentPath() === '/billing'; }
 function shouldShowUploadSafetyNotice() { const path = getCurrentPath(); return uploadNoticePaths.has(path) || path.startsWith('/properties/'); }
@@ -66,7 +75,7 @@ export function AppLayout({ title = 'Dashboard', subtitle = 'Workspace-scoped op
   const [collapsed, setCollapsed] = React.useState(getInitialCollapsedState);
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const { error, currentUser } = useApp();
-  const showEnvironmentSetupNotice = shouldShowEnvironmentSetupNotice();
+  const showEnvironmentSetupNotice = shouldShowEnvironmentSetupNotice(currentUser);
   const showReportsExportNotice = shouldShowReportsExportNotice();
   const showBillingSafetyNotice = shouldShowBillingSafetyNotice();
   const showUploadSafetyNotice = shouldShowUploadSafetyNotice();
