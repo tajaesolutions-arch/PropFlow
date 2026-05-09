@@ -13,8 +13,10 @@ import {
   FileUp,
   Home,
   Image,
+  Lock,
   MapPin,
   RotateCcw,
+  ShieldCheck,
   Wrench,
   X,
 } from 'lucide-react';
@@ -33,11 +35,15 @@ import {
   propertyStatuses,
   propertyTypes,
   rentalTypes,
+  roles,
+  taskManagerRoles,
 } from '../data/constants.js';
 import { navigate } from '../routes/AppRouter.jsx';
 
 const closedStatuses = new Set(['completed', 'cancelled', 'guest_ready']);
 const cancelledStatuses = new Set(['cancelled', 'void', 'refunded']);
+const financePropertyRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT, roles.OWNER];
+const broadPropertyAccessRoles = [roles.ADMIN, roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
 
 function cleanNumber(value) {
   if (value === '' || value === null || value === undefined) return null;
@@ -176,6 +182,62 @@ function getFileName(file) {
 
 function getFileCategory(file) {
   return file.category || file.file_category || 'file';
+}
+
+function getAssignedCleanerId(task) {
+  return task.assignedCleanerId || task.assigned_cleaner_id || task.cleanerId || task.cleaner_id || '';
+}
+
+function getAssignedMaintenanceId(workOrder) {
+  return (
+    workOrder.assignedMaintenanceId ||
+    workOrder.assigned_maintenance_id ||
+    workOrder.maintenanceId ||
+    workOrder.maintenance_id ||
+    ''
+  );
+}
+
+function isOwnerAssignedToProperty(property, currentUser) {
+  return currentUser?.roles?.includes(roles.OWNER) && getOwnerId(property) === currentUser?.id;
+}
+
+function hasAssignedCleaningForProperty(propertyId, cleaning = [], currentUser) {
+  if (!currentUser?.roles?.includes(roles.CLEANER)) return false;
+
+  const hasAssignmentData = cleaning.some((task) => Boolean(getAssignedCleanerId(task)));
+  if (!hasAssignmentData) return false;
+
+  return cleaning.some(
+    (task) => getPropertyId(task) === propertyId && getAssignedCleanerId(task) === currentUser?.id,
+  );
+}
+
+function hasAssignedMaintenanceForProperty(propertyId, maintenance = [], currentUser) {
+  if (!currentUser?.roles?.includes(roles.MAINTENANCE)) return false;
+
+  const hasAssignmentData = maintenance.some((workOrder) => Boolean(getAssignedMaintenanceId(workOrder)));
+  if (!hasAssignmentData) return false;
+
+  return maintenance.some(
+    (workOrder) => getPropertyId(workOrder) === propertyId && getAssignedMaintenanceId(workOrder) === currentUser?.id,
+  );
+}
+
+function canViewPropertyDetail({ property, currentUser, cleaning, maintenance }) {
+  if (hasAnyRole(currentUser, broadPropertyAccessRoles)) return true;
+  if (isOwnerAssignedToProperty(property, currentUser)) return true;
+  if (hasAssignedCleaningForProperty(property.id, cleaning, currentUser)) return true;
+  if (hasAssignedMaintenanceForProperty(property.id, maintenance, currentUser)) return true;
+
+  return false;
+}
+
+function canViewPropertyFinance(property, currentUser) {
+  if (!hasAnyRole(currentUser, financePropertyRoles)) return false;
+  if (currentUser?.roles?.includes(roles.OWNER)) return isOwnerAssignedToProperty(property, currentUser);
+
+  return true;
 }
 
 function statusTone(value) {
@@ -464,6 +526,8 @@ export function PropertyDetailPage({ propertyId }) {
   } = useApp();
 
   const property = (data.properties || []).find((item) => item.id === propertyId);
+  const allCleaning = data.cleaningTasks || [];
+  const allMaintenance = data.maintenanceWorkOrders || [];
 
   const [editing, setEditing] = React.useState(false);
   const [message, setMessage] = React.useState('');
@@ -489,12 +553,39 @@ export function PropertyDetailPage({ propertyId }) {
     );
   }
 
+  const canView = canViewPropertyDetail({
+    property,
+    currentUser,
+    cleaning: allCleaning,
+    maintenance: allMaintenance,
+  });
+
+  if (!canView) {
+    return (
+      <AppLayout title="Property access restricted" subtitle="Property profile access is role-scoped.">
+        <EmptyState
+          eyebrow="Access restricted"
+          icon={Lock}
+          title="This property is not available for your role"
+          description="Property Owners can only view assigned properties. Cleaners and Maintenance Crew can only view properties tied to their assigned tasks or work orders."
+          action={
+            <button type="button" onClick={() => navigate('/properties')} data-skip-create-action="true">
+              Back to properties
+            </button>
+          }
+        />
+      </AppLayout>
+    );
+  }
+
   const canEdit = hasAnyRole(currentUser, propertyEditorRoles);
+  const canCreateOperationalRecords = hasAnyRole(currentUser, taskManagerRoles);
+  const canSeeFinance = canViewPropertyFinance(property, currentUser);
   const propertyCurrency = property.currency || 'USD';
 
   const bookings = (data.bookings || []).filter((booking) => getPropertyId(booking) === property.id);
-  const cleaning = (data.cleaningTasks || []).filter((task) => getPropertyId(task) === property.id);
-  const maintenance = (data.maintenanceWorkOrders || []).filter((workOrder) => getPropertyId(workOrder) === property.id);
+  const cleaning = allCleaning.filter((task) => getPropertyId(task) === property.id);
+  const maintenance = allMaintenance.filter((workOrder) => getPropertyId(workOrder) === property.id);
   const files = (data.fileUploads || data.files || []).filter(
     (file) => getPropertyId(file) === property.id || file.property_id === property.id || file.propertyId === property.id,
   );
@@ -633,9 +724,28 @@ export function PropertyDetailPage({ propertyId }) {
         </div>
       </section>
 
+      {!canSeeFinance && (
+        <section className="card owner-dashboard-notice">
+          <div className="card-header">
+            <div>
+              <p className="eyebrow">Property visibility</p>
+              <h3>Finance details are hidden for this role</h3>
+              <p>
+                This view is limited to property profile and operational records relevant to your assigned work. Revenue, owner payout, net profit, cleaning cost, and maintenance cost summaries are hidden.
+              </p>
+            </div>
+            <ShieldCheck size={22} className="muted" />
+          </div>
+        </section>
+      )}
+
       <section className="stat-grid dense">
-        <StatCard label="Gross revenue" value={formatCurrency(grossRevenue, propertyCurrency)} icon={DollarSign} />
-        <StatCard label="Net profit" value={formatCurrency(netProfit, propertyCurrency)} icon={DollarSign} />
+        {canSeeFinance && (
+          <>
+            <StatCard label="Gross revenue" value={formatCurrency(grossRevenue, propertyCurrency)} icon={DollarSign} />
+            <StatCard label="Net profit" value={formatCurrency(netProfit, propertyCurrency)} icon={DollarSign} />
+          </>
+        )}
         <StatCard label="Open cleaning" value={openCleaning.length} icon={ClipboardCheck} />
         <StatCard label="Open maintenance" value={openMaintenance.length} icon={Wrench} tone={openMaintenance.length ? 'warning' : 'accent'} />
       </section>
@@ -663,11 +773,13 @@ export function PropertyDetailPage({ propertyId }) {
               <small>Rental type</small>
             </span>
 
-            <span>
-              <DollarSign size={16} />
-              <strong>{getPropertyRate(property)}</strong>
-              <small>Rate</small>
-            </span>
+            {canSeeFinance && (
+              <span>
+                <DollarSign size={16} />
+                <strong>{getPropertyRate(property)}</strong>
+                <small>Rate</small>
+              </span>
+            )}
 
             <span>
               <BedDouble size={16} />
@@ -687,11 +799,13 @@ export function PropertyDetailPage({ propertyId }) {
               <small>Square feet</small>
             </span>
 
-            <span>
-              <DollarSign size={16} />
-              <strong>{propertyCurrency}</strong>
-              <small>Currency</small>
-            </span>
+            {canSeeFinance && (
+              <span>
+                <DollarSign size={16} />
+                <strong>{propertyCurrency}</strong>
+                <small>Currency</small>
+              </span>
+            )}
 
             <span>
               <UsersPlaceholder />
@@ -708,64 +822,70 @@ export function PropertyDetailPage({ propertyId }) {
           )}
         </section>
 
-        <section className="card">
-          <div className="card-header">
-            <div>
-              <h3>Financial snapshot</h3>
-              <p>Revenue, owner payout, expenses, and profitability for this property.</p>
+        {canSeeFinance && (
+          <section className="card">
+            <div className="card-header">
+              <div>
+                <h3>Financial snapshot</h3>
+                <p>Revenue, owner payout, expenses, and profitability for this property.</p>
+              </div>
+              <DollarSign size={20} className="muted" />
             </div>
-            <DollarSign size={20} className="muted" />
-          </div>
 
-          <div className="property-detail-finance-grid">
-            <span>
-              <strong>{formatCurrency(grossRevenue, propertyCurrency)}</strong>
-              <small>Gross revenue</small>
-            </span>
+            <div className="property-detail-finance-grid">
+              <span>
+                <strong>{formatCurrency(grossRevenue, propertyCurrency)}</strong>
+                <small>Gross revenue</small>
+              </span>
 
-            <span>
-              <strong>{formatCurrency(ownerPayout, propertyCurrency)}</strong>
-              <small>Owner payout</small>
-            </span>
+              <span>
+                <strong>{formatCurrency(ownerPayout, propertyCurrency)}</strong>
+                <small>Owner payout</small>
+              </span>
 
-            <span>
-              <strong>{formatCurrency(cleaningCost, propertyCurrency)}</strong>
-              <small>Cleaning cost</small>
-            </span>
+              <span>
+                <strong>{formatCurrency(cleaningCost, propertyCurrency)}</strong>
+                <small>Cleaning cost</small>
+              </span>
 
-            <span>
-              <strong>{formatCurrency(maintenanceCost, propertyCurrency)}</strong>
-              <small>Maintenance cost</small>
-            </span>
+              <span>
+                <strong>{formatCurrency(maintenanceCost, propertyCurrency)}</strong>
+                <small>Maintenance cost</small>
+              </span>
 
-            <span>
-              <strong>{formatCurrency(netProfit, propertyCurrency)}</strong>
-              <small>Net profit</small>
-            </span>
+              <span>
+                <strong>{formatCurrency(netProfit, propertyCurrency)}</strong>
+                <small>Net profit</small>
+              </span>
 
-            <span>
-              <strong>{activeBookings.length}</strong>
-              <small>Active bookings</small>
-            </span>
-          </div>
-        </section>
+              <span>
+                <strong>{activeBookings.length}</strong>
+                <small>Active bookings</small>
+              </span>
+            </div>
+          </section>
+        )}
       </section>
 
       <section className="property-detail-actions-grid">
-        <button type="button" data-create-action="booking">
-          <CalendarCheck size={16} />
-          Add Booking
-        </button>
+        {canCreateOperationalRecords && (
+          <>
+            <button type="button" data-create-action="booking">
+              <CalendarCheck size={16} />
+              Add Booking
+            </button>
 
-        <button type="button" data-create-action="cleaning">
-          <ClipboardCheck size={16} />
-          Add Cleaning Task
-        </button>
+            <button type="button" data-create-action="cleaning">
+              <ClipboardCheck size={16} />
+              Add Cleaning Task
+            </button>
 
-        <button type="button" data-create-action="maintenance">
-          <Wrench size={16} />
-          Add Work Order
-        </button>
+            <button type="button" data-create-action="maintenance">
+              <Wrench size={16} />
+              Add Work Order
+            </button>
+          </>
+        )}
 
         <button type="button" onClick={() => navigate('/calendar')} data-skip-create-action="true">
           <Eye size={16} />
@@ -810,11 +930,15 @@ export function PropertyDetailPage({ propertyId }) {
                 label: 'Dates',
                 render: (row) => `${formatDate(getBookingCheckIn(row))} → ${formatDate(getBookingCheckOut(row))}`,
               },
-              {
-                key: 'amount',
-                label: 'Amount',
-                render: (row) => formatCurrency(getBookingAmount(row), row.currency || propertyCurrency),
-              },
+              ...(canSeeFinance
+                ? [
+                    {
+                      key: 'amount',
+                      label: 'Amount',
+                      render: (row) => formatCurrency(getBookingAmount(row), row.currency || propertyCurrency),
+                    },
+                  ]
+                : []),
               {
                 key: 'status',
                 label: 'Status',
@@ -872,7 +996,7 @@ export function PropertyDetailPage({ propertyId }) {
           <div className="card-header">
             <div>
               <h3>Maintenance history</h3>
-              <p>Work orders, repair status, costs, and priority issues.</p>
+              <p>Work orders, repair status, priority, and permitted repair details.</p>
             </div>
             <Wrench size={20} className="muted" />
           </div>
@@ -891,11 +1015,15 @@ export function PropertyDetailPage({ propertyId }) {
                 label: 'Due',
                 render: (row) => formatDate(getMaintenanceDate(row)),
               },
-              {
-                key: 'cost',
-                label: 'Cost',
-                render: (row) => formatCurrency(getMaintenanceCost(row), propertyCurrency),
-              },
+              ...(canSeeFinance
+                ? [
+                    {
+                      key: 'cost',
+                      label: 'Cost',
+                      render: (row) => formatCurrency(getMaintenanceCost(row), propertyCurrency),
+                    },
+                  ]
+                : []),
               {
                 key: 'status',
                 label: 'Status',
