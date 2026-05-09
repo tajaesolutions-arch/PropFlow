@@ -177,6 +177,41 @@ function getMonthKey(value) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
+function isOwnerRole(currentUser) {
+  return Boolean(currentUser?.roles?.includes(roles.OWNER));
+}
+
+function getAssignedOwnerId(property) {
+  return (
+    property.assignedOwnerId ||
+    property.assigned_owner_id ||
+    property.ownerId ||
+    property.owner_id ||
+    ''
+  );
+}
+
+function isAssignedToCurrentOwner(property, currentUser) {
+  if (!isOwnerRole(currentUser)) return true;
+
+  const assignedOwnerId = getAssignedOwnerId(property);
+  if (!assignedOwnerId) return false;
+
+  return assignedOwnerId === currentUser?.id;
+}
+
+function canOwnerSeeReport(report, assignedPropertyIds, currentUser) {
+  if (!isOwnerRole(currentUser)) return true;
+
+  const propertyId = getPropertyId(report);
+  const ownerId = report.owner_id || report.ownerId || report.contact_id || report.contactId;
+
+  if (propertyId) return assignedPropertyIds.has(propertyId);
+  if (ownerId) return ownerId === currentUser?.id;
+
+  return false;
+}
+
 function buildMonthlyRows({ bookings, cleaning, maintenance, currency }) {
   const monthMap = new Map();
 
@@ -311,22 +346,35 @@ export function ReportsPage() {
 
   const currency = currentWorkspace?.defaultCurrency || currentWorkspace?.default_currency || 'USD';
   const canManageReports = hasAnyRole(currentUser, reportManagerRoles);
+  const ownerView = isOwnerRole(currentUser);
 
   const rawBookings = data.bookings || [];
   const rawMaintenance = data.maintenanceWorkOrders || [];
   const rawCleaning = data.cleaningTasks || [];
-  const properties = data.properties || [];
-  const ownerReports = data.ownerReports || [];
+  const allProperties = data.properties || [];
+
+  const properties = allProperties
+    .filter((property) => property.status !== 'archived')
+    .filter((property) => isAssignedToCurrentOwner(property, currentUser));
+
+  const assignedPropertyIds = new Set(properties.map((property) => property.id));
+
+  const ownerReports = (data.ownerReports || []).filter((report) =>
+    canOwnerSeeReport(report, assignedPropertyIds, currentUser),
+  );
 
   const bookings = rawBookings
     .filter((booking) => !cancelledStatuses.has(booking.status))
+    .filter((booking) => !ownerView || assignedPropertyIds.has(getPropertyId(booking)))
     .filter((booking) => isInDateRange(getBookingDate(booking), filters.start, filters.end));
 
-  const maintenance = rawMaintenance.filter((item) =>
-    isInDateRange(getMaintenanceDate(item), filters.start, filters.end),
-  );
+  const maintenance = rawMaintenance
+    .filter((item) => !ownerView || assignedPropertyIds.has(getPropertyId(item)))
+    .filter((item) => isInDateRange(getMaintenanceDate(item), filters.start, filters.end));
 
-  const cleaning = rawCleaning.filter((task) => isInDateRange(getCleaningDate(task), filters.start, filters.end));
+  const cleaning = rawCleaning
+    .filter((task) => !ownerView || assignedPropertyIds.has(getPropertyId(task)))
+    .filter((task) => isInDateRange(getCleaningDate(task), filters.start, filters.end));
 
   const grossRevenue = bookings.reduce((sum, booking) => sum + getBookingAmount(booking), 0);
   const ownerPayouts = bookings.reduce((sum, booking) => sum + getOwnerPayout(booking), 0);
@@ -336,10 +384,7 @@ export function ReportsPage() {
   const netProfit = grossRevenue - totalExpenses;
 
   const bookedNights = bookings.reduce((sum, booking) => sum + getBookingNights(booking), 0);
-  const availableNights = Math.max(
-    properties.filter((property) => property.status !== 'archived').length * 30,
-    1,
-  );
+  const availableNights = Math.max(properties.length * 30, 1);
   const occupancyRate = Math.min((bookedNights / availableNights) * 100, 100);
 
   const completedCleaning = cleaning.filter((task) => ['completed', 'guest_ready'].includes(task.status)).length;
@@ -380,8 +425,25 @@ export function ReportsPage() {
   return (
     <AppLayout
       title="Reports & Exports"
-      subtitle="Owner reports, finance summaries, operations reports, and export placeholders."
+      subtitle={ownerView
+        ? 'Assigned-property owner reports, finance summaries, operations reports, and export placeholders.'
+        : 'Owner reports, finance summaries, operations reports, and export placeholders.'}
     >
+      {ownerView && (
+        <section className="card owner-dashboard-notice">
+          <div className="card-header">
+            <div>
+              <p className="eyebrow">Owner visibility</p>
+              <h3>Reports are scoped to assigned properties</h3>
+              <p>
+                This report view only uses properties, bookings, cleaning tasks, maintenance work orders, payouts, and reports assigned to this owner account.
+              </p>
+            </div>
+            <ShieldCheck size={22} className="muted" />
+          </div>
+        </section>
+      )}
+
       <section className="card finance-safety-notice">
         <div className="card-header">
           <div>
@@ -438,7 +500,9 @@ export function ReportsPage() {
             <input
               value={filters.query}
               onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value }))}
-              placeholder="Search property performance by name, location, status, or currency..."
+              placeholder={ownerView
+                ? 'Search assigned property reports by name, location, status, or currency...'
+                : 'Search property performance by name, location, status, or currency...'}
               aria-label="Search report data"
             />
 
@@ -525,8 +589,12 @@ export function ReportsPage() {
         <section className="card">
           <div className="card-header">
             <div>
-              <h3>Property performance report</h3>
-              <p>Preview of the report data used for owner statements and property performance exports.</p>
+              <h3>{ownerView ? 'Assigned property performance report' : 'Property performance report'}</h3>
+              <p>
+                {ownerView
+                  ? 'Preview of report data limited to properties assigned to this owner.'
+                  : 'Preview of the report data used for owner statements and property performance exports.'}
+              </p>
             </div>
           </div>
 
@@ -587,8 +655,10 @@ export function ReportsPage() {
         <EmptyState
           eyebrow="Reports"
           icon={FileSpreadsheet}
-          title="No report data yet"
-          description="Add properties, bookings, cleaning tasks, and maintenance work orders to generate useful report previews. No export files are generated yet."
+          title={ownerView ? 'No assigned-property report data yet' : 'No report data yet'}
+          description={ownerView
+            ? 'Assigned-property report previews will appear after this owner has assigned properties with bookings, cleaning tasks, or maintenance records. No export files are generated yet.'
+            : 'Add properties, bookings, cleaning tasks, and maintenance work orders to generate useful report previews. No export files are generated yet.'}
           action={
             <button type="button" className="primary" disabled data-skip-create-action="true">
               <Plus size={16} />
@@ -602,7 +672,7 @@ export function ReportsPage() {
         <section className="card">
           <div className="card-header">
             <div>
-              <h3>Monthly finance summary</h3>
+              <h3>{ownerView ? 'Assigned-property monthly summary' : 'Monthly finance summary'}</h3>
               <p>Revenue, expenses, and net profit grouped by month.</p>
             </div>
           </div>
@@ -637,7 +707,9 @@ export function ReportsPage() {
               compact
               icon={BarChart3}
               title="No monthly report data"
-              description="Monthly summaries will appear after dated bookings, cleaning tasks, or maintenance records are added."
+              description={ownerView
+                ? 'Monthly summaries will appear after assigned-property bookings, cleaning tasks, or maintenance records are added.'
+                : 'Monthly summaries will appear after dated bookings, cleaning tasks, or maintenance records are added.'}
             />
           )}
         </section>
