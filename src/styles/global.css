@@ -1318,15 +1318,6 @@ small {
   color: #92400E;
 }
 
-.form-hint {
-  display: block;
-  margin-top: 6px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.4;
-}
-
 .create-action-toast {
   position: fixed;
   right: 24px;
