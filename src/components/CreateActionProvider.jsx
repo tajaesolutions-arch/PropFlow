@@ -218,6 +218,66 @@ function labelFromValue(value) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+const scopedInviteRoles = [roles.OWNER, roles.CLEANER, roles.MAINTENANCE];
+
+const createActionAllowedRoles = {
+  property: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
+  booking: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
+  cleaning: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
+  maintenance: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
+  owner: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
+  guest: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
+  invite: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
+  expense: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT],
+  report: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT],
+};
+
+function activeWorkspaceRoles(app) {
+  const activeMembership = (app.memberships || []).find(
+    (membership) => membership.workspace_id === app.currentWorkspace?.id && membership.status !== 'revoked',
+  );
+
+  return activeMembership?.roles || [];
+}
+
+function canOpenCreateAction(app, action) {
+  const allowedRoles = createActionAllowedRoles[action];
+  if (!allowedRoles) return false;
+  if (!app.currentWorkspace?.id) return true;
+
+  const userRoles = activeWorkspaceRoles(app);
+  return allowedRoles.some((role) => userRoles.includes(role));
+}
+
+function normalizeEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function isValidEmail(value) {
+  const email = normalizeEmail(value);
+  return Boolean(email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+}
+
+function optionValues(options) {
+  return options.map((option) => (Array.isArray(option) ? option[0] : option));
+}
+
+function isAllowedValue(value, options) {
+  return optionValues(options).includes(value);
+}
+
+function findProperty(properties, propertyId) {
+  return properties.find((property) => property.id === propertyId);
+}
+
+function findBooking(bookings, bookingId) {
+  return bookings.find((booking) => booking.id === bookingId);
+}
+
+function bookingPropertyId(booking) {
+  return booking?.property_id || booking?.propertyId || '';
+}
+
 function OptionList({ options }) {
   return options.map((option) => {
     const value = Array.isArray(option) ? option[0] : option;
@@ -459,7 +519,6 @@ function PropertyForm({ app, close, submitting, setSubmitting, setError, notifyS
       setSubmitting(true);
 
       await runAppAction(app, ['createProperty'], {
-        ...form,
         name: form.name.trim(),
         address: form.address.trim(),
         city: form.city.trim() || null,
@@ -681,6 +740,11 @@ function BookingForm({ app, close, submitting, setSubmitting, setError, notifySu
       return;
     }
 
+    if (!findProperty(properties, form.property_id)) {
+      setError('Select an existing property in this workspace before saving the booking.');
+      return;
+    }
+
     if (!form.guest_name.trim()) {
       setError('Guest name is required.');
       return;
@@ -700,9 +764,16 @@ function BookingForm({ app, close, submitting, setSubmitting, setError, notifySu
       setSubmitting(true);
 
       await runAppAction(app, ['createBooking'], {
-        ...form,
+        property_id: form.property_id,
+        check_in: form.check_in,
+        check_out: form.check_out,
+        source: form.source,
+        status: form.status,
+        payment_status: form.payment_status,
+        currency: form.currency,
+        auto_create_cleaning: Boolean(form.auto_create_cleaning),
         guest_name: form.guest_name.trim(),
-        guest_email: form.guest_email.trim() || null,
+        guest_email: normalizeEmail(form.guest_email) || null,
         guest_phone: form.guest_phone.trim() || null,
         guest_count: Number(form.guest_count || 1),
         total_amount: cleanNumber(form.total_amount),
@@ -915,11 +986,34 @@ function CleaningForm({ app, close, submitting, setSubmitting, setError, notifyS
       return;
     }
 
+    if (!findProperty(properties, form.property_id)) {
+      setError('Select an existing property in this workspace before saving the cleaning task.');
+      return;
+    }
+
+    if (!form.scheduled_for) {
+      setError('Cleaning date is required.');
+      return;
+    }
+
+    const linkedBooking = form.booking_id ? findBooking(bookings, form.booking_id) : null;
+
+    if (form.booking_id && (!linkedBooking || bookingPropertyId(linkedBooking) !== form.property_id)) {
+      setError('Related booking must belong to the selected property in this workspace.');
+      return;
+    }
+
+    if (!isAllowedValue(form.status, cleaningStatusOptions)) {
+      setError('Select a valid cleaning status.');
+      return;
+    }
+
     try {
       setSubmitting(true);
 
       await runAppAction(app, ['createCleaningTask'], {
-        ...form,
+        property_id: form.property_id,
+        status: form.status,
         assigned_cleaner_id: form.assigned_cleaner_id || null,
         booking_id: form.booking_id || null,
         scheduled_for: `${form.scheduled_for}T${form.scheduled_time || '11:00'}:00`,
@@ -1077,8 +1171,23 @@ function MaintenanceForm({ app, close, submitting, setSubmitting, setError, noti
       return;
     }
 
+    if (!findProperty(properties, form.property_id)) {
+      setError('Select an existing property in this workspace before saving the work order.');
+      return;
+    }
+
     if (!form.title.trim()) {
       setError('Issue title is required.');
+      return;
+    }
+
+    if (!isAllowedValue(form.priority, priorityOptions)) {
+      setError('Select a valid priority.');
+      return;
+    }
+
+    if (!isAllowedValue(form.status, maintenanceStatusOptions)) {
+      setError('Select a valid maintenance status.');
       return;
     }
 
@@ -1086,7 +1195,9 @@ function MaintenanceForm({ app, close, submitting, setSubmitting, setError, noti
       setSubmitting(true);
 
       await runAppAction(app, ['createMaintenanceWorkOrder'], {
-        ...form,
+        property_id: form.property_id,
+        priority: form.priority,
+        status: form.status,
         title: form.title.trim(),
         issue_description: form.issue_description.trim() || null,
         assigned_maintenance_id: form.assigned_maintenance_id || null,
@@ -1268,10 +1379,10 @@ function ContactForm({ app, close, submitting, setSubmitting, setError, notifySu
           ? ['createOwner', 'createContact', 'createOwnerContact']
           : ['createGuest', 'createContact', 'createGuestContact'],
         {
-          ...form,
+          contact_type: isOwner ? 'owner' : 'guest',
           name: form.name.trim(),
           full_name: form.name.trim(),
-          email: form.email.trim() || null,
+          email: normalizeEmail(form.email) || null,
           phone: form.phone.trim() || null,
           company_name: form.company_name.trim() || null,
           notes,
@@ -1375,7 +1486,15 @@ function InviteForm({ app, close, submitting, setSubmitting, setError, notifySuc
   });
 
   const set = (key) => (event) => {
-    setForm((current) => ({ ...current, [key]: event.target.value }));
+    setForm((current) => {
+      const next = { ...current, [key]: event.target.value };
+
+      if (key === 'role' && !scopedInviteRoles.includes(event.target.value)) {
+        next.assigned_property_ids = [];
+      }
+
+      return next;
+    });
   };
 
   const setAssignedPropertyIds = (event) => {
@@ -1397,19 +1516,36 @@ function InviteForm({ app, close, submitting, setSubmitting, setError, notifySuc
       return;
     }
 
+    if (!isValidEmail(form.email)) {
+      setError('Enter a valid invitee email address.');
+      return;
+    }
+
+    if (!form.role || !inviteRoleOptions.includes(form.role)) {
+      setError('Select at least one valid role for this invite.');
+      return;
+    }
+
+    const scopedPropertyIds = scopedInviteRoles.includes(form.role)
+      ? form.assigned_property_ids.filter((propertyId) => findProperty(properties, propertyId))
+      : [];
+
+    if (form.assigned_property_ids.length && scopedPropertyIds.length !== form.assigned_property_ids.length) {
+      setError('Assigned properties must be existing properties in this workspace.');
+      return;
+    }
+
     try {
       setSubmitting(true);
 
       await runAppAction(app, ['createInvite', 'createWorkspaceInvite', 'inviteTeamMember'], {
-        ...form,
-        email: form.email.trim().toLowerCase(),
+        email: normalizeEmail(form.email),
         role: form.role,
         roles: [form.role],
-        property_id: form.assigned_property_ids[0] || null,
-        assigned_property_id: form.assigned_property_ids[0] || null,
-        assigned_property_ids: form.assigned_property_ids,
+        property_id: scopedPropertyIds[0] || null,
+        assigned_property_id: scopedPropertyIds[0] || null,
+        assigned_property_ids: scopedPropertyIds,
         expires_at: form.expires_at || null,
-        permission_level: form.permission_level,
         message: form.message.trim() || null,
       });
 
@@ -1517,42 +1653,11 @@ function ExpenseForm({ app, close, submitting, setSubmitting, setError, notifySu
     });
   };
 
-  const submit = async (event) => {
+  const submit = (event) => {
     event.preventDefault();
-    setError('');
-
-    if (!app.currentWorkspace?.id) {
-      setError('Select or create a workspace before saving an expense.');
-      return;
-    }
-
-    if (!form.title.trim()) {
-      setError('Expense title is required.');
-      return;
-    }
-
-    try {
-      setSubmitting(true);
-
-      await runAppAction(app, ['createExpense', 'createWorkspaceExpense'], {
-        ...form,
-        property_id: form.property_id || null,
-        title: form.title.trim(),
-        amount: cleanNumber(form.amount),
-        notes: form.notes.trim() || null,
-      });
-
-      await refreshAfterSave(app);
-      notifySuccess('Expense saved successfully.');
-      close();
-    } catch (error) {
-      setError(
-        error?.message ||
-          'Expense saving is not connected yet. The finance table/action needs to be added before this form can save.',
-      );
-    } finally {
-      setSubmitting(false);
-    }
+    setError(
+      'Expense saving is not connected yet. No expense, payment, or accounting record was created.',
+    );
   };
 
   return (
@@ -1560,7 +1665,7 @@ function ExpenseForm({ app, close, submitting, setSubmitting, setError, notifySu
       <div className="modal-body">
         <WorkspaceBlockedNotice app={app} />
 
-        <EmptyDependencyNotice message="Finance/expense saving may require a dedicated expenses table. This form will only save if the matching AppContext action exists." />
+        <EmptyDependencyNotice message="Expense saving is not connected yet. This placeholder collects details for planning only and will not create accounting data." />
 
         <div className="form-grid">
           <label>
@@ -1624,7 +1729,7 @@ function ExpenseForm({ app, close, submitting, setSubmitting, setError, notifySu
           Cancel
         </button>
         <button className="primary" type="submit" disabled={submitting} data-skip-create-action="true">
-          {submitting ? 'Saving…' : 'Save expense'}
+          Saving not connected
         </button>
       </footer>
     </form>
@@ -1647,41 +1752,9 @@ function ReportForm({ app, close, submitting, setSubmitting, setError, notifySuc
     setForm((current) => ({ ...current, [key]: event.target.value }));
   };
 
-  const submit = async (event) => {
+  const submit = (event) => {
     event.preventDefault();
-    setError('');
-
-    if (!app.currentWorkspace?.id) {
-      setError('Select or create a workspace before creating a report.');
-      return;
-    }
-
-    if (!form.title.trim()) {
-      setError('Report title is required.');
-      return;
-    }
-
-    try {
-      setSubmitting(true);
-
-      await runAppAction(app, ['createReport', 'createOwnerReport'], {
-        ...form,
-        title: form.title.trim(),
-        property_id: form.property_id || null,
-        notes: form.notes.trim() || null,
-      });
-
-      await refreshAfterSave(app);
-      notifySuccess('Report saved successfully.');
-      close();
-    } catch (error) {
-      setError(
-        error?.message ||
-          'Report saving is not connected yet. The reports table/action needs to be connected before this form can save.',
-      );
-    } finally {
-      setSubmitting(false);
-    }
+    setError('Report generation is not connected yet. No report, PDF, or CSV export was created.');
   };
 
   return (
@@ -1689,7 +1762,7 @@ function ReportForm({ app, close, submitting, setSubmitting, setError, notifySuc
       <div className="modal-body">
         <WorkspaceBlockedNotice app={app} />
 
-        <EmptyDependencyNotice message="Report creation may require the reports/owner_reports action to be connected. This form will only save if the matching AppContext action exists." />
+        <EmptyDependencyNotice message="Report generation is not connected yet. This placeholder is safe and will not create reports or exports." />
 
         <div className="form-grid">
           <label>
@@ -1739,7 +1812,7 @@ function ReportForm({ app, close, submitting, setSubmitting, setError, notifySuc
           Cancel
         </button>
         <button className="primary" type="submit" disabled={submitting} data-skip-create-action="true">
-          {submitting ? 'Saving…' : 'Create report'}
+          Generation not connected
         </button>
       </footer>
     </form>
@@ -1748,6 +1821,14 @@ function ReportForm({ app, close, submitting, setSubmitting, setError, notifySuc
 
 function CreateForm({ action, app, close, submitting, setSubmitting, setError, notifySuccess }) {
   const sharedProps = { app, close, submitting, setSubmitting, setError, notifySuccess };
+
+  if (!canOpenCreateAction(app, action)) {
+    return (
+      <div className="modal-body">
+        <EmptyDependencyNotice message="Your current workspace role cannot create this type of record. Ask a workspace owner or property manager for access." />
+      </div>
+    );
+  }
 
   if (action === 'property') return <PropertyForm {...sharedProps} />;
   if (action === 'booking') return <BookingForm {...sharedProps} />;
@@ -1816,13 +1897,24 @@ export function CreateActionProvider({ children }) {
     return () => window.clearTimeout(timeout);
   }, [toast]);
 
-  const openCreateAction = React.useCallback((nextAction) => {
-    if (!nextAction) return;
+  const openCreateAction = React.useCallback(
+    (nextAction) => {
+      if (!nextAction) return;
 
-    setError('');
-    setSubmitting(false);
-    setAction(nextAction);
-  }, []);
+      if (!canOpenCreateAction(app, nextAction)) {
+        setToast(null);
+        setError('Your current workspace role cannot use this create action.');
+        setSubmitting(false);
+        setAction(nextAction);
+        return;
+      }
+
+      setError('');
+      setSubmitting(false);
+      setAction(nextAction);
+    },
+    [app],
+  );
 
   const close = React.useCallback(() => {
     if (submitting) return;

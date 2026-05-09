@@ -76,6 +76,20 @@ function normalize(value) {
     .trim();
 }
 
+function createActionFromLabel(label) {
+  const normalized = normalize(label);
+  if (normalized.includes('property')) return 'property';
+  if (normalized.includes('booking') || normalized.includes('reservation')) return 'booking';
+  if (normalized.includes('cleaning')) return 'cleaning';
+  if (normalized.includes('maintenance') || normalized.includes('work order')) return 'maintenance';
+  if (normalized.includes('owner')) return 'owner';
+  if (normalized.includes('guest') || normalized.includes('contact')) return 'guest';
+  if (normalized.includes('expense')) return 'expense';
+  if (normalized.includes('report')) return 'report';
+  if (normalized.includes('invite') || normalized.includes('team member')) return 'invite';
+  return undefined;
+}
+
 function getSmartActions({ title, description, eyebrow }) {
   const text = normalize(`${eyebrow} ${title} ${description}`);
 
@@ -110,6 +124,7 @@ function SmartActionButton({ action, index }) {
       type="button"
       className={index === 0 ? action.className || 'primary' : 'secondary'}
       aria-label={action.label}
+      data-create-action={createActionFromLabel(action.label)}
     >
       <Icon size={16} />
       {action.label}
