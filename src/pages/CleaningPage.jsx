@@ -83,10 +83,6 @@ function isCleanerRole(currentUser) {
   return Boolean(currentUser?.roles?.includes(roles.CLEANER));
 }
 
-function hasCleanerAssignmentData(tasks = []) {
-  return tasks.some((task) => Boolean(getAssignedCleanerId(task)));
-}
-
 function isAssignedToCurrentCleaner(task, currentUser) {
   if (!isCleanerRole(currentUser)) return true;
 
@@ -98,18 +94,12 @@ function isAssignedToCurrentCleaner(task, currentUser) {
 
 function getVisibleCleaningTasks(tasks = [], currentUser) {
   if (!isCleanerRole(currentUser)) return tasks;
-
-  if (!hasCleanerAssignmentData(tasks)) return tasks;
-
   return tasks.filter((task) => isAssignedToCurrentCleaner(task, currentUser));
 }
 
-function canUpdateSpecificCleaningTask(currentUser, task, allTasks = []) {
+function canUpdateSpecificCleaningTask(currentUser, task) {
   if (hasAnyRole(currentUser, taskManagerRoles)) return true;
   if (!isCleanerRole(currentUser)) return false;
-
-  if (!hasCleanerAssignmentData(allTasks)) return true;
-
   return isAssignedToCurrentCleaner(task, currentUser);
 }
 
@@ -366,7 +356,7 @@ export function CleaningPage() {
   };
 
   const changeStatus = async (task, status) => {
-    if (!canUpdateSpecificCleaningTask(currentUser, task, allTasks)) {
+    if (!canUpdateSpecificCleaningTask(currentUser, task)) {
       setMessage('You do not have permission to update this cleaning task.');
       return;
     }
@@ -391,7 +381,7 @@ export function CleaningPage() {
   };
 
   const updateNotes = async (task, notes) => {
-    if (!canUpdateSpecificCleaningTask(currentUser, task, allTasks)) return;
+    if (!canUpdateSpecificCleaningTask(currentUser, task)) return;
 
     setUpdatingTaskId(task.id);
 
@@ -410,7 +400,7 @@ export function CleaningPage() {
   };
 
   const updateIssueReported = async (task, issueReported) => {
-    if (!canUpdateSpecificCleaningTask(currentUser, task, allTasks)) return;
+    if (!canUpdateSpecificCleaningTask(currentUser, task)) return;
 
     setUpdatingTaskId(task.id);
     setMessage('');
@@ -432,7 +422,7 @@ export function CleaningPage() {
   const handleUpload = async (task, file) => {
     if (!file) return;
 
-    if (!canUpdateSpecificCleaningTask(currentUser, task, allTasks)) {
+    if (!canUpdateSpecificCleaningTask(currentUser, task)) {
       setMessage('You do not have permission to upload cleaning photos for this task.');
       return;
     }
@@ -497,9 +487,9 @@ export function CleaningPage() {
           <div className="card-header">
             <div>
               <p className="eyebrow">Cleaner visibility</p>
-              <h3>Cleaning tasks are scoped to assigned work</h3>
+              <h3>Only assigned cleaning tasks are shown</h3>
               <p>
-                This page shows cleaning tasks assigned to your cleaner account when assignment data exists. Workspace-wide cleaning records stay hidden from cleaner-only users.
+                Cleaner users only see cleaning tasks explicitly assigned to their user account. Unassigned cleaning tasks stay hidden until a workspace owner or property manager assigns them.
               </p>
             </div>
             <ShieldCheck size={22} className="muted" />
@@ -592,7 +582,7 @@ export function CleaningPage() {
               <option value="today">Due today</option>
               <option value="overdue">Overdue</option>
               <option value="issues">Issues reported</option>
-              <option value="all">All tasks</option>
+              <option value="all">All visible tasks</option>
             </select>
           </label>
         </div>
@@ -604,7 +594,7 @@ export function CleaningPage() {
           icon={Sparkles}
           title={cleanerView ? 'No assigned cleaning tasks right now' : 'No cleaning tasks yet'}
           description={cleanerView
-            ? 'Assigned cleaning tasks will appear here when your workspace manager assigns work to your cleaner account.'
+            ? 'Assigned cleaning tasks will appear here after a workspace owner or property manager assigns work to your cleaner account.'
             : 'Create the first cleaning task after adding a property or booking. Cleaning tasks should be tied to real workspace properties.'}
           action={
             canCreate ? (
@@ -616,7 +606,7 @@ export function CleaningPage() {
           }
           secondaryAction={
             <button type="button" onClick={() => setFilters((current) => ({ ...current, view: 'all' }))} data-skip-create-action="true">
-              View all
+              View all visible
             </button>
           }
         />
@@ -627,7 +617,7 @@ export function CleaningPage() {
               key={task.id}
               task={task}
               properties={properties}
-              canUpdate={canUpdateSpecificCleaningTask(currentUser, task, allTasks)}
+              canUpdate={canUpdateSpecificCleaningTask(currentUser, task)}
               uploading={uploadingTaskId === task.id}
               updating={updatingTaskId === task.id}
               onStatusChange={changeStatus}
