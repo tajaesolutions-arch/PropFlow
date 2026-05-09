@@ -358,7 +358,7 @@ function WorkspaceBlockedNotice({ app }) {
   );
 }
 
-function PropertyForm({ app, close, submitting, setSubmitting, setError }) {
+function PropertyForm({ app, close, submitting, setSubmitting, setError, notifySuccess }) {
   const workspaceCurrency = getWorkspaceCurrency(app.currentWorkspace);
 
   const [form, setForm] = React.useState({
@@ -421,6 +421,7 @@ function PropertyForm({ app, close, submitting, setSubmitting, setError }) {
       });
 
       await refreshAfterSave(app);
+      notifySuccess('Property saved successfully.');
       close();
     } catch (error) {
       setError(error?.message || 'Property could not be saved.');
@@ -561,7 +562,7 @@ function PropertyForm({ app, close, submitting, setSubmitting, setError }) {
   );
 }
 
-function BookingForm({ app, close, submitting, setSubmitting, setError }) {
+function BookingForm({ app, close, submitting, setSubmitting, setError, notifySuccess }) {
   const properties = app.data.properties || [];
   const initialPropertyId = firstPropertyId(properties);
 
@@ -650,6 +651,7 @@ function BookingForm({ app, close, submitting, setSubmitting, setError }) {
       });
 
       await refreshAfterSave(app);
+      notifySuccess('Booking saved successfully.');
       close();
     } catch (error) {
       setError(error?.message || 'Booking could not be saved.');
@@ -810,7 +812,7 @@ function BookingForm({ app, close, submitting, setSubmitting, setError }) {
   );
 }
 
-function CleaningForm({ app, close, submitting, setSubmitting, setError }) {
+function CleaningForm({ app, close, submitting, setSubmitting, setError, notifySuccess }) {
   const properties = app.data.properties || [];
   const members = app.data.members || [];
   const initialPropertyId = firstPropertyId(properties);
@@ -860,6 +862,7 @@ function CleaningForm({ app, close, submitting, setSubmitting, setError }) {
       });
 
       await refreshAfterSave(app);
+      notifySuccess('Cleaning task saved successfully.');
       close();
     } catch (error) {
       setError(error?.message || 'Cleaning task could not be saved.');
@@ -943,7 +946,7 @@ function CleaningForm({ app, close, submitting, setSubmitting, setError }) {
   );
 }
 
-function MaintenanceForm({ app, close, submitting, setSubmitting, setError }) {
+function MaintenanceForm({ app, close, submitting, setSubmitting, setError, notifySuccess }) {
   const properties = app.data.properties || [];
   const members = app.data.members || [];
   const initialPropertyId = firstPropertyId(properties);
@@ -1016,6 +1019,7 @@ function MaintenanceForm({ app, close, submitting, setSubmitting, setError }) {
       });
 
       await refreshAfterSave(app);
+      notifySuccess('Maintenance work order saved successfully.');
       close();
     } catch (error) {
       setError(error?.message || 'Maintenance work order could not be saved.');
@@ -1123,7 +1127,7 @@ function MaintenanceForm({ app, close, submitting, setSubmitting, setError }) {
   );
 }
 
-function ContactForm({ app, close, submitting, setSubmitting, setError, type }) {
+function ContactForm({ app, close, submitting, setSubmitting, setError, notifySuccess, type }) {
   const isOwner = type === 'owner';
 
   const [form, setForm] = React.useState({
@@ -1173,6 +1177,7 @@ function ContactForm({ app, close, submitting, setSubmitting, setError, type }) 
       );
 
       await refreshAfterSave(app);
+      notifySuccess(`${type === 'owner' ? 'Owner' : 'Guest'} saved successfully.`);
       close();
     } catch (error) {
       setError(error?.message || `${isOwner ? 'Owner' : 'Guest'} could not be saved.`);
@@ -1226,7 +1231,7 @@ function ContactForm({ app, close, submitting, setSubmitting, setError, type }) 
   );
 }
 
-function InviteForm({ app, close, submitting, setSubmitting, setError }) {
+function InviteForm({ app, close, submitting, setSubmitting, setError, notifySuccess }) {
   const properties = app.data.properties || [];
 
   const [form, setForm] = React.useState({
@@ -1272,6 +1277,7 @@ function InviteForm({ app, close, submitting, setSubmitting, setError }) {
       });
 
       await refreshAfterSave(app);
+      notifySuccess('Team invite saved successfully.');
       close();
     } catch (error) {
       setError(error?.message || 'Invite could not be saved.');
@@ -1343,7 +1349,7 @@ function InviteForm({ app, close, submitting, setSubmitting, setError }) {
   );
 }
 
-function ExpenseForm({ app, close, submitting, setSubmitting, setError }) {
+function ExpenseForm({ app, close, submitting, setSubmitting, setError, notifySuccess }) {
   const properties = app.data.properties || [];
   const initialPropertyId = firstPropertyId(properties);
 
@@ -1395,6 +1401,7 @@ function ExpenseForm({ app, close, submitting, setSubmitting, setError }) {
       });
 
       await refreshAfterSave(app);
+      notifySuccess('Expense saved successfully.');
       close();
     } catch (error) {
       setError(
@@ -1482,7 +1489,7 @@ function ExpenseForm({ app, close, submitting, setSubmitting, setError }) {
   );
 }
 
-function ReportForm({ app, close, submitting, setSubmitting, setError }) {
+function ReportForm({ app, close, submitting, setSubmitting, setError, notifySuccess }) {
   const properties = app.data.properties || [];
 
   const [form, setForm] = React.useState({
@@ -1523,6 +1530,7 @@ function ReportForm({ app, close, submitting, setSubmitting, setError }) {
       });
 
       await refreshAfterSave(app);
+      notifySuccess('Report saved successfully.');
       close();
     } catch (error) {
       setError(
@@ -1596,8 +1604,8 @@ function ReportForm({ app, close, submitting, setSubmitting, setError }) {
   );
 }
 
-function CreateForm({ action, app, close, submitting, setSubmitting, setError }) {
-  const sharedProps = { app, close, submitting, setSubmitting, setError };
+function CreateForm({ action, app, close, submitting, setSubmitting, setError, notifySuccess }) {
+  const sharedProps = { app, close, submitting, setSubmitting, setError, notifySuccess };
 
   if (action === 'property') return <PropertyForm {...sharedProps} />;
   if (action === 'booking') return <BookingForm {...sharedProps} />;
@@ -1652,6 +1660,19 @@ export function CreateActionProvider({ children }) {
   const [action, setAction] = React.useState(null);
   const [error, setError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
+  const [toast, setToast] = React.useState(null);
+
+  const notifySuccess = React.useCallback((message) => {
+    setToast({ id: Date.now(), message });
+  }, []);
+
+  React.useEffect(() => {
+    if (!toast) return undefined;
+
+    const timeout = window.setTimeout(() => setToast(null), 4000);
+
+    return () => window.clearTimeout(timeout);
+  }, [toast]);
 
   const openCreateAction = React.useCallback((nextAction) => {
     if (!nextAction) return;
@@ -1704,6 +1725,12 @@ export function CreateActionProvider({ children }) {
     <CreateActionContext.Provider value={contextValue}>
       {children}
 
+      {toast && (
+        <div className="create-action-toast" role="status" aria-live="polite">
+          {toast.message}
+        </div>
+      )}
+
       {action && (
         <ModalShell action={action} error={error} onClose={close} submitting={submitting}>
           <CreateForm
@@ -1713,6 +1740,7 @@ export function CreateActionProvider({ children }) {
             submitting={submitting}
             setSubmitting={setSubmitting}
             setError={setError}
+            notifySuccess={notifySuccess}
           />
         </ModalShell>
       )}
