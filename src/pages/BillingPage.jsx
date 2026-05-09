@@ -142,15 +142,15 @@ export function BillingPage() {
   return (
     <AppLayout
       title="Billing & Subscription"
-      subtitle="Workspace subscription, trial status, payment recovery, and Stripe setup."
+      subtitle="Workspace subscription, trial status, payment recovery, and Stripe setup placeholders."
     >
       <section className="card billing-notice-card urgent">
         <div className="card-header">
           <div>
-            <h3>Stripe backend setup required</h3>
+            <h3>Stripe billing is not live yet</h3>
             <p>
               Secure backend billing endpoints must be configured before live subscriptions,
-              upgrades, downgrades, invoices, or payment recovery can be enabled.
+              upgrades, downgrades, invoices, checkout, billing portal access, or payment recovery can be enabled.
             </p>
           </div>
 
@@ -158,7 +158,7 @@ export function BillingPage() {
         </div>
 
         <div className="helper">
-          Do not place Stripe secret keys in frontend code. Use secure backend functions or
+          Billing controls on this page are placeholders. Do not place Stripe secret keys in frontend code. Use secure backend functions or
           server-side routes for checkout sessions, billing portal sessions, webhook validation, and
           subscription updates.
         </div>
@@ -170,7 +170,7 @@ export function BillingPage() {
         <StatCard
           label="Subscription status"
           value={subscriptionStatus}
-          subtitle="Stripe-backed later"
+          subtitle="Placeholder until Stripe is connected"
           icon={ShieldCheck}
           tone={statusTone(subscriptionStatus)}
         />
@@ -195,7 +195,7 @@ export function BillingPage() {
           <div className="card-header">
             <div>
               <h3>Workspace subscription</h3>
-              <p>Current subscription lifecycle and billing status for this workspace.</p>
+              <p>Current subscription lifecycle and billing status placeholder for this workspace.</p>
             </div>
             <CreditCard size={20} className="muted" />
           </div>
@@ -243,7 +243,7 @@ export function BillingPage() {
               compact
               icon={CreditCard}
               title="No subscription record found"
-              description="Apply the billing migration and connect Stripe backend services before enabling paid subscriptions."
+              description="Apply the billing migration and connect Stripe backend services before enabling paid subscriptions. Checkout and billing portal actions are disabled for now."
             />
           )}
         </section>
@@ -287,7 +287,7 @@ export function BillingPage() {
             <h3>Launch billing model</h3>
             <p>
               Recommended launch structure: 14-day free trial, Starter, Pro, and Business/Enterprise
-              plans through Stripe subscriptions.
+              plans through Stripe subscriptions. Plan buttons are disabled until backend billing is ready.
             </p>
           </div>
           <Sparkles size={20} className="muted" />
@@ -318,8 +318,8 @@ export function BillingPage() {
                 ))}
               </ul>
 
-              <button className="primary" type="button" disabled data-skip-create-action="true">
-                {plan.key === currentPlan ? 'Current plan' : 'Start / Upgrade'}
+              <button className="primary" type="button" disabled data-skip-create-action="true" title="Billing checkout is not active yet.">
+                {plan.key === currentPlan ? 'Current plan' : 'Checkout disabled'}
               </button>
             </article>
           ))}
@@ -358,6 +358,10 @@ export function BillingPage() {
               Staff access is blocked or limited until billing is resolved.
             </li>
           </ul>
+
+          <div className="helper">
+            This workflow is documentation-only until Stripe webhooks, subscription storage, and access restriction logic are connected.
+          </div>
         </section>
 
         <section className="card">
