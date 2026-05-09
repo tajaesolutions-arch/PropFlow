@@ -487,7 +487,7 @@ export function JoinWorkspacePage() {
               <WorkspaceSetupFeature
                 icon={KeyRound}
                 title="Invite validation"
-                description="PropFlow checks token/code, invite status, expiration, and workspace access."
+                description="PropFlow checks the token/code, invite status, invited email, and workspace access before joining."
               />
 
               <WorkspaceSetupFeature
