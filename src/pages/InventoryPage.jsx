@@ -27,6 +27,7 @@ import { formatCurrency } from '../lib/formatters.js';
 
 const inventoryManagerRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
 const inventoryCostRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
+const supplierDetailRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
 
 const statusOptions = ['in_stock', 'low_stock', 'out_of_stock', 'archived'];
 
@@ -156,7 +157,7 @@ function validate(form) {
   return errors;
 }
 
-function matchesSearch(item, properties, query) {
+function matchesSearch(item, properties, query, canSeeSupplierDetails) {
   const term = String(query || '').toLowerCase().trim();
 
   if (!term) return true;
@@ -165,8 +166,8 @@ function matchesSearch(item, properties, query) {
     getItemName(item),
     item.category,
     propertyName(properties, getItemPropertyId(item)),
-    getSupplierName(item),
-    getSupplierContact(item),
+    canSeeSupplierDetails ? getSupplierName(item) : '',
+    canSeeSupplierDetails ? getSupplierContact(item) : '',
     item.notes,
     statusFor(item),
   ]
@@ -398,7 +399,7 @@ function SupplyForm({ initial, properties, workspace, onSubmit, onCancel, submit
   );
 }
 
-function SupplyCard({ item, properties, canManage, canSeeCosts, submitting, onEdit, onArchiveToggle }) {
+function SupplyCard({ item, properties, canManage, canSeeCosts, canSeeSupplierDetails, submitting, onEdit, onArchiveToggle }) {
   const status = statusFor(item);
   const propertyId = getItemPropertyId(item);
   const quantity = getItemQuantity(item);
@@ -455,7 +456,7 @@ function SupplyCard({ item, properties, canManage, canSeeCosts, submitting, onEd
         )}
       </div>
 
-      {(item.category || getSupplierName(item) || getSupplierContact(item)) && (
+      {(item.category || (canSeeSupplierDetails && (getSupplierName(item) || getSupplierContact(item)))) && (
         <div className="supply-card-details">
           {item.category && (
             <span>
@@ -464,14 +465,14 @@ function SupplyCard({ item, properties, canManage, canSeeCosts, submitting, onEd
             </span>
           )}
 
-          {getSupplierName(item) && (
+          {canSeeSupplierDetails && getSupplierName(item) && (
             <span>
               <strong>Supplier</strong>
               <small>{getSupplierName(item)}</small>
             </span>
           )}
 
-          {getSupplierContact(item) && (
+          {canSeeSupplierDetails && getSupplierContact(item) && (
             <span>
               <strong>Contact</strong>
               <small>{getSupplierContact(item)}</small>
@@ -540,6 +541,7 @@ export function InventoryPage() {
 
   const canManageInventory = hasAnyRole(currentUser, inventoryManagerRoles);
   const canSeeInventoryCosts = hasAnyRole(currentUser, inventoryCostRoles);
+  const canSeeSupplierDetails = hasAnyRole(currentUser, supplierDetailRoles);
 
   const set = (key) => (event) => {
     setFilters((value) => ({ ...value, [key]: event.target.value }));
@@ -551,7 +553,7 @@ export function InventoryPage() {
     const status = statusFor(item);
 
     return (
-      matchesSearch(item, properties, filters.search) &&
+      matchesSearch(item, properties, filters.search, canSeeSupplierDetails) &&
       (filters.property === 'all' || getItemPropertyId(item) === filters.property) &&
       (filters.status === 'all' || (filters.status === 'active' ? status !== 'archived' : status === filters.status)) &&
       (filters.category === 'all' || item.category === filters.category)
@@ -662,9 +664,9 @@ export function InventoryPage() {
           <div className="card-header">
             <div>
               <p className="eyebrow">Inventory visibility</p>
-              <h3>Cost fields are hidden for this role</h3>
+              <h3>Cost and supplier fields are hidden for this role</h3>
               <p>
-                This view shows stock levels, categories, suppliers, and low-stock alerts. Estimated unit cost, total inventory value, and finance-adjacent inventory summaries are limited to workspace managers and accountants.
+                This view shows stock levels, categories, and low-stock alerts. Estimated unit cost, total inventory value, supplier contacts, and finance-adjacent inventory summaries are limited to workspace managers and accountants.
               </p>
             </div>
             <ShieldCheck size={22} className="muted" />
@@ -729,7 +731,9 @@ export function InventoryPage() {
             <input
               value={filters.search}
               onChange={set('search')}
-              placeholder="Search item, category, property, supplier, contact, or status..."
+              placeholder={canSeeSupplierDetails
+                ? 'Search item, category, property, supplier, contact, or status...'
+                : 'Search item, category, property, notes, or status...'}
               aria-label="Search inventory"
             />
 
@@ -819,6 +823,7 @@ export function InventoryPage() {
               properties={properties}
               canManage={canManageInventory}
               canSeeCosts={canSeeInventoryCosts}
+              canSeeSupplierDetails={canSeeSupplierDetails}
               submitting={submitting}
               onEdit={(supply) => {
                 setMessage('');
@@ -878,31 +883,42 @@ export function InventoryPage() {
         <section className="card">
           <div className="card-header">
             <div>
-              <h3>Supplier snapshot</h3>
-              <p>Vendor details attached to inventory records.</p>
+              <h3>{canSeeSupplierDetails ? 'Supplier snapshot' : 'Supplier details hidden'}</h3>
+              <p>{canSeeSupplierDetails
+                ? 'Vendor details attached to inventory records.'
+                : 'Supplier names and contacts are limited to workspace managers and accountants.'}</p>
             </div>
             <Truck size={20} className="muted" />
           </div>
 
-          {activeSupplies.filter((item) => getSupplierName(item) || getSupplierContact(item)).length ? (
-            activeSupplies
-              .filter((item) => getSupplierName(item) || getSupplierContact(item))
-              .slice(0, 8)
-              .map((item) => (
-                <div className="list-row" key={`supplier-${item.id}`}>
-                  <span>
-                    <strong>{getSupplierName(item) || 'Supplier not named'}</strong>
-                    <small>{getSupplierContact(item) || getItemName(item)}</small>
-                  </span>
-                  <StatusBadge tone={statusTone(statusFor(item))}>{getItemName(item)}</StatusBadge>
-                </div>
-              ))
+          {canSeeSupplierDetails ? (
+            activeSupplies.filter((item) => getSupplierName(item) || getSupplierContact(item)).length ? (
+              activeSupplies
+                .filter((item) => getSupplierName(item) || getSupplierContact(item))
+                .slice(0, 8)
+                .map((item) => (
+                  <div className="list-row" key={`supplier-${item.id}`}>
+                    <span>
+                      <strong>{getSupplierName(item) || 'Supplier not named'}</strong>
+                      <small>{getSupplierContact(item) || getItemName(item)}</small>
+                    </span>
+                    <StatusBadge tone={statusTone(statusFor(item))}>{getItemName(item)}</StatusBadge>
+                  </div>
+                ))
+            ) : (
+              <EmptyState
+                compact
+                icon={Building2}
+                title="No supplier details yet"
+                description="Supplier names and contact details will appear here when added to supplies."
+              />
+            )
           ) : (
             <EmptyState
               compact
-              icon={Building2}
-              title="No supplier details yet"
-              description="Supplier names and contact details will appear here when added to supplies."
+              icon={ShieldCheck}
+              title="Supplier details are hidden"
+              description="This role can view stock levels and low-stock alerts, but supplier contact details are managed by authorized workspace users."
             />
           )}
         </section>
