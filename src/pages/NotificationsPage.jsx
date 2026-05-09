@@ -129,14 +129,23 @@ function getVisibleNotificationTypes(currentUser) {
   return ['system'];
 }
 
+function isLimitedPortalRole(currentUser) {
+  return hasAnyRole(currentUser, [roles.OWNER, roles.CLEANER, roles.MAINTENANCE]);
+}
+
 function isVisibleNotification(notification, currentUser) {
   const recipientId = getRecipientId(notification);
+  const type = getNotificationType(notification);
 
   if (recipientId && currentUser?.id) {
-    return recipientId === currentUser.id;
+    return recipientId === currentUser.id && matchesRoleType(type, currentUser);
   }
 
-  return matchesRoleType(getNotificationType(notification), currentUser);
+  if (isLimitedPortalRole(currentUser)) {
+    return type === 'system';
+  }
+
+  return matchesRoleType(type, currentUser);
 }
 
 function getVisibilityCopy(currentUser) {
@@ -145,15 +154,15 @@ function getVisibilityCopy(currentUser) {
   }
 
   if (hasAnyRole(currentUser, [roles.OWNER])) {
-    return 'Owner users see owner-relevant in-app notifications only.';
+    return 'Owner users see direct owner notifications and general system alerts only.';
   }
 
   if (hasAnyRole(currentUser, [roles.CLEANER])) {
-    return 'Cleaner users see cleaning and supply-related in-app notifications only.';
+    return 'Cleaner users see direct cleaning notifications and general system alerts only.';
   }
 
   if (hasAnyRole(currentUser, [roles.MAINTENANCE])) {
-    return 'Maintenance users see maintenance-related in-app notifications only.';
+    return 'Maintenance users see direct maintenance notifications and general system alerts only.';
   }
 
   return 'Notification visibility is limited for this role.';
