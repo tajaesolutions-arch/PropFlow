@@ -5,6 +5,7 @@ import {
   FileText,
   Plus,
   Search,
+  ShieldCheck,
   UserRound,
   Users,
   Wrench,
@@ -27,6 +28,7 @@ const cancelledStatuses = new Set(['cancelled', 'void', 'refunded']);
 
 const ownerManagerRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER];
 const ownerInviteRoles = [roles.OWNER_ADMIN];
+const ownerFinanceRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.ACCOUNTANT];
 
 function toNumber(value) {
   const numericValue = Number(value);
@@ -258,7 +260,7 @@ function buildOwnerRows({
   });
 }
 
-function OwnerCard({ owner }) {
+function OwnerCard({ owner, canSeeOwnerFinance }) {
   return (
     <article className="card owner-card">
       <div className="owner-card-top">
@@ -280,15 +282,24 @@ function OwnerCard({ owner }) {
           <small>Properties</small>
         </span>
 
-        <span>
-          <strong>{formatCurrency(owner.grossRevenue, owner.currency)}</strong>
-          <small>Revenue</small>
-        </span>
+        {canSeeOwnerFinance ? (
+          <>
+            <span>
+              <strong>{formatCurrency(owner.grossRevenue, owner.currency)}</strong>
+              <small>Revenue</small>
+            </span>
 
-        <span>
-          <strong>{formatCurrency(owner.ownerPayout, owner.currency)}</strong>
-          <small>Payout</small>
-        </span>
+            <span>
+              <strong>{formatCurrency(owner.ownerPayout, owner.currency)}</strong>
+              <small>Payout</small>
+            </span>
+          </>
+        ) : (
+          <span>
+            <strong>Hidden</strong>
+            <small>Owner finance</small>
+          </span>
+        )}
 
         <span>
           <strong>{owner.openMaintenance}</strong>
@@ -316,6 +327,74 @@ function OwnerCard({ owner }) {
   );
 }
 
+function getOwnerTableColumns(canSeeOwnerFinance) {
+  const columns = [
+    {
+      key: 'name',
+      label: 'Owner',
+      render: (row) => (
+        <span>
+          <strong>{row.name}</strong>
+          <small>{row.email}</small>
+        </span>
+      ),
+    },
+    {
+      key: 'propertyCount',
+      label: 'Properties',
+    },
+    {
+      key: 'propertyNames',
+      label: 'Assigned properties',
+    },
+  ];
+
+  if (canSeeOwnerFinance) {
+    columns.push(
+      {
+        key: 'grossRevenue',
+        label: 'Revenue',
+        render: (row) => formatCurrency(row.grossRevenue, row.currency),
+      },
+      {
+        key: 'expenses',
+        label: 'Expenses',
+        render: (row) => formatCurrency(row.expenses, row.currency),
+      },
+      {
+        key: 'netProfit',
+        label: 'Net profit',
+        render: (row) => formatCurrency(row.netProfit, row.currency),
+      },
+      {
+        key: 'ownerPayout',
+        label: 'Owner payout',
+        render: (row) => formatCurrency(row.ownerPayout, row.currency),
+      },
+    );
+  }
+
+  columns.push(
+    {
+      key: 'openMaintenance',
+      label: 'Open repairs',
+      render: (row) =>
+        row.openMaintenance ? (
+          <StatusBadge tone="warning">{row.openMaintenance} open</StatusBadge>
+        ) : (
+          <StatusBadge tone="success">clear</StatusBadge>
+        ),
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      render: (row) => <StatusBadge>{row.status}</StatusBadge>,
+    },
+  );
+
+  return columns;
+}
+
 export function OwnersPage() {
   const { data, currentWorkspace, currentUser } = useApp();
 
@@ -328,6 +407,7 @@ export function OwnersPage() {
   const currency = currentWorkspace?.defaultCurrency || currentWorkspace?.default_currency || 'USD';
   const canManageOwners = hasAnyRole(currentUser, ownerManagerRoles);
   const canInviteOwners = hasAnyRole(currentUser, ownerInviteRoles);
+  const canSeeOwnerFinance = hasAnyRole(currentUser, ownerFinanceRoles);
 
   const properties = data.properties || [];
   const bookings = data.bookings || [];
@@ -406,8 +486,25 @@ export function OwnersPage() {
   return (
     <AppLayout
       title="Owners"
-      subtitle="Owner records, assigned properties, payouts, reports, and property health."
+      subtitle={canSeeOwnerFinance
+        ? 'Owner records, assigned properties, payouts, reports, and property health.'
+        : 'Owner records, assigned properties, reports, and property health. Owner finance values are hidden for this role.'}
     >
+      {!canSeeOwnerFinance && (
+        <section className="card owner-dashboard-notice">
+          <div className="card-header">
+            <div>
+              <p className="eyebrow">Owner finance visibility</p>
+              <h3>Owner payout and profit details are hidden</h3>
+              <p>
+                Host users can review owner records, assigned properties, reports, and open maintenance context, but owner payout, revenue, expenses, and net profit values are reserved for workspace owners, property managers, and accountant roles.
+              </p>
+            </div>
+            <ShieldCheck size={22} className="muted" />
+          </div>
+        </section>
+      )}
+
       <section className="stat-grid dense">
         <StatCard label="Owner records" value={totalOwners} icon={Users} />
         <StatCard
@@ -416,12 +513,21 @@ export function OwnersPage() {
           subtitle={`${unassignedProperties} unassigned`}
           icon={Building2}
         />
-        <StatCard
-          label="Owner payouts"
-          value={formatCurrency(totalOwnerPayouts, currency)}
-          subtitle={`${formatCurrency(totalRevenue, currency)} gross revenue`}
-          icon={Banknote}
-        />
+        {canSeeOwnerFinance ? (
+          <StatCard
+            label="Owner payouts"
+            value={formatCurrency(totalOwnerPayouts, currency)}
+            subtitle={`${formatCurrency(totalRevenue, currency)} gross revenue`}
+            icon={Banknote}
+          />
+        ) : (
+          <StatCard
+            label="Owner finance"
+            value="Hidden"
+            subtitle="Reserved for finance-approved roles"
+            icon={Banknote}
+          />
+        )}
         <StatCard
           label="Open maintenance"
           value={openMaintenance}
@@ -521,7 +627,7 @@ export function OwnersPage() {
         <>
           <section className="owners-card-grid">
             {filteredOwners.slice(0, 6).map((owner) => (
-              <OwnerCard key={owner.id} owner={owner} />
+              <OwnerCard key={owner.id} owner={owner} canSeeOwnerFinance={canSeeOwnerFinance} />
             ))}
           </section>
 
@@ -537,61 +643,7 @@ export function OwnersPage() {
 
             <DataTable
               rows={filteredOwners}
-              columns={[
-                {
-                  key: 'name',
-                  label: 'Owner',
-                  render: (row) => (
-                    <span>
-                      <strong>{row.name}</strong>
-                      <small>{row.email}</small>
-                    </span>
-                  ),
-                },
-                {
-                  key: 'propertyCount',
-                  label: 'Properties',
-                },
-                {
-                  key: 'propertyNames',
-                  label: 'Assigned properties',
-                },
-                {
-                  key: 'grossRevenue',
-                  label: 'Revenue',
-                  render: (row) => formatCurrency(row.grossRevenue, row.currency),
-                },
-                {
-                  key: 'expenses',
-                  label: 'Expenses',
-                  render: (row) => formatCurrency(row.expenses, row.currency),
-                },
-                {
-                  key: 'netProfit',
-                  label: 'Net profit',
-                  render: (row) => formatCurrency(row.netProfit, row.currency),
-                },
-                {
-                  key: 'ownerPayout',
-                  label: 'Owner payout',
-                  render: (row) => formatCurrency(row.ownerPayout, row.currency),
-                },
-                {
-                  key: 'openMaintenance',
-                  label: 'Open repairs',
-                  render: (row) =>
-                    row.openMaintenance ? (
-                      <StatusBadge tone="warning">{row.openMaintenance} open</StatusBadge>
-                    ) : (
-                      <StatusBadge tone="success">clear</StatusBadge>
-                    ),
-                },
-                {
-                  key: 'status',
-                  label: 'Status',
-                  render: (row) => <StatusBadge>{row.status}</StatusBadge>,
-                },
-              ]}
+              columns={getOwnerTableColumns(canSeeOwnerFinance)}
             />
           </section>
         </>
@@ -657,7 +709,7 @@ export function OwnersPage() {
           <div className="card-header">
             <div>
               <h3>Property assignment health</h3>
-              <p>Keep owner assignments clean before generating payouts and statements.</p>
+              <p>Keep owner assignments clean before generating reports and statements.</p>
             </div>
             <Building2 size={20} className="muted" />
           </div>
