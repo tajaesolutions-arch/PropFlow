@@ -82,7 +82,7 @@ function PublicBookingSafetyNotice() {
       <div className="card-header">
         <div>
           <p className="eyebrow">Direct booking safety</p>
-          <h3>Public booking is placeholder-safe</h3>
+          <h3>Public booking is preview-safe</h3>
           <p>
             This page does not expose private workspace records, does not confirm availability, does not create a booking, and does not charge guests.
           </p>
@@ -132,13 +132,13 @@ function SubmittedView({ propertyName, onReset }) {
       <section className="public-booking-success-wrap">
         <div className="auth-card wide public-booking-success-card">
           <EmptyState
-            eyebrow="Request submitted"
+            eyebrow="Preview submitted"
             icon={CheckCircle2}
-            title="Booking request submitted"
-            description={`Your request for ${propertyName} was captured in this frontend-only flow. The property manager would review the request and contact you with next steps after backend request storage and notifications are connected. Instant payment is not enabled yet.`}
+            title="Booking request preview submitted"
+            description={`Your request for ${propertyName} was captured in this frontend-only preview. The property manager would review the request and contact you with next steps after backend request storage and notifications are connected. Instant payment is not enabled yet.`}
             action={
               <button type="button" className="primary" onClick={onReset}>
-                Submit another request
+                Submit another preview request
               </button>
             }
             secondaryAction={
@@ -210,11 +210,11 @@ export function PublicBookingPage() {
 
       <section className="public-booking-hero">
         <div>
-          <p className="eyebrow">Direct booking request</p>
+          <p className="eyebrow">Direct booking request preview</p>
           <h1>{propertyName}</h1>
           <p>
-            Submit a booking request directly to the property manager. Availability, pricing,
-            approval, and payment will be confirmed before the booking is finalized.
+            Submit a preview booking request directly to the property manager. Availability, pricing,
+            approval, and payment must still be confirmed before any real booking is finalized.
           </p>
 
           <div className="hero-actions">
@@ -227,7 +227,7 @@ export function PublicBookingPage() {
                   ?.scrollIntoView({ behavior: 'smooth' })
               }
             >
-              Request booking
+              Preview request form
             </button>
 
             <button type="button" onClick={() => navigate('/')}>
@@ -270,9 +270,9 @@ export function PublicBookingPage() {
           <section className="card public-booking-request-card" id="booking-request-form">
             <div className="card-header">
               <div>
-                <h3>Booking request</h3>
+                <h3>Booking request preview</h3>
                 <p>
-                  This creates a request only. Full instant booking, deposit payments, Stripe
+                  This form previews the guest request flow only. Full instant booking, deposit payments, Stripe
                   checkout, and Supabase booking-request storage should be connected in a backend
                   phase.
                 </p>
@@ -369,12 +369,11 @@ export function PublicBookingPage() {
 
               <div className="public-booking-form-actions">
                 <button className="primary" type="submit">
-                  Submit request placeholder
+                  Submit preview request
                 </button>
 
                 <small>
-                  This page does not charge the guest yet. Payment should only be enabled after
-                  Stripe backend checkout is connected.
+                  This preview does not create a real booking, save guest details, send a message, or charge the guest.
                 </small>
               </div>
             </form>
