@@ -190,6 +190,20 @@ function getSidebarSearchLabel(currentUser) {
   return 'Search workspace';
 }
 
+function getSidebarWorkspaceTarget(currentUser, currentWorkspace) {
+  if (!currentWorkspace?.id) return '/workspace-setup';
+
+  const primaryRole = resolvePrimaryRole(currentUser);
+
+  if ([roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST].includes(primaryRole)) {
+    return '/settings';
+  }
+
+  if (primaryRole === roles.ADMIN) return '/admin';
+
+  return '/account';
+}
+
 function normalizePath(pathname) {
   if (!pathname) return '/';
 
@@ -265,6 +279,7 @@ export function Sidebar({ collapsed = false, setCollapsed, mobileOpen = false, s
   const navSections = getSidebarNav(currentUser);
   const searchTarget = getSidebarSearchTarget(currentUser);
   const searchLabel = getSidebarSearchLabel(currentUser);
+  const workspaceTarget = getSidebarWorkspaceTarget(currentUser, currentWorkspace);
 
   const closeMobileMenu = () => {
     if (typeof setMobileOpen === 'function') {
@@ -317,7 +332,7 @@ export function Sidebar({ collapsed = false, setCollapsed, mobileOpen = false, s
       <button
         type="button"
         className="sidebar-workspace"
-        onClick={() => goTo(currentWorkspace?.id ? '/settings' : '/workspace-setup')}
+        onClick={() => goTo(workspaceTarget)}
         title={collapsed ? workspaceName : undefined}
         data-skip-create-action="true"
       >
