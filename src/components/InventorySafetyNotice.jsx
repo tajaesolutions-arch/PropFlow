@@ -10,10 +10,6 @@ const inventoryManagerRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.
 const inventoryCostRoles = [...inventoryManagerRoles, roles.ACCOUNTANT];
 const cleanerInventoryRoles = [roles.CLEANER];
 
-function count(array) {
-  return Array.isArray(array) ? array.length : 0;
-}
-
 function getItemQuantity(item) {
   return Number(item?.current_quantity ?? item?.currentQuantity ?? 0);
 }
@@ -22,10 +18,54 @@ function getItemThreshold(item) {
   return Number(item?.low_stock_threshold ?? item?.lowStockThreshold ?? 0);
 }
 
+function getItemPropertyId(item) {
+  return item?.property_id || item?.propertyId || '';
+}
+
+function getTaskPropertyId(task) {
+  return task?.property_id || task?.propertyId || '';
+}
+
 function isLowStock(item) {
   const quantity = getItemQuantity(item);
   const threshold = getItemThreshold(item);
   return quantity <= 0 || quantity <= threshold || item?.status === 'low_stock' || item?.status === 'out_of_stock';
+}
+
+function getWorkspaceSupplies(data) {
+  if (Array.isArray(data?.supplies)) return data.supplies;
+  if (Array.isArray(data?.inventoryItems)) return data.inventoryItems;
+  return [];
+}
+
+function getVisibleSupplies({ data, currentUser }) {
+  const supplies = getWorkspaceSupplies(data);
+
+  if (hasAnyRole(currentUser, [...inventoryManagerRoles, roles.ACCOUNTANT])) {
+    return {
+      supplies,
+      visibilityLabel: 'workspace scoped',
+    };
+  }
+
+  if (hasAnyRole(currentUser, cleanerInventoryRoles)) {
+    const cleaningTasks = Array.isArray(data?.cleaningTasks) ? data.cleaningTasks : [];
+    const visiblePropertyIds = new Set(cleaningTasks.map(getTaskPropertyId).filter(Boolean));
+    const visibleSupplies = supplies.filter((item) => {
+      const propertyId = getItemPropertyId(item);
+      return !propertyId || visiblePropertyIds.has(propertyId);
+    });
+
+    return {
+      supplies: visibleSupplies,
+      visibilityLabel: 'cleaner visible',
+    };
+  }
+
+  return {
+    supplies: [],
+    visibilityLabel: 'restricted',
+  };
 }
 
 function getRoleMessage(currentUser) {
@@ -38,7 +78,7 @@ function getRoleMessage(currentUser) {
   }
 
   if (hasAnyRole(currentUser, cleanerInventoryRoles)) {
-    return 'Cleaners should only see assigned cleaning supplies, usage notes, and low-stock reporting prompts.';
+    return 'Cleaners see visible cleaning supplies, usage notes, and low-stock reporting prompts without cost controls.';
   }
 
   return 'Inventory visibility should remain restricted unless the role has an operational or finance reason to view supplies.';
@@ -47,7 +87,8 @@ function getRoleMessage(currentUser) {
 export function InventorySafetyNotice() {
   const { currentUser, data } = useApp();
   const primaryRole = resolvePrimaryRole(currentUser);
-  const supplies = Array.isArray(data?.inventoryItems) ? data.inventoryItems : [];
+  const visibleData = getVisibleSupplies({ data, currentUser });
+  const supplies = visibleData.supplies;
   const lowStockCount = supplies.filter(isLowStock).length;
   const canManageInventory = hasAnyRole(currentUser, inventoryManagerRoles);
   const canViewCosts = hasAnyRole(currentUser, inventoryCostRoles);
@@ -59,7 +100,7 @@ export function InventorySafetyNotice() {
           <p className="eyebrow">Inventory and supplies safety</p>
           <h3>Supply tracking readiness</h3>
           <p>
-            Inventory views use existing workspace records only. Reorder automation, purchase workflows,
+            Inventory views use visible workspace records only. Reorder automation, purchase workflows,
             and supplier integrations are intentionally not connected yet.
           </p>
         </div>
@@ -71,18 +112,18 @@ export function InventorySafetyNotice() {
           <PackagePlus size={18} />
           <span>
             <strong>Supply records</strong>
-            <small>{supplies.length ? `${supplies.length} workspace supply record${supplies.length === 1 ? '' : 's'} found.` : 'No supply records found yet. Show a clean empty state and add-supply prompt.'}</small>
+            <small>{supplies.length ? `${supplies.length} visible supply record${supplies.length === 1 ? '' : 's'} found.` : 'No visible supply records found yet. Show a clean empty state and add-supply prompt when permitted.'}</small>
           </span>
-          <StatusBadge tone={supplies.length ? 'info' : 'warning'}>{supplies.length ? 'workspace scoped' : 'empty'}</StatusBadge>
+          <StatusBadge tone={supplies.length ? 'info' : 'warning'}>{supplies.length ? visibleData.visibilityLabel : 'empty'}</StatusBadge>
         </div>
 
         <div className="inventory-safety-card">
           <AlertTriangle size={18} />
           <span>
             <strong>Low-stock warnings</strong>
-            <small>Low-stock alerts should be generated from real quantities and thresholds only.</small>
+            <small>Low-stock alerts should be generated from visible real quantities and thresholds only.</small>
           </span>
-          <StatusBadge tone={lowStockCount ? 'warning' : 'success'}>{lowStockCount ? `${lowStockCount} low` : 'none'}</StatusBadge>
+          <StatusBadge tone={lowStockCount ? 'warning' : 'success'}>{lowStockCount ? `${lowStockCount} visible low` : 'none'}</StatusBadge>
         </div>
 
         <div className="inventory-safety-card">
