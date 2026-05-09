@@ -9,6 +9,7 @@ import {
   Plus,
   Receipt,
   Search,
+  ShieldCheck,
   Wrench,
   X,
 } from 'lucide-react';
@@ -83,10 +84,6 @@ const closedStatuses = new Set(['completed', 'cancelled']);
 function safeNumber(value) {
   const number = Number(value || 0);
   return Number.isFinite(number) ? number : 0;
-}
-
-function normalizeLabel(value) {
-  return String(value || 'unknown').replaceAll('_', ' ');
 }
 
 function getPropertyId(record) {
@@ -293,57 +290,13 @@ function matchesPropertySearch(row, query) {
     .includes(q);
 }
 
-function toCsvValue(value) {
-  const text = String(value ?? '');
-  return `"${text.replaceAll('"', '""')}"`;
-}
-
-function downloadCsv(filename, rows) {
-  if (!rows.length) return;
-
-  const headers = Object.keys(rows[0]);
-  const csv = [
-    headers.map(toCsvValue).join(','),
-    ...rows.map((row) => headers.map((header) => toCsvValue(row[header])).join(',')),
-  ].join('\n');
-
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-
-  URL.revokeObjectURL(url);
-}
-
-function buildPropertyCsvRows(propertyRows) {
-  return propertyRows.map((row) => ({
-    property: row.name || 'Unnamed property',
-    currency: row.currency,
-    bookings: row.bookings,
-    booked_nights: row.bookedNights,
-    revenue: row.revenue,
-    owner_payout: row.ownerPayout,
-    expenses: row.expenses,
-    net_profit: row.netProfit,
-    occupancy_rate: `${Math.round(row.occupancy)}%`,
-    cleaning_tasks: row.cleaningTasks,
-    open_maintenance: row.openMaintenance,
-  }));
-}
-
-function buildMonthlyCsvRows(monthlyRows) {
-  return monthlyRows.map((row) => ({
-    month: row.month,
-    currency: row.currency,
-    revenue: row.revenue,
-    cleaning_costs: row.cleaningCosts,
-    maintenance_costs: row.maintenanceCosts,
-    expenses: row.expenses,
-    net_profit: row.netProfit,
-  }));
+function DisabledExportButton({ label, icon: Icon = Download }) {
+  return (
+    <button type="button" disabled data-skip-create-action="true" title="CSV and PDF exports are not active yet.">
+      <Icon size={16} />
+      {label}
+    </button>
+  );
 }
 
 export function ReportsPage() {
@@ -427,8 +380,21 @@ export function ReportsPage() {
   return (
     <AppLayout
       title="Reports & Exports"
-      subtitle="Owner reports, finance summaries, operations reports, CSV export, and PDF preparation."
+      subtitle="Owner reports, finance summaries, operations reports, and export placeholders."
     >
+      <section className="card finance-safety-notice">
+        <div className="card-header">
+          <div>
+            <p className="eyebrow">Export safety</p>
+            <h3>CSV and PDF exports are not active yet</h3>
+            <p>
+              Report export will be connected after finance records are safely stored and backend-generated files are ready. This page does not generate or download report files yet.
+            </p>
+          </div>
+          <ShieldCheck size={22} className="muted" />
+        </div>
+      </section>
+
       <section className="stat-grid dense">
         <StatCard label="Gross revenue" value={formatCurrency(grossRevenue, currency)} icon={BarChart3} />
         <StatCard label="Net profit" value={formatCurrency(netProfit, currency)} icon={FileSpreadsheet} />
@@ -443,42 +409,25 @@ export function ReportsPage() {
         <StatCard label="Open maintenance" value={openMaintenance} icon={Wrench} tone={openMaintenance ? 'warning' : 'accent'} />
       </section>
 
-      <section className="card reports-toolbar">
+      <section className="card reports-toolbar finance-actions-toolbar">
         <div>
           <h3>Report center</h3>
           <p>
-            Manual reports come first. Scheduled weekly, monthly, and quarterly owner reports should
-            use the same report structure when backend jobs are connected.
+            Manual report creation, scheduled reports, CSV export, and PDF export remain disabled until backend report jobs and finance storage are connected.
           </p>
         </div>
 
         <div className="reports-toolbar-actions">
           {canManageReports && (
-            <button type="button" className="primary" data-create-action="report">
+            <button type="button" className="primary" disabled data-skip-create-action="true">
               <Plus size={16} />
-              Add Report
+              Add Report disabled
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={() => downloadCsv('propflow-property-performance.csv', buildPropertyCsvRows(propertyRows))}
-            disabled={!propertyRows.length}
-            data-skip-create-action="true"
-          >
-            <Download size={16} />
-            Property CSV
-          </button>
-
-          <button
-            type="button"
-            onClick={() => downloadCsv('propflow-monthly-summary.csv', buildMonthlyCsvRows(monthlyRows))}
-            disabled={!monthlyRows.length}
-            data-skip-create-action="true"
-          >
-            <Download size={16} />
-            Monthly CSV
-          </button>
+          <DisabledExportButton label="Property CSV disabled" />
+          <DisabledExportButton label="Monthly CSV disabled" />
+          <DisabledExportButton label="PDF disabled" icon={FileText} />
         </div>
       </section>
 
@@ -561,32 +510,12 @@ export function ReportsPage() {
             </div>
 
             <div className="report-type-actions">
-              <button
-                type="button"
-                onClick={() =>
-                  downloadCsv(
-                    `propflow-${report.id}.csv`,
-                    report.id === 'property_performance'
-                      ? buildPropertyCsvRows(propertyRows)
-                      : buildMonthlyCsvRows(monthlyRows),
-                  )
-                }
-                disabled={report.id === 'property_performance' ? !propertyRows.length : !monthlyRows.length}
-                data-skip-create-action="true"
-              >
-                <Download size={16} />
-                CSV
-              </button>
-
-              <button className="primary" type="button" disabled data-skip-create-action="true">
-                <Download size={16} />
-                PDF
-              </button>
+              <DisabledExportButton label="CSV disabled" />
+              <DisabledExportButton label="PDF disabled" icon={FileText} />
             </div>
 
             <div className="helper">
-              CSV preview export works in-browser. PDF generation should be connected later through
-              backend report logic.
+              CSV and PDF exports are not active yet. Report export will be connected after finance records are safely stored.
             </div>
           </article>
         ))}
@@ -659,11 +588,11 @@ export function ReportsPage() {
           eyebrow="Reports"
           icon={FileSpreadsheet}
           title="No report data yet"
-          description="Add properties, bookings, cleaning tasks, and maintenance work orders to generate useful report previews."
+          description="Add properties, bookings, cleaning tasks, and maintenance work orders to generate useful report previews. No export files are generated yet."
           action={
-            <button type="button" className="primary" data-create-action="booking">
+            <button type="button" className="primary" disabled data-skip-create-action="true">
               <Plus size={16} />
-              Add Booking
+              Add Booking disabled
             </button>
           }
         />
@@ -717,7 +646,7 @@ export function ReportsPage() {
           <div className="card-header">
             <div>
               <h3>Export history</h3>
-              <p>Track generated PDF and CSV exports.</p>
+              <p>Export history is disabled until backend-generated files are connected.</p>
             </div>
           </div>
 
@@ -750,7 +679,7 @@ export function ReportsPage() {
               compact
               icon={Download}
               title="No exports generated yet"
-              description="Report export history will appear here after PDF or backend-generated CSV exports are saved."
+              description="CSV and PDF export history will appear here after backend-generated exports are safely connected."
             />
           )}
         </section>
