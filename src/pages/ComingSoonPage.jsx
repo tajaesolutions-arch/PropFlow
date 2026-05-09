@@ -17,6 +17,9 @@ import {
 import { AppLayout } from '../components/layout/AppLayout.jsx';
 import { EmptyState } from '../components/EmptyState.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
+import { getPostLoginPath, hasAnyRole } from '../lib/auth.js';
+import { useApp } from '../lib/AppContext.jsx';
+import { roles } from '../data/constants.js';
 import { navigate } from '../routes/AppRouter.jsx';
 
 const smartToolPreviews = [
@@ -75,8 +78,52 @@ const helpTopics = [
   },
 ];
 
+const operationalRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
+const ownerVisibleRoles = [...operationalRoles, roles.OWNER, roles.ACCOUNTANT];
+const bookingVisibleRoles = [...operationalRoles, roles.OWNER, roles.ACCOUNTANT];
+const reportVisibleRoles = [...operationalRoles, roles.OWNER, roles.ACCOUNTANT];
+
 function isSmartToolsPage(title) {
   return String(title).toLowerCase().includes('smart') || String(title).toLowerCase().includes('ai');
+}
+
+function getSafeDashboardPath(currentUser) {
+  const path = getPostLoginPath(currentUser);
+
+  if (path === '/workspace-setup' || path === '/suspended') return '/account';
+  return path || '/account';
+}
+
+function getRoleSafeLinks(currentUser) {
+  const links = [
+    {
+      label: 'Back to dashboard',
+      path: getSafeDashboardPath(currentUser),
+      primary: true,
+    },
+  ];
+
+  if (hasAnyRole(currentUser, ownerVisibleRoles)) {
+    links.push({ label: 'Properties', path: '/properties' });
+  }
+
+  if (hasAnyRole(currentUser, bookingVisibleRoles)) {
+    links.push({ label: 'Bookings', path: '/bookings' });
+  }
+
+  if (hasAnyRole(currentUser, reportVisibleRoles)) {
+    links.push({ label: 'Reports', path: '/reports' });
+  }
+
+  if (hasAnyRole(currentUser, [roles.CLEANER])) {
+    links.push({ label: 'Cleaning Tasks', path: '/cleaning' });
+  }
+
+  if (hasAnyRole(currentUser, [roles.MAINTENANCE])) {
+    links.push({ label: 'Work Orders', path: '/maintenance' });
+  }
+
+  return links;
 }
 
 function PlannedFeatureCard({ item }) {
@@ -99,7 +146,10 @@ function PlannedFeatureCard({ item }) {
 }
 
 export function ComingSoonPage({ title = 'Coming soon' }) {
+  const { currentUser } = useApp();
   const smartTools = isSmartToolsPage(title);
+  const safeLinks = getRoleSafeLinks(currentUser);
+  const safeDashboardPath = getSafeDashboardPath(currentUser);
 
   return (
     <AppLayout
@@ -265,9 +315,9 @@ export function ComingSoonPage({ title = 'Coming soon' }) {
             compact
             icon={Search}
             title="Use current PropFlow pages"
-            description="Core workflows are available from the dashboard, properties, bookings, calendar, reports, settings, and role dashboards."
+            description="Core workflows are available from your role dashboard and permitted workspace pages."
             action={
-              <button type="button" className="primary" onClick={() => navigate('/dashboard')}>
+              <button type="button" className="primary" onClick={() => navigate(safeDashboardPath)}>
                 Back to dashboard
               </button>
             }
@@ -279,26 +329,21 @@ export function ComingSoonPage({ title = 'Coming soon' }) {
         <div className="card-header">
           <div>
             <h3>Return to core workflows</h3>
-            <p>Use the current MVP pages that are already connected to the main PropFlow structure.</p>
+            <p>Use the current MVP pages that are available for your role.</p>
           </div>
         </div>
 
         <div className="action-row">
-          <button type="button" className="primary" onClick={() => navigate('/dashboard')}>
-            Back to dashboard
-          </button>
-
-          <button type="button" onClick={() => navigate('/properties')}>
-            Properties
-          </button>
-
-          <button type="button" onClick={() => navigate('/bookings')}>
-            Bookings
-          </button>
-
-          <button type="button" onClick={() => navigate('/reports')}>
-            Reports
-          </button>
+          {safeLinks.map((link) => (
+            <button
+              key={`${link.path}-${link.label}`}
+              type="button"
+              className={link.primary ? 'primary' : undefined}
+              onClick={() => navigate(link.path)}
+            >
+              {link.label}
+            </button>
+          ))}
         </div>
       </section>
     </AppLayout>
