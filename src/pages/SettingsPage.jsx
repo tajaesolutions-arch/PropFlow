@@ -45,6 +45,7 @@ const assignmentRoleOptions = [
 
 const billingAccessRoles = [roles.ADMIN, roles.OWNER_ADMIN, roles.ACCOUNTANT];
 const teamVisibilityRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER];
+const companyCodeVisibilityRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER];
 
 const defaultAssignment = {
   userId: '',
@@ -173,6 +174,7 @@ export function SettingsPage() {
   const canManageAssignments = hasAnyRole(currentUser, [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER]);
   const canOpenBilling = hasAnyRole(currentUser, billingAccessRoles);
   const canViewTeamAccess = hasAnyRole(currentUser, teamVisibilityRoles);
+  const canViewCompanyCode = hasAnyRole(currentUser, companyCodeVisibilityRoles);
 
   const activeProperties = (data.properties || []).filter((property) => property.status !== 'archived');
   const members = data.members || [];
@@ -306,6 +308,12 @@ export function SettingsPage() {
   };
 
   const copyWorkspaceCode = async () => {
+    if (!canViewCompanyCode) {
+      setMessage('Company code is visible to workspace owners and property managers only.');
+      clearMessageSoon();
+      return;
+    }
+
     const copied = await copyToClipboard(workspaceCode);
 
     if (copied) {
@@ -419,7 +427,12 @@ export function SettingsPage() {
       )}
 
       <section className="stat-grid dense">
-        <StatCard label="Workspace" value={workspaceName} subtitle={workspaceCode || 'No company code'} icon={Globe2} />
+        <StatCard
+          label="Workspace"
+          value={workspaceName}
+          subtitle={canViewCompanyCode ? workspaceCode || 'No company code' : 'Company code restricted'}
+          icon={Globe2}
+        />
         <StatCard
           label="Team access"
           value={canViewTeamAccess ? members.length : 'Restricted'}
@@ -455,17 +468,21 @@ export function SettingsPage() {
 
             <label>
               Company code
-              <div className="settings-copy-field">
-                <input value={workspaceCode} readOnly />
-                <button
-                  type="button"
-                  onClick={copyWorkspaceCode}
-                  disabled={!workspaceCode}
-                  data-skip-create-action="true"
-                >
-                  <Copy size={16} />
-                </button>
-              </div>
+              {canViewCompanyCode ? (
+                <div className="settings-copy-field">
+                  <input value={workspaceCode} readOnly />
+                  <button
+                    type="button"
+                    onClick={copyWorkspaceCode}
+                    disabled={!workspaceCode}
+                    data-skip-create-action="true"
+                  >
+                    <Copy size={16} />
+                  </button>
+                </div>
+              ) : (
+                <input value="Hidden — owner/manager only" readOnly />
+              )}
             </label>
 
             <label>
@@ -478,6 +495,12 @@ export function SettingsPage() {
               <input value={currentWorkspace?.business_email || currentWorkspace?.businessEmail || ''} readOnly />
             </label>
           </div>
+
+          {!canViewCompanyCode && (
+            <div className="helper">
+              Company codes are visible to workspace owners and property managers only. Hosts can use workspace settings without invite-code access.
+            </div>
+          )}
         </SettingCard>
 
         <SettingCard
