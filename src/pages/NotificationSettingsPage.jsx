@@ -192,7 +192,7 @@ function ChannelCard({ channel, enabled, onToggle }) {
 
         <span>
           <strong>{enabled ? 'Enabled' : 'Disabled'}</strong>
-          <small>{disabled ? 'Locked until backend setup' : 'User preference'}</small>
+          <small>{disabled ? 'Locked until backend setup' : 'UI preview only'}</small>
         </span>
       </div>
 
@@ -202,7 +202,7 @@ function ChannelCard({ channel, enabled, onToggle }) {
           <strong>{enabled ? 'Enabled' : 'Disabled'}</strong>
           <small>
             {channel.configured
-              ? 'Ready to use after preferences are persisted.'
+              ? 'Ready for in-app display. Preference persistence will be connected in a later backend phase.'
               : 'Disabled until backend provider credentials and secure delivery functions are connected.'}
           </small>
         </span>
@@ -211,7 +211,7 @@ function ChannelCard({ channel, enabled, onToggle }) {
   );
 }
 
-function PreferenceCard({ preference, enabled, onToggle }) {
+function PreferenceCard({ preference, enabled }) {
   const Icon = preference.icon;
 
   return (
@@ -225,9 +225,9 @@ function PreferenceCard({ preference, enabled, onToggle }) {
         <small>{preference.description}</small>
       </span>
 
-      <label className="switch-control">
-        <input type="checkbox" checked={enabled} onChange={onToggle} />
-        <span>{enabled ? 'On' : 'Off'}</span>
+      <label className="switch-control disabled" title="Preference saving is not active yet.">
+        <input type="checkbox" checked={enabled} disabled readOnly />
+        <span>Preview only</span>
       </label>
     </article>
   );
@@ -243,8 +243,9 @@ export function NotificationSettingsPage() {
     whatsapp: false,
   });
 
-  const [preferences, setPreferences] = React.useState(
-    preferenceGroups.reduce((acc, item) => ({ ...acc, [item.key]: true }), {}),
+  const preferences = React.useMemo(
+    () => preferenceGroups.reduce((acc, item) => ({ ...acc, [item.key]: true }), {}),
+    [],
   );
 
   if (!currentWorkspace) {
@@ -274,13 +275,6 @@ export function NotificationSettingsPage() {
     }));
   };
 
-  const togglePreference = (key) => {
-    setPreferences((value) => ({
-      ...value,
-      [key]: !value[key],
-    }));
-  };
-
   return (
     <AppLayout
       title="Notification Settings"
@@ -297,7 +291,7 @@ export function NotificationSettingsPage() {
         <StatCard
           label="Event preferences"
           value={`${enabledPreferences}/${preferenceGroups.length}`}
-          subtitle={`Configured for ${getUserName(currentUser)}`}
+          subtitle="Preview only until persistence is connected"
           icon={ShieldCheck}
         />
 
@@ -332,8 +326,7 @@ export function NotificationSettingsPage() {
         </div>
 
         <div className="helper">
-          Email, SMS, and WhatsApp toggles stay disabled until backend provider setup is complete. Resend, Twilio SMS, and Twilio WhatsApp credentials must stay server-side. Do not expose
-          API keys, auth tokens, or provider secrets in frontend code.
+          Email, SMS, WhatsApp, and saved preference controls stay disabled until backend provider setup and Supabase preference persistence are complete. Resend, Twilio SMS, and Twilio WhatsApp credentials must stay server-side. Do not expose API keys, auth tokens, or provider secrets in frontend code.
         </div>
       </section>
 
@@ -367,14 +360,12 @@ export function NotificationSettingsPage() {
                 key={preference.key}
                 preference={preference}
                 enabled={Boolean(preferences[preference.key])}
-                onToggle={() => togglePreference(preference.key)}
               />
             ))}
           </div>
 
           <div className="helper">
-            Channel and event preferences are local UI state for now. Persist them to a Supabase
-            notification preferences table in the backend notification phase.
+            Event preference toggles are preview-only and cannot be changed yet. Persist notification preferences to a Supabase notification preferences table in the backend notification phase.
           </div>
         </section>
 
