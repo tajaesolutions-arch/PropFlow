@@ -6,8 +6,17 @@ import { WorkspaceSwitcher } from '../WorkspaceSwitcher.jsx';
 import { AccountMenu } from '../AccountMenu.jsx';
 import { useApp } from '../../lib/AppContext.jsx';
 import { navigate } from '../../routes/AppRouter.jsx';
+import { hasAnyRole } from '../../lib/auth.js';
+import { roles } from '../../data/constants.js';
 
 const dateRangeStorageKey = 'propflow.dashboardDateRange';
+const notificationCountRoles = [
+  roles.ADMIN,
+  roles.OWNER_ADMIN,
+  roles.PROPERTY_MANAGER,
+  roles.HOST,
+  roles.ACCOUNTANT,
+];
 
 function getInitialDateRange() {
   if (typeof window === 'undefined') return 'last_30_days';
@@ -24,13 +33,18 @@ export function TopBar({
   subtitle = 'Workspace-scoped operational command center',
   setMobileOpen,
 }) {
-  const { data } = useApp();
+  const { data, currentUser } = useApp();
   const [dateRange, setDateRange] = React.useState(getInitialDateRange);
   const notifications = Array.isArray(data?.notifications) ? data.notifications : [];
-  const unreadNotifications = notifications.filter(isUnreadNotification).length;
-  const notificationLabel = unreadNotifications
-    ? `Open notifications. ${unreadNotifications} unread alert${unreadNotifications === 1 ? '' : 's'}.`
-    : 'Open notifications. No unread alerts.';
+  const canSeeWorkspaceNotificationCount = hasAnyRole(currentUser, notificationCountRoles);
+  const unreadNotifications = canSeeWorkspaceNotificationCount
+    ? notifications.filter(isUnreadNotification).length
+    : 0;
+  const notificationLabel = canSeeWorkspaceNotificationCount
+    ? unreadNotifications
+      ? `Open notifications. ${unreadNotifications} unread alert${unreadNotifications === 1 ? '' : 's'}.`
+      : 'Open notifications. No unread alerts.'
+    : 'Open notifications. Notification counts are hidden for this role.';
 
   React.useEffect(() => {
     window.localStorage.setItem(dateRangeStorageKey, dateRange);
