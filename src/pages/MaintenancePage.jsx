@@ -39,6 +39,10 @@ const statuses = [
 
 const closedStatuses = new Set(['completed', 'cancelled']);
 
+function isClosedWorkOrder(workOrder) {
+  return closedStatuses.has(String(workOrder?.status || '').toLowerCase());
+}
+
 function cleanNumber(value) {
   if (value === '' || value === null || value === undefined) return null;
 
@@ -144,7 +148,7 @@ function isWaitingForParts(workOrder) {
 
 function isOverdue(workOrder) {
   const dueDate = dateOnly(getWorkOrderDueDate(workOrder));
-  return Boolean(dueDate && dueDate < today() && !closedStatuses.has(workOrder.status));
+  return Boolean(dueDate && dueDate < today() && !isClosedWorkOrder(workOrder));
 }
 
 function canManageWorkOrders(currentUser) {
@@ -205,6 +209,7 @@ function WorkOrderCard({
   const overdue = isOverdue(workOrder);
   const status = workOrder.status || 'reported';
   const priority = workOrder.priority || 'medium';
+  const isClosed = isClosedWorkOrder(workOrder);
 
   const [actualCostDraft, setActualCostDraft] = React.useState(
     actualCost ? String(actualCost) : '',
@@ -276,7 +281,13 @@ function WorkOrderCard({
         </div>
       )}
 
-      {canUpdate && (
+      {isClosed && (
+        <div className="helper">
+          This work order is closed and read-only. Reopen it from an authorized manager workflow before making changes.
+        </div>
+      )}
+
+      {canUpdate && !isClosed && (
         <div className="maintenance-update-panel">
           <label>
             Status
@@ -309,7 +320,7 @@ function WorkOrderCard({
       )}
 
       <div className="maintenance-card-actions">
-        {canUpdate && status !== 'in_progress' && !closedStatuses.has(status) && (
+        {canUpdate && !isClosed && status !== 'in_progress' && (
           <button
             type="button"
             onClick={() => onStatusUpdate(workOrder, 'in_progress')}
@@ -320,7 +331,7 @@ function WorkOrderCard({
           </button>
         )}
 
-        {canUpdate && !isWaitingForParts(workOrder) && !closedStatuses.has(status) && (
+        {canUpdate && !isClosed && !isWaitingForParts(workOrder) && (
           <button
             type="button"
             onClick={() => onStatusUpdate(workOrder, 'waiting_parts')}
@@ -331,7 +342,7 @@ function WorkOrderCard({
           </button>
         )}
 
-        {canUpdate && status !== 'completed' && (
+        {canUpdate && !isClosed && status !== 'completed' && (
           <button
             type="button"
             onClick={() => onStatusUpdate(workOrder, 'completed')}
@@ -342,7 +353,7 @@ function WorkOrderCard({
           </button>
         )}
 
-        {canUpdate && (
+        {canUpdate && !isClosed && (
           <label className="upload-button">
             <Camera size={16} />
             {uploading ? 'Uploading…' : 'Upload file'}
@@ -396,10 +407,10 @@ export function MaintenancePage() {
   const canUpdate = canUpdateWorkOrders(currentUser);
 
   const urgent = workOrders.filter(
-    (workOrder) => workOrder.priority === 'urgent' && !closedStatuses.has(workOrder.status),
+    (workOrder) => workOrder.priority === 'urgent' && !isClosedWorkOrder(workOrder),
   );
 
-  const openWorkOrders = workOrders.filter((workOrder) => !closedStatuses.has(workOrder.status));
+  const openWorkOrders = workOrders.filter((workOrder) => !isClosedWorkOrder(workOrder));
   const waitingParts = workOrders.filter(isWaitingForParts);
   const overdue = workOrders.filter(isOverdue);
 
@@ -425,6 +436,11 @@ export function MaintenancePage() {
   };
 
   const updateStatus = async (workOrder, status) => {
+    if (isClosedWorkOrder(workOrder)) {
+      setMessage('This closed work order is read-only.');
+      return;
+    }
+
     if (!canUpdateSpecificWorkOrder(currentUser, workOrder, allWorkOrders)) {
       setMessage('You do not have permission to update this work order.');
       return;
@@ -449,6 +465,11 @@ export function MaintenancePage() {
   };
 
   const updateActualCost = async (workOrder, value) => {
+    if (isClosedWorkOrder(workOrder)) {
+      setMessage('This closed work order is read-only.');
+      return;
+    }
+
     if (!canUpdateSpecificWorkOrder(currentUser, workOrder, allWorkOrders)) return;
 
     const nextActualCost = cleanNumber(value);
@@ -473,6 +494,11 @@ export function MaintenancePage() {
   };
 
   const handleUpload = async (workOrder, file) => {
+    if (isClosedWorkOrder(workOrder)) {
+      setMessage('This closed work order is read-only.');
+      return;
+    }
+
     if (!file) return;
 
     if (!canUpdateSpecificWorkOrder(currentUser, workOrder, allWorkOrders)) {
@@ -505,7 +531,7 @@ export function MaintenancePage() {
     .filter((workOrder) => filters.property === 'all' || getWorkOrderPropertyId(workOrder) === filters.property)
     .filter((workOrder) => filters.priority === 'all' || workOrder.priority === filters.priority)
     .filter((workOrder) => {
-      if (filters.status === 'open') return !closedStatuses.has(workOrder.status);
+      if (filters.status === 'open') return !isClosedWorkOrder(workOrder);
       if (filters.status === 'overdue') return isOverdue(workOrder);
       if (filters.status === 'waiting_parts') return isWaitingForParts(workOrder);
       if (filters.status === 'all') return true;
