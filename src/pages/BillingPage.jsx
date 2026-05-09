@@ -142,7 +142,7 @@ export function BillingPage() {
   return (
     <AppLayout
       title="Billing & Subscription"
-      subtitle="Workspace subscription, trial status, payment recovery, and Stripe setup placeholders."
+      subtitle="Workspace subscription, planned trial status, payment recovery, and Stripe setup placeholders."
     >
       <section className="card billing-notice-card urgent">
         <div className="card-header">
@@ -178,7 +178,7 @@ export function BillingPage() {
         <StatCard
           label="Trial ends"
           value={formatDate(subscription?.trial_ends_at)}
-          subtitle="14-day trial recommended"
+          subtitle="14-day trial model planned"
           icon={CalendarDays}
         />
 
@@ -286,7 +286,7 @@ export function BillingPage() {
           <div>
             <h3>Launch billing model</h3>
             <p>
-              Recommended launch structure: 14-day free trial, Starter, Pro, and Business/Enterprise
+              Recommended launch structure after Stripe is connected: 14-day trial model, Starter, Pro, and Business/Enterprise
               plans through Stripe subscriptions. Plan buttons are disabled until backend billing is ready.
             </p>
           </div>
