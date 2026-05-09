@@ -10,6 +10,7 @@ import {
   Package,
   Search,
   Settings,
+  ShieldCheck,
   Smartphone,
   Users,
   Wrench,
@@ -37,6 +38,10 @@ const notificationTypes = [
 ];
 
 const settingsAccessRoles = [roles.ADMIN, roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
+const workspaceNotificationRoles = [roles.ADMIN, roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
+const ownerNotificationTypes = new Set(['booking', 'maintenance', 'owner_report', 'system']);
+const cleanerNotificationTypes = new Set(['cleaning', 'inventory_alert', 'system']);
+const maintenanceNotificationTypes = new Set(['maintenance', 'system']);
 
 function formatLabel(value) {
   return value ? String(value).replaceAll('_', ' ') : 'Notification';
@@ -75,6 +80,10 @@ function getNotificationDate(notification) {
   return notification.created_at || notification.createdAt || notification.time || notification.sent_at || '';
 }
 
+function getRecipientId(notification) {
+  return notification.user_id || notification.userId || notification.recipient_id || notification.recipientId || notification.assigned_to || notification.assignedTo || '';
+}
+
 function isUnread(notification) {
   return !notification.read_at && !notification.readAt && notification.status !== 'read';
 }
@@ -100,6 +109,54 @@ function getIcon(type) {
   if (type === 'inventory_alert') return Package;
   if (type === 'owner_report') return Bell;
   return Bell;
+}
+
+function matchesRoleType(type, currentUser) {
+  if (hasAnyRole(currentUser, workspaceNotificationRoles)) return true;
+  if (hasAnyRole(currentUser, [roles.OWNER])) return ownerNotificationTypes.has(type);
+  if (hasAnyRole(currentUser, [roles.CLEANER])) return cleanerNotificationTypes.has(type);
+  if (hasAnyRole(currentUser, [roles.MAINTENANCE])) return maintenanceNotificationTypes.has(type);
+
+  return false;
+}
+
+function getVisibleNotificationTypes(currentUser) {
+  if (hasAnyRole(currentUser, workspaceNotificationRoles)) return notificationTypes;
+  if (hasAnyRole(currentUser, [roles.OWNER])) return notificationTypes.filter((type) => ownerNotificationTypes.has(type));
+  if (hasAnyRole(currentUser, [roles.CLEANER])) return notificationTypes.filter((type) => cleanerNotificationTypes.has(type));
+  if (hasAnyRole(currentUser, [roles.MAINTENANCE])) return notificationTypes.filter((type) => maintenanceNotificationTypes.has(type));
+
+  return ['system'];
+}
+
+function isVisibleNotification(notification, currentUser) {
+  const recipientId = getRecipientId(notification);
+
+  if (recipientId && currentUser?.id) {
+    return recipientId === currentUser.id;
+  }
+
+  return matchesRoleType(getNotificationType(notification), currentUser);
+}
+
+function getVisibilityCopy(currentUser) {
+  if (hasAnyRole(currentUser, workspaceNotificationRoles)) {
+    return 'Workspace notification records are visible for this role.';
+  }
+
+  if (hasAnyRole(currentUser, [roles.OWNER])) {
+    return 'Owner users see owner-relevant in-app notifications only.';
+  }
+
+  if (hasAnyRole(currentUser, [roles.CLEANER])) {
+    return 'Cleaner users see cleaning and supply-related in-app notifications only.';
+  }
+
+  if (hasAnyRole(currentUser, [roles.MAINTENANCE])) {
+    return 'Maintenance users see maintenance-related in-app notifications only.';
+  }
+
+  return 'Notification visibility is limited for this role.';
 }
 
 function statusTone(value) {
@@ -182,8 +239,16 @@ export function NotificationsPage() {
     status: 'all',
   });
 
-  const notifications = sortNotifications(data.notifications || []);
   const canOpenSettings = hasAnyRole(currentUser, settingsAccessRoles);
+  const canSeeProviderDetails = hasAnyRole(currentUser, settingsAccessRoles);
+  const visibleTypes = getVisibleNotificationTypes(currentUser);
+  const notifications = sortNotifications((data.notifications || []).filter((notification) => isVisibleNotification(notification, currentUser)));
+
+  React.useEffect(() => {
+    if (filters.type !== 'all' && !visibleTypes.includes(filters.type)) {
+      setFilters((current) => ({ ...current, type: 'all' }));
+    }
+  }, [filters.type, visibleTypes]);
 
   const unreadCount = notifications.filter(isUnread).length;
   const billingCount = notifications.filter((notification) => getNotificationType(notification) === 'billing').length;
@@ -217,21 +282,31 @@ export function NotificationsPage() {
   return (
     <AppLayout
       title="Notifications"
-      subtitle="In-app alerts for bookings, cleaning, maintenance, billing, reports, inventory, and team activity."
+      subtitle="Role-safe in-app alerts for visible bookings, cleaning, maintenance, reports, inventory, and team activity."
     >
+      <section className="card notification-warning-card">
+        <div className="card-header">
+          <div>
+            <p className="eyebrow">Notification visibility</p>
+            <h3>Notifications are filtered for this role</h3>
+            <p>{getVisibilityCopy(currentUser)}</p>
+          </div>
+          <ShieldCheck size={22} className="muted" />
+        </div>
+      </section>
+
       <section className="stat-grid dense">
-        <StatCard label="Total notifications" value={notifications.length} icon={Bell} />
+        <StatCard label="Visible notifications" value={notifications.length} icon={Bell} />
         <StatCard label="Unread" value={unreadCount} icon={AlertTriangle} tone={unreadCount ? 'warning' : 'accent'} />
         <StatCard label="Maintenance alerts" value={maintenanceCount} icon={Wrench} />
-        <StatCard label="Billing alerts" value={billingCount} icon={CreditCard} />
+        <StatCard label="Billing alerts" value={canSeeProviderDetails ? billingCount : 'Hidden'} icon={CreditCard} />
       </section>
 
       <section className="card notifications-toolbar">
         <div>
           <h3>Notification center</h3>
           <p>
-            In-app workspace alerts for bookings, cleaning tasks, maintenance work orders, owner reports,
-            billing, inventory, and team activity. Email, SMS, and WhatsApp delivery are not active yet.
+            In-app alerts for visible records only. Email, SMS, and WhatsApp delivery are not active yet.
           </p>
         </div>
 
@@ -255,7 +330,7 @@ export function NotificationsPage() {
             <p className="eyebrow">Delivery status</p>
             <h3>External notification delivery is pending backend setup</h3>
             <p>
-              This page displays in-app notification records only. Email, SMS, WhatsApp, delivery logs, provider retries, and sent-message status should be connected in a later backend notification phase.
+              This page displays in-app notification records only. External delivery, provider retries, and sent-message status should be connected in a later backend notification phase.
             </p>
           </div>
           <AlertTriangle size={22} className="muted" />
@@ -267,7 +342,7 @@ export function NotificationsPage() {
           <label className="notifications-search">
             <Search size={16} />
             <input
-              placeholder="Search in-app notifications by title, message, type, channel, or status..."
+              placeholder="Search visible in-app notifications by title, message, type, channel, or status..."
               value={filters.query}
               onChange={setFilter('query')}
               aria-label="Search notifications"
@@ -289,8 +364,8 @@ export function NotificationsPage() {
           <label>
             Type
             <select value={filters.type} onChange={setFilter('type')}>
-              <option value="all">All types</option>
-              {notificationTypes.map((type) => (
+              <option value="all">All visible types</option>
+              {visibleTypes.map((type) => (
                 <option key={type} value={type}>
                   {formatLabel(type)}
                 </option>
@@ -313,7 +388,7 @@ export function NotificationsPage() {
         <div className="card-header">
           <div>
             <h3>In-app notifications</h3>
-            <p>Workspace notification records shown inside PropFlow. External delivery is not connected yet.</p>
+            <p>Visible notification records shown inside PropFlow. External delivery is not connected yet.</p>
           </div>
 
           <StatusBadge tone="info">{filteredNotifications.length} shown</StatusBadge>
@@ -329,86 +404,121 @@ export function NotificationsPage() {
           <EmptyState
             eyebrow="Notifications"
             icon={Bell}
-            title={notifications.length ? 'No notifications match the current filters' : 'No notifications yet'}
+            title={notifications.length ? 'No visible notifications match the current filters' : 'No visible notifications yet'}
             description={
               notifications.length
-                ? 'Adjust the search, type, or status filters to view more in-app notification records.'
-                : 'PropFlow will show in-app workspace alerts here when bookings, cleaning tasks, maintenance work orders, billing updates, owner reports, inventory alerts, or team activity create notification records. Email, SMS, and WhatsApp delivery are not active yet.'
+                ? 'Adjust the search, type, or status filters to view more visible in-app notification records.'
+                : 'PropFlow will show role-safe in-app alerts here when visible records create notification entries. Email, SMS, and WhatsApp delivery are not active yet.'
             }
           />
         )}
       </section>
 
       <section className="panel-grid two">
-        <section className="card">
-          <div className="card-header">
-            <div>
-              <h3>Provider status</h3>
-              <p>Email, SMS, and WhatsApp providers planned for the MVP notification system.</p>
+        {canSeeProviderDetails ? (
+          <section className="card">
+            <div className="card-header">
+              <div>
+                <h3>Provider status</h3>
+                <p>Email, SMS, and WhatsApp providers planned for the MVP notification system.</p>
+              </div>
             </div>
-          </div>
 
-          <div className="notification-provider-summary">
-            <span>
-              <Mail size={18} />
-              <strong>Email via Resend</strong>
-              <small>Transactional email provider should be configured server-side.</small>
-              <StatusBadge tone="warning">pending</StatusBadge>
-            </span>
+            <div className="notification-provider-summary">
+              <span>
+                <Mail size={18} />
+                <strong>Email via Resend</strong>
+                <small>Transactional email provider should be configured server-side.</small>
+                <StatusBadge tone="warning">pending</StatusBadge>
+              </span>
 
-            <span>
-              <Smartphone size={18} />
-              <strong>SMS via Twilio</strong>
-              <small>SMS notifications should use secure backend credentials.</small>
-              <StatusBadge tone="warning">pending</StatusBadge>
-            </span>
+              <span>
+                <Smartphone size={18} />
+                <strong>SMS via Twilio</strong>
+                <small>SMS notifications should use secure backend credentials.</small>
+                <StatusBadge tone="warning">pending</StatusBadge>
+              </span>
 
-            <span>
-              <MessageCircle size={18} />
-              <strong>WhatsApp via Twilio</strong>
-              <small>WhatsApp alerts should use secure backend credentials.</small>
-              <StatusBadge tone="warning">pending</StatusBadge>
-            </span>
-          </div>
-        </section>
+              <span>
+                <MessageCircle size={18} />
+                <strong>WhatsApp via Twilio</strong>
+                <small>WhatsApp alerts should use secure backend credentials.</small>
+                <StatusBadge tone="warning">pending</StatusBadge>
+              </span>
+            </div>
+          </section>
+        ) : (
+          <section className="card">
+            <div className="card-header">
+              <div>
+                <h3>Delivery status</h3>
+                <p>External delivery is not active yet. This role sees in-app notifications only.</p>
+              </div>
+            </div>
+
+            <div className="helper">
+              Email, SMS, and WhatsApp setup details are managed by authorized workspace administrators.
+            </div>
+          </section>
+        )}
 
         <section className="card">
           <div className="card-header">
             <div>
-              <h3>Notification categories</h3>
-              <p>Core alert types PropFlow should support at launch.</p>
+              <h3>Visible notification categories</h3>
+              <p>Alert types available for this role.</p>
             </div>
           </div>
 
           <div className="notification-category-grid">
-            <span>
-              <CalendarCheck size={16} />
-              Bookings
-            </span>
-            <span>
-              <CheckCircle2 size={16} />
-              Cleaning
-            </span>
-            <span>
-              <Wrench size={16} />
-              Maintenance
-            </span>
-            <span>
-              <CreditCard size={16} />
-              Billing
-            </span>
-            <span>
-              <Users size={16} />
-              Team activity
-            </span>
-            <span>
-              <Bell size={16} />
-              Owner reports
-            </span>
-            <span>
-              <Package size={16} />
-              Inventory alerts
-            </span>
+            {visibleTypes.includes('booking') && (
+              <span>
+                <CalendarCheck size={16} />
+                Bookings
+              </span>
+            )}
+            {visibleTypes.includes('cleaning') && (
+              <span>
+                <CheckCircle2 size={16} />
+                Cleaning
+              </span>
+            )}
+            {visibleTypes.includes('maintenance') && (
+              <span>
+                <Wrench size={16} />
+                Maintenance
+              </span>
+            )}
+            {visibleTypes.includes('billing') && (
+              <span>
+                <CreditCard size={16} />
+                Billing
+              </span>
+            )}
+            {visibleTypes.includes('team') && (
+              <span>
+                <Users size={16} />
+                Team activity
+              </span>
+            )}
+            {visibleTypes.includes('owner_report') && (
+              <span>
+                <Bell size={16} />
+                Owner reports
+              </span>
+            )}
+            {visibleTypes.includes('inventory_alert') && (
+              <span>
+                <Package size={16} />
+                Inventory alerts
+              </span>
+            )}
+            {visibleTypes.includes('system') && (
+              <span>
+                <ShieldCheck size={16} />
+                System
+              </span>
+            )}
           </div>
 
           <div className="helper">
