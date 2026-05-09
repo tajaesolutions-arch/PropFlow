@@ -151,7 +151,7 @@ function LandingDashboardPreview() {
       <div className="landing-preview-footer">
         <span>Pre-launch MVP interface</span>
         <button type="button" onClick={() => navigate('/signup')}>
-          Start setup
+          Create account
         </button>
       </div>
     </aside>
@@ -174,7 +174,7 @@ export function LandingPage() {
           </button>
 
           <button className="primary" type="button" onClick={() => navigate('/signup')}>
-            Start free
+            Create account
           </button>
         </div>
       </nav>
@@ -193,7 +193,7 @@ export function LandingPage() {
 
           <div className="hero-actions">
             <button className="primary large" type="button" onClick={() => navigate('/signup')}>
-              Create workspace
+              Create account
               <ArrowRight size={18} />
             </button>
 
@@ -215,7 +215,7 @@ export function LandingPage() {
 
             <span>
               <CreditCard size={16} />
-              Stripe-ready billing
+              Billing backend planned
             </span>
           </div>
         </div>
@@ -394,7 +394,7 @@ export function LandingPage() {
 
             <div className="action-row">
               <button className="primary" type="button" onClick={() => navigate('/signup')}>
-                Create workspace first
+                Create account first
               </button>
 
               <button type="button" onClick={() => navigate('/pricing')}>
@@ -414,14 +414,14 @@ export function LandingPage() {
             <p className="eyebrow">Start clean. Scale later.</p>
             <h3>Build your property command center.</h3>
             <p>
-              Create a workspace, add your first property, invite your team, and start tracking
+              Create an account, create a workspace, add your first property, invite your team, and start tracking
               bookings, cleaning, maintenance, owners, reports, supplies, and calendar activity.
             </p>
           </div>
 
           <div className="landing-final-actions">
             <button className="primary large" type="button" onClick={() => navigate('/signup')}>
-              Start free trial
+              Create account
               <ArrowRight size={18} />
             </button>
 
