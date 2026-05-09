@@ -65,19 +65,32 @@ function EmptyTableState({ empty }) {
   );
 }
 
+function getTableLabel(label, safeColumns, safeRows) {
+  if (label) return label;
+
+  const columnCount = safeColumns.length;
+  const rowCount = safeRows.length;
+
+  if (!rowCount) return `Empty table with ${columnCount} columns`;
+
+  return `Data table with ${rowCount} ${rowCount === 1 ? 'row' : 'rows'} and ${columnCount} ${columnCount === 1 ? 'column' : 'columns'}`;
+}
+
 export function DataTable({
   columns = [],
   rows = [],
   empty = 'No records found.',
   rowKey = 'id',
   compact = false,
+  label = '',
 }) {
   const safeColumns = Array.isArray(columns) ? columns : [];
   const safeRows = Array.isArray(rows) ? rows : [];
+  const tableLabel = getTableLabel(label, safeColumns, safeRows);
 
   if (!safeColumns.length) {
     return (
-      <div className="table-wrap">
+      <div className="table-wrap empty-table-wrap" role="region" aria-label="Table configuration issue">
         <EmptyTableState empty="No table columns configured." />
       </div>
     );
@@ -85,19 +98,30 @@ export function DataTable({
 
   if (!safeRows.length) {
     return (
-      <div className={`table-wrap empty-table-wrap ${compact ? 'compact-table-wrap' : ''}`}>
+      <div
+        className={`table-wrap empty-table-wrap ${compact ? 'compact-table-wrap' : ''}`}
+        role="region"
+        aria-label={tableLabel}
+      >
         <EmptyTableState empty={empty} />
       </div>
     );
   }
 
   return (
-    <div className={`table-wrap ${compact ? 'compact-table-wrap' : ''}`}>
+    <div
+      className={`table-wrap ${compact ? 'compact-table-wrap' : ''}`}
+      role="region"
+      aria-label={tableLabel}
+      tabIndex={0}
+    >
       <table className={`data-table ${compact ? 'compact-table' : ''}`}>
         <thead>
           <tr>
             {safeColumns.map((column) => (
-              <th key={column.key || column.label}>{column.label}</th>
+              <th key={column.key || column.label} scope="col">
+                {column.label}
+              </th>
             ))}
           </tr>
         </thead>
@@ -106,7 +130,9 @@ export function DataTable({
           {safeRows.map((row, rowIndex) => (
             <tr key={getRowKey(row, rowIndex, rowKey)}>
               {safeColumns.map((column) => (
-                <td key={column.key || column.label}>{getCellValue(row, column)}</td>
+                <td key={column.key || column.label} data-label={column.label || column.key}>
+                  {getCellValue(row, column)}
+                </td>
               ))}
             </tr>
           ))}
