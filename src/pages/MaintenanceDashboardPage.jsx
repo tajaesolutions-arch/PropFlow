@@ -7,6 +7,7 @@ import {
   DollarSign,
   Package,
   Search,
+  ShieldCheck,
   Wrench,
   X,
 } from 'lucide-react';
@@ -215,13 +216,13 @@ function MaintenanceJobCard({
         <span>
           <DollarSign size={16} />
           <strong>{formatCurrency(estimatedCost, currency)}</strong>
-          <small>Estimated</small>
+          <small>Repair estimate</small>
         </span>
 
         <span>
           <DollarSign size={16} />
           <strong>{formatCurrency(actualCost, currency)}</strong>
-          <small>Actual</small>
+          <small>Repair actual</small>
         </span>
       </div>
 
@@ -257,7 +258,7 @@ function MaintenanceJobCard({
         </label>
 
         <label>
-          Actual cost
+          Actual repair cost
           <input
             type="number"
             min="0"
@@ -487,7 +488,7 @@ export function MaintenanceDashboardPage() {
   return (
     <AppLayout
       title="Maintenance dashboard"
-      subtitle="Assigned repairs, urgent issues, parts, costs, photos, and completion updates."
+      subtitle="Assigned repairs, urgent issues, parts, assigned repair costs, photos, and completion updates."
     >
       {message && (
         <section
@@ -502,11 +503,25 @@ export function MaintenanceDashboardPage() {
         </section>
       )}
 
+      <section className="card maintenance-dashboard-hero">
+        <div>
+          <p className="eyebrow">Repair cost visibility</p>
+          <h3>Maintenance cost fields are work-order only</h3>
+          <p>
+            Maintenance users can view and update assigned repair estimates, actual repair costs,
+            parts, notes, photos, and statuses. This dashboard does not show owner payout, revenue,
+            net profit, payroll, or full workspace accounting.
+          </p>
+        </div>
+
+        <ShieldCheck size={24} className="muted" />
+      </section>
+
       <section className="stat-grid dense">
         <StatCard label="Open repairs" value={openJobs.length} icon={Wrench} />
         <StatCard label="Urgent issues" value={urgentJobs.length} icon={AlertTriangle} tone="warning" />
         <StatCard label="Waiting for parts" value={waitingPartsJobs.length} icon={Package} />
-        <StatCard label="Estimated cost" value={formatCurrency(totalEstimated, currency)} icon={DollarSign} />
+        <StatCard label="Assigned estimate" value={formatCurrency(totalEstimated, currency)} icon={DollarSign} />
       </section>
 
       <section className={`card maintenance-dashboard-hero ${urgentJobs.length ? 'urgent' : ''}`}>
@@ -514,8 +529,8 @@ export function MaintenanceDashboardPage() {
           <p className="eyebrow">Maintenance workflow</p>
           <h3>Priority repair queue</h3>
           <p>
-            Start assigned repairs, update work status, list parts needed, add costs, upload repair
-            photos, and mark jobs completed.
+            Start assigned repairs, update work status, list parts needed, add repair cost notes,
+            upload repair photos, and mark jobs completed.
           </p>
         </div>
 
@@ -621,7 +636,7 @@ export function MaintenanceDashboardPage() {
           eyebrow="Maintenance dashboard"
           icon={Wrench}
           title="No assigned maintenance work orders right now"
-          description="Assigned repairs, urgent issues, parts, costs, and completion updates will appear here."
+          description="Assigned repairs, urgent issues, parts, work-order costs, and completion updates will appear here."
         />
       )}
 
@@ -658,23 +673,28 @@ export function MaintenanceDashboardPage() {
         <section className="card">
           <div className="card-header">
             <div>
-              <h3>Cost summary</h3>
-              <p>Estimated and actual repair costs for visible maintenance jobs.</p>
+              <h3>Assigned repair cost summary</h3>
+              <p>Estimated and actual repair costs for visible maintenance work orders only.</p>
             </div>
             <DollarSign size={20} className="muted" />
+          </div>
+
+          <div className="helper">
+            Work-order cost fields are operational repair details. They are not owner payouts,
+            revenue, net profit, payroll, or full accounting reports.
           </div>
 
           <div className="metadata-grid maintenance-dashboard-cost-grid">
             <span>
               <DollarSign size={16} />
               <strong>{formatCurrency(totalEstimated, currency)}</strong>
-              <small>Estimated</small>
+              <small>Repair estimate</small>
             </span>
 
             <span>
               <DollarSign size={16} />
               <strong>{formatCurrency(totalActual, currency)}</strong>
-              <small>Actual</small>
+              <small>Repair actual</small>
             </span>
 
             <span>
