@@ -71,6 +71,7 @@ function isAssignedToCurrentCleaner(task, currentUser) {
 }
 
 function canUpdateCleanerTask(task, currentUser) {
+  if (closedStatuses.has(task.status)) return false;
   if (!isCleanerUser(currentUser)) return true;
   return isAssignedToCurrentCleaner(task, currentUser);
 }
@@ -165,13 +166,14 @@ function CleanerTaskCard({
   const checklist = getChecklist(task);
   const notes = getNotes(task);
   const suppliesUsed = getSuppliesUsed(task);
+  const closed = closedStatuses.has(status);
 
   return (
     <article className={`card cleaner-dashboard-task-card ${overdue ? 'urgent' : ''}`}>
       <div className="cleaner-dashboard-task-top">
         <div>
           <p className="eyebrow">
-            {overdue ? 'Overdue cleaning' : dueToday ? 'Due today' : 'Assigned cleaning'}
+            {closed ? 'Closed cleaning' : overdue ? 'Overdue cleaning' : dueToday ? 'Due today' : 'Assigned cleaning'}
           </p>
           <h3>{getPropertyName(task, properties)}</h3>
           <p>Scheduled {formatDateTime(task.scheduledFor || task.scheduled_for)}</p>
@@ -186,6 +188,13 @@ function CleanerTaskCard({
         <div className="helper error-helper">
           <AlertTriangle size={16} />
           This cleaning is overdue. Complete or report the issue as soon as possible.
+        </div>
+      )}
+
+      {closed && (
+        <div className="helper">
+          <ShieldCheck size={16} />
+          This cleaning is closed. Status, notes, issue reporting, and upload controls are read-only here.
         </div>
       )}
 
@@ -240,6 +249,7 @@ function CleanerTaskCard({
         Cleaner notes
         <textarea
           defaultValue={notes}
+          disabled={closed}
           onBlur={(event) => {
             if (event.target.value !== notes) {
               onNotesSave(task, event.target.value);
@@ -250,19 +260,19 @@ function CleanerTaskCard({
         />
       </label>
 
-      <div className="cleaner-dashboard-actions">
-        {!closedStatuses.has(status) && status !== 'in_progress' && (
-          <button
-            type="button"
-            onClick={() => onStatusChange(task, 'in_progress')}
-            disabled={updating}
-            data-skip-create-action="true"
-          >
-            Start cleaning
-          </button>
-        )}
+      {!closed && (
+        <div className="cleaner-dashboard-actions">
+          {status !== 'in_progress' && (
+            <button
+              type="button"
+              onClick={() => onStatusChange(task, 'in_progress')}
+              disabled={updating}
+              data-skip-create-action="true"
+            >
+              Start cleaning
+            </button>
+          )}
 
-        {!closedStatuses.has(status) && (
           <button
             type="button"
             onClick={() => onStatusChange(task, 'needs_inspection')}
@@ -271,29 +281,29 @@ function CleanerTaskCard({
           >
             Ready for inspection
           </button>
-        )}
 
-        {status !== 'guest_ready' && (
-          <button
-            type="button"
-            className="primary"
-            onClick={() => onStatusChange(task, 'guest_ready')}
-            disabled={updating}
-            data-skip-create-action="true"
-          >
-            Mark guest-ready
-          </button>
-        )}
-      </div>
+          {status !== 'guest_ready' && (
+            <button
+              type="button"
+              className="primary"
+              onClick={() => onStatusChange(task, 'guest_ready')}
+              disabled={updating}
+              data-skip-create-action="true"
+            >
+              Mark guest-ready
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="cleaner-dashboard-secondary-actions">
         <label className="upload-button">
           <Camera size={16} />
-          {uploading ? 'Uploading…' : 'Upload before/after photo'}
+          {closed ? 'Upload disabled for closed cleaning' : uploading ? 'Uploading…' : 'Upload before/after photo'}
           <input
             type="file"
             accept="image/*"
-            disabled={uploading}
+            disabled={uploading || closed}
             onChange={(event) => {
               const file = event.target.files?.[0];
               onUpload(task, file);
@@ -302,10 +312,11 @@ function CleanerTaskCard({
           />
         </label>
 
-        <label className="inline-check">
+        <label className={closed ? 'inline-check disabled' : 'inline-check'}>
           <input
             type="checkbox"
             checked={Boolean(task.issue_reported)}
+            disabled={closed}
             onChange={(event) => onIssueChange(task, event.target.checked)}
           />
           Report issue at property
@@ -366,7 +377,7 @@ export function CleanerDashboardPage() {
 
   const changeStatus = async (task, status) => {
     if (!canUpdateCleanerTask(task, currentUser)) {
-      setMessage('You do not have permission to update this cleaning task.');
+      setMessage('You do not have permission to update this cleaning task, or this cleaning is already closed.');
       return;
     }
 
@@ -391,7 +402,7 @@ export function CleanerDashboardPage() {
 
   const updateNotes = async (task, notes) => {
     if (!canUpdateCleanerTask(task, currentUser)) {
-      setMessage('You do not have permission to update notes for this cleaning task.');
+      setMessage('You do not have permission to update notes for this cleaning task, or this cleaning is already closed.');
       return;
     }
 
@@ -413,7 +424,7 @@ export function CleanerDashboardPage() {
 
   const reportIssue = async (task, issueReported) => {
     if (!canUpdateCleanerTask(task, currentUser)) {
-      setMessage('You do not have permission to report an issue for this cleaning task.');
+      setMessage('You do not have permission to report an issue for this cleaning task, or this cleaning is already closed.');
       return;
     }
 
@@ -438,7 +449,7 @@ export function CleanerDashboardPage() {
     if (!file) return;
 
     if (!canUpdateCleanerTask(task, currentUser)) {
-      setMessage('You do not have permission to upload photos for this cleaning task.');
+      setMessage('You do not have permission to upload photos for this cleaning task, or this cleaning is already closed.');
       return;
     }
 
@@ -486,7 +497,7 @@ export function CleanerDashboardPage() {
       {message && (
         <section
           className={
-            message.toLowerCase().includes('could not') || message.toLowerCase().includes('failed')
+            message.toLowerCase().includes('could not') || message.toLowerCase().includes('failed') || message.toLowerCase().includes('permission')
               ? 'helper error-helper'
               : 'helper'
           }
@@ -524,7 +535,7 @@ export function CleanerDashboardPage() {
           <h3>Today’s cleaning work</h3>
           <p>
             Start assigned cleanings, follow the checklist, upload before/after photos, report
-            issues, and mark the property guest-ready when complete.
+            issues, and mark the property guest-ready when complete. Closed cleaning records stay read-only.
           </p>
         </div>
 
@@ -657,7 +668,7 @@ export function CleanerDashboardPage() {
           <div className="card-header">
             <div>
               <h3>Cleaner workflow</h3>
-              <p>Use this order for each assigned cleaning.</p>
+              <p>Use this order for each assigned open cleaning.</p>
             </div>
             <Home size={20} className="muted" />
           </div>
