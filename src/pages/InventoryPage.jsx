@@ -5,10 +5,12 @@ import {
   Building2,
   DollarSign,
   Edit3,
+  EyeOff,
   PackagePlus,
   Plus,
   RotateCcw,
   Search,
+  ShieldCheck,
   Truck,
   X,
   XCircle,
@@ -24,6 +26,7 @@ import { roles } from '../data/constants.js';
 import { formatCurrency } from '../lib/formatters.js';
 
 const inventoryManagerRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
+const inventoryCostRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
 
 const statusOptions = ['in_stock', 'low_stock', 'out_of_stock', 'archived'];
 
@@ -395,7 +398,7 @@ function SupplyForm({ initial, properties, workspace, onSubmit, onCancel, submit
   );
 }
 
-function SupplyCard({ item, properties, canManage, submitting, onEdit, onArchiveToggle }) {
+function SupplyCard({ item, properties, canManage, canSeeCosts, submitting, onEdit, onArchiveToggle }) {
   const status = statusFor(item);
   const propertyId = getItemPropertyId(item);
   const quantity = getItemQuantity(item);
@@ -432,15 +435,24 @@ function SupplyCard({ item, properties, canManage, submitting, onEdit, onArchive
           <small>Low-stock threshold</small>
         </span>
 
-        <span>
-          <strong>{formatCurrency(unitCost, currency)}</strong>
-          <small>Unit cost</small>
-        </span>
+        {canSeeCosts ? (
+          <>
+            <span>
+              <strong>{formatCurrency(unitCost, currency)}</strong>
+              <small>Unit cost</small>
+            </span>
 
-        <span>
-          <strong>{formatCurrency(totalValue, currency)}</strong>
-          <small>Total value</small>
-        </span>
+            <span>
+              <strong>{formatCurrency(totalValue, currency)}</strong>
+              <small>Total value</small>
+            </span>
+          </>
+        ) : (
+          <span>
+            <strong>Hidden</strong>
+            <small>Cost visibility</small>
+          </span>
+        )}
       </div>
 
       {(item.category || getSupplierName(item) || getSupplierContact(item)) && (
@@ -527,6 +539,7 @@ export function InventoryPage() {
   const [submitError, setSubmitError] = React.useState('');
 
   const canManageInventory = hasAnyRole(currentUser, inventoryManagerRoles);
+  const canSeeInventoryCosts = hasAnyRole(currentUser, inventoryCostRoles);
 
   const set = (key) => (event) => {
     setFilters((value) => ({ ...value, [key]: event.target.value }));
@@ -630,7 +643,7 @@ export function InventoryPage() {
   return (
     <AppLayout
       title="Supplies / Inventory"
-      subtitle="Track workspace supplies, property stock levels, low-stock alerts, vendors, and estimated inventory value."
+      subtitle="Track workspace supplies, property stock levels, low-stock alerts, vendors, and inventory visibility."
     >
       {message && (
         <section className="helper" role="status">
@@ -644,16 +657,40 @@ export function InventoryPage() {
         </section>
       )}
 
+      {!canSeeInventoryCosts && (
+        <section className="card inventory-visibility-notice">
+          <div className="card-header">
+            <div>
+              <p className="eyebrow">Inventory visibility</p>
+              <h3>Cost fields are hidden for this role</h3>
+              <p>
+                This view shows stock levels, categories, suppliers, and low-stock alerts. Estimated unit cost, total inventory value, and finance-adjacent inventory summaries are limited to workspace managers and accountants.
+              </p>
+            </div>
+            <ShieldCheck size={22} className="muted" />
+          </div>
+        </section>
+      )}
+
       <section className="stat-grid dense">
         <StatCard label="Tracked items" value={activeSupplies.length} icon={PackagePlus} />
         <StatCard label="Low-stock alerts" value={lowStock.length} icon={AlertTriangle} tone="warning" />
         <StatCard label="Out-of-stock items" value={outOfStock.length} icon={XCircle} tone="error" />
-        <StatCard
-          label="Estimated inventory value"
-          value={formatCurrency(totalValue, currency)}
-          subtitle={`${archivedSupplies.length} archived`}
-          icon={DollarSign}
-        />
+        {canSeeInventoryCosts ? (
+          <StatCard
+            label="Estimated inventory value"
+            value={formatCurrency(totalValue, currency)}
+            subtitle={`${archivedSupplies.length} archived`}
+            icon={DollarSign}
+          />
+        ) : (
+          <StatCard
+            label="Cost visibility"
+            value="Hidden"
+            subtitle="Stock counts only for this role"
+            icon={EyeOff}
+          />
+        )}
       </section>
 
       <section className="card inventory-toolbar">
@@ -781,6 +818,7 @@ export function InventoryPage() {
               item={item}
               properties={properties}
               canManage={canManageInventory}
+              canSeeCosts={canSeeInventoryCosts}
               submitting={submitting}
               onEdit={(supply) => {
                 setMessage('');
