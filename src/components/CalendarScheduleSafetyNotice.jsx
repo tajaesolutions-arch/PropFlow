@@ -15,21 +15,127 @@ function count(array) {
   return Array.isArray(array) ? array.length : 0;
 }
 
+function getRecordPropertyId(record) {
+  return record?.propertyId || record?.property_id || '';
+}
+
+function getAssignedOwnerId(property) {
+  return (
+    property?.assignedOwnerId ||
+    property?.assigned_owner_id ||
+    property?.ownerId ||
+    property?.owner_id ||
+    ''
+  );
+}
+
+function getAssignedCleanerId(task) {
+  return task?.assignedCleanerId || task?.assigned_cleaner_id || task?.cleanerId || task?.cleaner_id || '';
+}
+
+function getAssignedMaintenanceId(workOrder) {
+  return (
+    workOrder?.assignedMaintenanceId ||
+    workOrder?.assigned_maintenance_id ||
+    workOrder?.maintenanceId ||
+    workOrder?.maintenance_id ||
+    ''
+  );
+}
+
+function hasAssignmentData(records, getter) {
+  return Array.isArray(records) && records.some((record) => Boolean(getter(record)));
+}
+
+function getOwnerAssignedPropertyIds(properties = [], currentUser) {
+  return new Set(
+    properties
+      .filter((property) => getAssignedOwnerId(property) === currentUser?.id)
+      .map((property) => property.id)
+      .filter(Boolean),
+  );
+}
+
+function getVisibleScheduleRecords({ data, currentUser }) {
+  const bookings = [...(data?.bookings || []), ...(data?.leases || [])];
+  const cleaningTasks = data?.cleaningTasks || [];
+  const maintenanceWorkOrders = data?.maintenanceWorkOrders || [];
+  const properties = data?.properties || [];
+
+  if (hasAnyRole(currentUser, operationsRoles)) {
+    return {
+      bookings,
+      cleaningTasks,
+      maintenanceWorkOrders,
+      visibilityLabel: 'workspace records',
+    };
+  }
+
+  if (hasAnyRole(currentUser, ownerScheduleRoles)) {
+    const assignedPropertyIds = getOwnerAssignedPropertyIds(properties, currentUser);
+
+    return {
+      bookings: bookings.filter((booking) => assignedPropertyIds.has(getRecordPropertyId(booking))),
+      cleaningTasks: cleaningTasks.filter((task) => assignedPropertyIds.has(getRecordPropertyId(task))),
+      maintenanceWorkOrders: maintenanceWorkOrders.filter((workOrder) =>
+        assignedPropertyIds.has(getRecordPropertyId(workOrder)),
+      ),
+      visibilityLabel: 'assigned-property records',
+    };
+  }
+
+  if (hasAnyRole(currentUser, cleanerScheduleRoles)) {
+    const hasCleanerData = hasAssignmentData(cleaningTasks, getAssignedCleanerId);
+    const visibleCleaningTasks = hasCleanerData
+      ? cleaningTasks.filter((task) => getAssignedCleanerId(task) === currentUser?.id)
+      : cleaningTasks;
+    const visiblePropertyIds = new Set(visibleCleaningTasks.map(getRecordPropertyId).filter(Boolean));
+
+    return {
+      bookings: bookings.filter((booking) => visiblePropertyIds.has(getRecordPropertyId(booking))),
+      cleaningTasks: visibleCleaningTasks,
+      maintenanceWorkOrders: [],
+      visibilityLabel: hasCleanerData ? 'assigned cleaning records' : 'cleaning records',
+    };
+  }
+
+  if (hasAnyRole(currentUser, maintenanceScheduleRoles)) {
+    const hasMaintenanceData = hasAssignmentData(maintenanceWorkOrders, getAssignedMaintenanceId);
+    const visibleMaintenanceWorkOrders = hasMaintenanceData
+      ? maintenanceWorkOrders.filter((workOrder) => getAssignedMaintenanceId(workOrder) === currentUser?.id)
+      : maintenanceWorkOrders;
+
+    return {
+      bookings: [],
+      cleaningTasks: [],
+      maintenanceWorkOrders: visibleMaintenanceWorkOrders,
+      visibilityLabel: hasMaintenanceData ? 'assigned work-order records' : 'maintenance records',
+    };
+  }
+
+  return {
+    bookings: [],
+    cleaningTasks: [],
+    maintenanceWorkOrders: [],
+    visibilityLabel: 'restricted records',
+  };
+}
+
 function getRoleMessage(currentUser) {
   if (hasAnyRole(currentUser, operationsRoles)) {
     return 'Operational roles can view workspace schedules when records are scoped to the active workspace.';
   }
 
   if (hasAnyRole(currentUser, ownerScheduleRoles)) {
-    return 'Property Owners should only see calendars for assigned properties and owner-visible records.';
+    return 'Property Owners see schedule counts for assigned properties only.';
   }
 
   if (hasAnyRole(currentUser, cleanerScheduleRoles)) {
-    return 'Cleaners should only see assigned cleaning schedules and relevant check-in/check-out context.';
+    return 'Cleaners see assigned cleaning schedules and relevant turnover context only.';
   }
 
   if (hasAnyRole(currentUser, maintenanceScheduleRoles)) {
-    return 'Maintenance users should only see assigned work orders, due dates, and relevant property access notes.';
+    return 'Maintenance users see assigned work-order due dates and relevant repair context only.';
   }
 
   return 'Calendar visibility should remain restricted until role and assignment rules are confirmed.';
@@ -38,9 +144,10 @@ function getRoleMessage(currentUser) {
 export function CalendarScheduleSafetyNotice() {
   const { currentUser, data } = useApp();
   const primaryRole = resolvePrimaryRole(currentUser);
-  const bookingsCount = count(data?.bookings) + count(data?.leases);
-  const cleaningCount = count(data?.cleaningTasks);
-  const maintenanceCount = count(data?.maintenanceWorkOrders);
+  const visibleScheduleRecords = getVisibleScheduleRecords({ data, currentUser });
+  const bookingsCount = count(visibleScheduleRecords.bookings);
+  const cleaningCount = count(visibleScheduleRecords.cleaningTasks);
+  const maintenanceCount = count(visibleScheduleRecords.maintenanceWorkOrders);
   const hasAnyScheduleRecords = bookingsCount + cleaningCount + maintenanceCount > 0;
 
   return (
@@ -50,7 +157,7 @@ export function CalendarScheduleSafetyNotice() {
           <p className="eyebrow">Calendar and schedule safety</p>
           <h3>Schedule readiness and visibility</h3>
           <p>
-            Calendar views use current workspace records only. External calendar integrations and iCal imports are intentionally not connected yet.
+            Schedule counts are scoped to the current role. External calendar integrations and iCal imports are intentionally not connected yet.
           </p>
         </div>
         <CalendarDays size={22} className="muted" />
@@ -61,18 +168,18 @@ export function CalendarScheduleSafetyNotice() {
           <CalendarDays size={18} />
           <span>
             <strong>Calendar data</strong>
-            <small>{hasAnyScheduleRecords ? 'Schedule records exist for this workspace.' : 'No bookings, leases, cleaning tasks, or maintenance due dates found yet.'}</small>
+            <small>{hasAnyScheduleRecords ? 'Visible schedule records exist for this role.' : 'No visible bookings, leases, cleaning tasks, or maintenance due dates found yet.'}</small>
           </span>
-          <StatusBadge tone={hasAnyScheduleRecords ? 'info' : 'warning'}>{hasAnyScheduleRecords ? 'workspace records' : 'empty state'}</StatusBadge>
+          <StatusBadge tone={hasAnyScheduleRecords ? 'info' : 'warning'}>{hasAnyScheduleRecords ? visibleScheduleRecords.visibilityLabel : 'empty state'}</StatusBadge>
         </div>
 
         <div className="calendar-schedule-card">
           <Clock size={18} />
           <span>
             <strong>Bookings and check-ins</strong>
-            <small>Upcoming bookings, check-ins, and check-outs should come from real workspace booking or lease records.</small>
+            <small>Upcoming bookings, check-ins, and check-outs should come from visible booking or lease records only.</small>
           </span>
-          <StatusBadge tone={bookingsCount ? 'info' : 'warning'}>{bookingsCount ? `${bookingsCount} records` : 'placeholder'}</StatusBadge>
+          <StatusBadge tone={bookingsCount ? 'info' : 'warning'}>{bookingsCount ? `${bookingsCount} visible` : 'none visible'}</StatusBadge>
         </div>
 
         <div className="calendar-schedule-card">
@@ -81,7 +188,7 @@ export function CalendarScheduleSafetyNotice() {
             <strong>Cleaning schedule</strong>
             <small>Cleaner views should show only assigned cleaning tasks and relevant turnover context.</small>
           </span>
-          <StatusBadge tone={cleaningCount ? 'info' : 'warning'}>{cleaningCount ? `${cleaningCount} tasks` : 'placeholder'}</StatusBadge>
+          <StatusBadge tone={cleaningCount ? 'info' : 'warning'}>{cleaningCount ? `${cleaningCount} visible` : 'none visible'}</StatusBadge>
         </div>
 
         <div className="calendar-schedule-card">
@@ -90,7 +197,7 @@ export function CalendarScheduleSafetyNotice() {
             <strong>Maintenance due dates</strong>
             <small>Maintenance views should show only assigned work orders and due-date reminders.</small>
           </span>
-          <StatusBadge tone={maintenanceCount ? 'info' : 'warning'}>{maintenanceCount ? `${maintenanceCount} work orders` : 'placeholder'}</StatusBadge>
+          <StatusBadge tone={maintenanceCount ? 'info' : 'warning'}>{maintenanceCount ? `${maintenanceCount} visible` : 'none visible'}</StatusBadge>
         </div>
 
         <div className="calendar-schedule-card">
