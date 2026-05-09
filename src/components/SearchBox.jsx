@@ -194,8 +194,6 @@ function getVisibleCleaningTasks(data, user) {
 
   if (!isCleanerRole(user)) return tasks;
 
-  if (!hasAssignmentData(tasks, getAssignedCleanerId)) return tasks;
-
   return tasks.filter((task) => getAssignedCleanerId(task) === user?.id);
 }
 
