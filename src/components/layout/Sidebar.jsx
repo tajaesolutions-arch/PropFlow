@@ -87,7 +87,6 @@ const cleanerNav = [
     items: [
       ['/cleaner-dashboard', 'Cleaner Dashboard', ClipboardCheck],
       ['/cleaning', 'Cleaning Tasks', ClipboardCheck],
-      ['/maintenance', 'Report Issues', Wrench],
     ],
   },
   {
