@@ -8,6 +8,15 @@
   -webkit-overflow-scrolling: touch;
 }
 
+.table-wrap[tabindex='0'] {
+  outline: none;
+}
+
+.table-wrap[tabindex='0']:focus-visible {
+  box-shadow: 0 0 0 3px rgba(27, 153, 139, 0.18);
+  border-radius: 14px;
+}
+
 .data-table {
   width: 100%;
   border-collapse: separate;
@@ -80,6 +89,18 @@
 
   .data-table td {
     max-width: 220px;
+  }
+
+  .data-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 2px;
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    line-height: 1.2;
+    text-transform: uppercase;
   }
 
   .table-wrap::after {
