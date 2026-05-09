@@ -41,7 +41,32 @@ function getWorkOrderPropertyId(workOrder) {
 }
 
 function getAssignedMaintenanceId(workOrder) {
-  return workOrder.assignedMaintenanceId || workOrder.assigned_maintenance_id;
+  return (
+    workOrder.assignedMaintenanceId ||
+    workOrder.assigned_maintenance_id ||
+    workOrder.maintenanceId ||
+    workOrder.maintenance_id ||
+    ''
+  );
+}
+
+function hasMaintenanceAssignmentData(workOrders = []) {
+  return workOrders.some((workOrder) => Boolean(getAssignedMaintenanceId(workOrder)));
+}
+
+function isAssignedToCurrentMaintenance(workOrder, currentUser) {
+  const assignedMaintenanceId = getAssignedMaintenanceId(workOrder);
+  if (!assignedMaintenanceId) return false;
+
+  return assignedMaintenanceId === currentUser?.id;
+}
+
+function canUpdateMaintenanceJob(workOrder, currentUser, allWorkOrders = []) {
+  if (!currentUser?.roles?.includes(roles.MAINTENANCE)) return true;
+
+  if (!hasMaintenanceAssignmentData(allWorkOrders)) return true;
+
+  return isAssignedToCurrentMaintenance(workOrder, currentUser);
 }
 
 function getDueDate(workOrder) {
@@ -90,13 +115,11 @@ function getVisibleMaintenanceJobs(workOrders, currentUser) {
     return workOrders;
   }
 
-  const hasAssignmentData = workOrders.some((workOrder) => Boolean(getAssignedMaintenanceId(workOrder)));
-
-  if (!hasAssignmentData) {
+  if (!hasMaintenanceAssignmentData(workOrders)) {
     return workOrders;
   }
 
-  return workOrders.filter((workOrder) => getAssignedMaintenanceId(workOrder) === currentUser?.id);
+  return workOrders.filter((workOrder) => isAssignedToCurrentMaintenance(workOrder, currentUser));
 }
 
 function statusTone(value) {
@@ -412,6 +435,11 @@ export function MaintenanceDashboardPage() {
   };
 
   const updateStatus = async (workOrder, status) => {
+    if (!canUpdateMaintenanceJob(workOrder, currentUser, allWorkOrders)) {
+      setMessage('You do not have permission to update this maintenance work order.');
+      return;
+    }
+
     setSavingWorkOrderId(workOrder.id);
     setMessage('');
 
@@ -431,6 +459,11 @@ export function MaintenanceDashboardPage() {
   };
 
   const updateField = async (workOrder, payload) => {
+    if (!canUpdateMaintenanceJob(workOrder, currentUser, allWorkOrders)) {
+      setMessage('You do not have permission to update this maintenance work order.');
+      return;
+    }
+
     setSavingWorkOrderId(workOrder.id);
     setMessage('');
 
@@ -447,6 +480,11 @@ export function MaintenanceDashboardPage() {
 
   const handleUpload = async (workOrder, file) => {
     if (!file) return;
+
+    if (!canUpdateMaintenanceJob(workOrder, currentUser, allWorkOrders)) {
+      setMessage('You do not have permission to upload files for this maintenance work order.');
+      return;
+    }
 
     setUploadingWorkOrderId(workOrder.id);
     setMessage('');
