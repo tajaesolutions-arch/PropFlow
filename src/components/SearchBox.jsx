@@ -10,21 +10,13 @@ const operationalRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST]
 const ownerVisibleRoles = [...operationalRoles, roles.OWNER, roles.ACCOUNTANT];
 const staffOperationsRoles = [...operationalRoles, roles.CLEANER, roles.MAINTENANCE];
 const financeRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
-const allWorkspaceRoles = [
-  roles.OWNER_ADMIN,
-  roles.PROPERTY_MANAGER,
-  roles.HOST,
-  roles.ACCOUNTANT,
-  roles.OWNER,
-  roles.CLEANER,
-  roles.MAINTENANCE,
-];
+const calendarManagerRoles = [...operationalRoles, roles.ACCOUNTANT];
 
 const routeAccess = {
   '/dashboard': operationalRoles,
   '/properties': ownerVisibleRoles,
   '/bookings': [...operationalRoles, roles.OWNER, roles.ACCOUNTANT],
-  '/calendar': allWorkspaceRoles,
+  '/calendar': calendarManagerRoles,
   '/cleaning': [...operationalRoles, roles.CLEANER],
   '/maintenance': staffOperationsRoles,
   '/owners': financeRoles,
@@ -133,10 +125,131 @@ function normalizePath(path) {
   return pathOnly === '/' ? '/' : pathOnly.replace(/\/+$/, '') || '/';
 }
 
+function getPropertyId(record) {
+  return record?.propertyId || record?.property_id || '';
+}
+
+function getAssignedOwnerId(property) {
+  return property?.assignedOwnerId || property?.assigned_owner_id || property?.ownerId || property?.owner_id || '';
+}
+
+function getAssignedCleanerId(task) {
+  return task?.assignedCleanerId || task?.assigned_cleaner_id || task?.cleanerId || task?.cleaner_id || '';
+}
+
+function getAssignedMaintenanceId(workOrder) {
+  return (
+    workOrder?.assignedMaintenanceId ||
+    workOrder?.assigned_maintenance_id ||
+    workOrder?.maintenanceId ||
+    workOrder?.maintenance_id ||
+    ''
+  );
+}
+
+function hasAssignmentData(records, getter) {
+  return Array.isArray(records) && records.some((record) => Boolean(getter(record)));
+}
+
+function isOwnerRole(user) {
+  return Boolean(user?.roles?.includes(roles.OWNER));
+}
+
+function isCleanerRole(user) {
+  return Boolean(user?.roles?.includes(roles.CLEANER));
+}
+
+function isMaintenanceRole(user) {
+  return Boolean(user?.roles?.includes(roles.MAINTENANCE));
+}
+
+function getVisibleProperties(data, user) {
+  const properties = data.properties || [];
+
+  if (!isOwnerRole(user)) return properties;
+
+  return properties.filter((property) => getAssignedOwnerId(property) === user?.id);
+}
+
+function getVisiblePropertyIds(data, user) {
+  return new Set(getVisibleProperties(data, user).map((property) => property.id).filter(Boolean));
+}
+
+function getVisibleCleaningTasks(data, user) {
+  const tasks = data.cleaningTasks || [];
+
+  if (!isCleanerRole(user)) return tasks;
+
+  if (!hasAssignmentData(tasks, getAssignedCleanerId)) return tasks;
+
+  return tasks.filter((task) => getAssignedCleanerId(task) === user?.id);
+}
+
+function getVisibleMaintenanceWorkOrders(data, user) {
+  const workOrders = data.maintenanceWorkOrders || [];
+
+  if (!isMaintenanceRole(user)) return workOrders;
+
+  if (!hasAssignmentData(workOrders, getAssignedMaintenanceId)) return workOrders;
+
+  return workOrders.filter((workOrder) => getAssignedMaintenanceId(workOrder) === user?.id);
+}
+
+function getVisibleSupplies(data, user) {
+  const supplies = data.supplies || [];
+
+  if (!isCleanerRole(user)) return supplies;
+
+  const visibleCleaningPropertyIds = new Set(getVisibleCleaningTasks(data, user).map(getPropertyId).filter(Boolean));
+
+  return supplies.filter((supply) => {
+    const propertyId = getPropertyId(supply);
+    return !propertyId || visibleCleaningPropertyIds.has(propertyId);
+  });
+}
+
+function getVisibleReports(data, user) {
+  const reports = data.ownerReports || [];
+
+  if (!isOwnerRole(user)) return reports;
+
+  const visiblePropertyIds = getVisiblePropertyIds(data, user);
+
+  return reports.filter((report) => {
+    const propertyId = getPropertyId(report);
+    const ownerId = report.ownerId || report.owner_id || report.contactId || report.contact_id || '';
+
+    if (propertyId) return visiblePropertyIds.has(propertyId);
+    if (ownerId) return ownerId === user?.id;
+
+    return false;
+  });
+}
+
+function getVisibleBookings(data, user) {
+  const bookings = data.bookings || [];
+
+  if (!isOwnerRole(user)) return bookings;
+
+  const visiblePropertyIds = getVisiblePropertyIds(data, user);
+
+  return bookings.filter((booking) => visiblePropertyIds.has(getPropertyId(booking)));
+}
+
+function getVisibleLeases(data, user) {
+  const leases = data.leases || [];
+
+  if (!isOwnerRole(user)) return leases;
+
+  const visiblePropertyIds = getVisiblePropertyIds(data, user);
+
+  return leases.filter((lease) => visiblePropertyIds.has(getPropertyId(lease)));
+}
+
 function canAccessPath(user, path) {
   const cleanPath = normalizePath(path);
 
-  if (!cleanPath || cleanPath === '/account' || cleanPath.startsWith('/properties/')) return true;
+  if (!cleanPath || cleanPath === '/account') return true;
 
   const allowedRoles = routeAccess[cleanPath];
   if (!allowedRoles) return true;
@@ -215,6 +328,13 @@ function buildResults(data, query, user) {
   }
 
   const results = [];
+  const visibleProperties = getVisibleProperties(data, user);
+  const visibleBookings = getVisibleBookings(data, user);
+  const visibleLeases = getVisibleLeases(data, user);
+  const visibleCleaningTasks = getVisibleCleaningTasks(data, user);
+  const visibleMaintenanceWorkOrders = getVisibleMaintenanceWorkOrders(data, user);
+  const visibleSupplies = getVisibleSupplies(data, user);
+  const visibleReports = getVisibleReports(data, user);
 
   roleSafeQuickLinks.forEach((link) => {
     if (includesQuery([link.title, link.subtitle, link.type], q)) {
@@ -222,7 +342,7 @@ function buildResults(data, query, user) {
     }
   });
 
-  (data.properties || []).forEach((property) => {
+  visibleProperties.forEach((property) => {
     if (
       includesQuery(
         [
@@ -253,7 +373,7 @@ function buildResults(data, query, user) {
     }
   });
 
-  (data.bookings || []).forEach((booking) => {
+  visibleBookings.forEach((booking) => {
     const guestName = getGuestName(booking);
 
     if (
@@ -289,7 +409,7 @@ function buildResults(data, query, user) {
     }
   });
 
-  (data.leases || []).forEach((lease) => {
+  visibleLeases.forEach((lease) => {
     if (
       includesQuery(
         [
@@ -324,7 +444,7 @@ function buildResults(data, query, user) {
     }
   });
 
-  (data.cleaningTasks || []).forEach((task) => {
+  visibleCleaningTasks.forEach((task) => {
     if (
       includesQuery(
         [
@@ -354,7 +474,7 @@ function buildResults(data, query, user) {
     }
   });
 
-  (data.maintenanceWorkOrders || []).forEach((workOrder) => {
+  visibleMaintenanceWorkOrders.forEach((workOrder) => {
     if (
       includesQuery(
         [
@@ -412,7 +532,7 @@ function buildResults(data, query, user) {
     }
   });
 
-  (data.supplies || []).forEach((supply) => {
+  visibleSupplies.forEach((supply) => {
     const supplyName = getSupplyName(supply);
 
     if (
@@ -439,7 +559,7 @@ function buildResults(data, query, user) {
     }
   });
 
-  (data.ownerReports || []).forEach((report) => {
+  visibleReports.forEach((report) => {
     const reportTitle = getReportTitle(report);
 
     if (
@@ -470,7 +590,7 @@ function buildResults(data, query, user) {
 }
 
 export function SearchBox({
-  placeholder = 'Search properties, bookings, guests, work orders, owners, reports...',
+  placeholder = 'Search visible workspace records...',
 }) {
   const { data, currentUser } = useApp();
 
@@ -554,7 +674,7 @@ export function SearchBox({
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={handleKeyDown}
-          aria-label="Search PropFlow"
+          aria-label="Search visible PropFlow records"
           aria-expanded={open}
           aria-controls="propflow-global-search-results"
           autoComplete="off"
@@ -600,7 +720,7 @@ export function SearchBox({
               </button>
             ))
           ) : (
-            <div className="global-search-empty">No matching records found.</div>
+            <div className="global-search-empty">No matching visible records found.</div>
           )}
         </div>
       )}
