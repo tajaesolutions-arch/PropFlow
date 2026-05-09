@@ -8,17 +8,19 @@ import { navigate } from '../routes/AppRouter.jsx';
 
 const operationalRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
 const ownerVisibleRoles = [...operationalRoles, roles.OWNER, roles.ACCOUNTANT];
-const staffOperationsRoles = [...operationalRoles, roles.CLEANER, roles.MAINTENANCE];
+const propertyDetailRoles = ownerVisibleRoles;
+const maintenancePageRoles = [...operationalRoles, roles.MAINTENANCE];
 const financeRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
 const calendarManagerRoles = [...operationalRoles, roles.ACCOUNTANT];
 
 const routeAccess = {
   '/dashboard': operationalRoles,
   '/properties': ownerVisibleRoles,
+  '/properties/:id': propertyDetailRoles,
   '/bookings': [...operationalRoles, roles.OWNER, roles.ACCOUNTANT],
   '/calendar': calendarManagerRoles,
   '/cleaning': [...operationalRoles, roles.CLEANER],
-  '/maintenance': staffOperationsRoles,
+  '/maintenance': maintenancePageRoles,
   '/owners': financeRoles,
   '/guests': operationalRoles,
   '/reports': [...operationalRoles, roles.OWNER, roles.ACCOUNTANT],
@@ -125,6 +127,14 @@ function normalizePath(path) {
   return pathOnly === '/' ? '/' : pathOnly.replace(/\/+$/, '') || '/';
 }
 
+function getAccessKey(path) {
+  const cleanPath = normalizePath(path);
+
+  if (/^\/properties\/[^/]+$/.test(cleanPath)) return '/properties/:id';
+
+  return cleanPath;
+}
+
 function getPropertyId(record) {
   return record?.propertyId || record?.property_id || '';
 }
@@ -165,6 +175,8 @@ function isMaintenanceRole(user) {
 
 function getVisibleProperties(data, user) {
   const properties = data.properties || [];
+
+  if (isCleanerRole(user) || isMaintenanceRole(user)) return [];
 
   if (!isOwnerRole(user)) return properties;
 
@@ -247,11 +259,11 @@ function getVisibleLeases(data, user) {
 }
 
 function canAccessPath(user, path) {
-  const cleanPath = normalizePath(path);
+  const accessKey = getAccessKey(path);
 
-  if (!cleanPath || cleanPath === '/account') return true;
+  if (!accessKey || accessKey === '/account') return true;
 
-  const allowedRoles = routeAccess[cleanPath];
+  const allowedRoles = routeAccess[accessKey];
   if (!allowedRoles) return true;
 
   return hasAnyRole(user, allowedRoles);
