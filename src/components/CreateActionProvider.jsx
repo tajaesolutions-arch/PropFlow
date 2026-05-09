@@ -2,7 +2,7 @@ import React from 'react';
 import { X } from 'lucide-react';
 
 import { useApp } from '../lib/AppContext.jsx';
-import { currencies, inviteRoleOptions, roleLabels } from '../data/constants.js';
+import { currencies, inviteRoleOptions, roleLabels, roles } from '../data/constants.js';
 
 const CreateActionContext = React.createContext(null);
 
@@ -267,6 +267,57 @@ function MemberOptions({ members, fallbackLabel = 'Unassigned' }) {
   );
 }
 
+function memberHasRole(member, role) {
+  return (member.roles || []).includes(role);
+}
+
+function ownerMembers(members) {
+  return members.filter((member) => memberHasRole(member, roles.OWNER));
+}
+
+function BookingOptions({ bookings, properties, emptyLabel = 'No related booking' }) {
+  return (
+    <>
+      <option value="">{emptyLabel}</option>
+      {bookings.map((booking) => {
+        const property = properties.find(
+          (item) => item.id === (booking.property_id || booking.propertyId),
+        );
+        const label = [
+          booking.guest_name || booking.guestName || 'Guest booking',
+          property?.name || booking.property,
+          booking.check_in || booking.checkIn,
+        ]
+          .filter(Boolean)
+          .join(' · ');
+
+        return (
+          <option key={booking.id} value={booking.id}>
+            {label}
+          </option>
+        );
+      })}
+    </>
+  );
+}
+
+function selectedPropertyNames(properties, propertyIds) {
+  const selected = properties
+    .filter((property) => propertyIds.includes(property.id))
+    .map((property) => property.name || property.address || 'Unnamed property');
+
+  return selected.join(', ');
+}
+
+function buildContactNotes({ notes, contextLines }) {
+  const cleanNotes = String(notes || '').trim();
+  const cleanContext = contextLines.filter(Boolean);
+
+  if (!cleanContext.length) return cleanNotes || null;
+
+  return [cleanNotes, cleanContext.join('\n')].filter(Boolean).join('\n\n');
+}
+
 async function runAppAction(app, actionNames, payload) {
   const actionName = actionNames.find((name) => typeof app?.[name] === 'function');
 
@@ -358,8 +409,9 @@ function WorkspaceBlockedNotice({ app }) {
   );
 }
 
-function PropertyForm({ app, close, submitting, setSubmitting, setError }) {
+function PropertyForm({ app, close, submitting, setSubmitting, setError, notifySuccess }) {
   const workspaceCurrency = getWorkspaceCurrency(app.currentWorkspace);
+  const owners = ownerMembers(app.data.members || []);
 
   const [form, setForm] = React.useState({
     name: '',
@@ -373,6 +425,7 @@ function PropertyForm({ app, close, submitting, setSubmitting, setError }) {
     status: 'active',
     nightly_rate: '',
     monthly_rent: '',
+    assigned_owner_id: '',
     bedrooms: '',
     bathrooms: '',
     square_feet: '',
@@ -414,6 +467,7 @@ function PropertyForm({ app, close, submitting, setSubmitting, setError }) {
         country: form.country.trim() || null,
         nightly_rate: cleanNumber(form.nightly_rate),
         monthly_rent: cleanNumber(form.monthly_rent),
+        assigned_owner_id: form.assigned_owner_id || null,
         bedrooms: cleanNumber(form.bedrooms),
         bathrooms: cleanNumber(form.bathrooms),
         square_feet: cleanNumber(form.square_feet),
@@ -421,6 +475,7 @@ function PropertyForm({ app, close, submitting, setSubmitting, setError }) {
       });
 
       await refreshAfterSave(app);
+      notifySuccess('Property saved successfully.');
       close();
     } catch (error) {
       setError(error?.message || 'Property could not be saved.');
@@ -515,6 +570,14 @@ function PropertyForm({ app, close, submitting, setSubmitting, setError }) {
           </label>
 
           <label>
+            Assigned owner
+            <select value={form.assigned_owner_id} onChange={set('assigned_owner_id')}>
+              <MemberOptions members={owners} fallbackLabel="No owner assigned" />
+            </select>
+            <small className="form-hint">Only invited property owner users can be assigned here.</small>
+          </label>
+
+          <label>
             Bedrooms
             <input type="number" min="0" value={form.bedrooms} onChange={set('bedrooms')} />
           </label>
@@ -561,7 +624,7 @@ function PropertyForm({ app, close, submitting, setSubmitting, setError }) {
   );
 }
 
-function BookingForm({ app, close, submitting, setSubmitting, setError }) {
+function BookingForm({ app, close, submitting, setSubmitting, setError, notifySuccess }) {
   const properties = app.data.properties || [];
   const initialPropertyId = firstPropertyId(properties);
 
@@ -650,6 +713,7 @@ function BookingForm({ app, close, submitting, setSubmitting, setError }) {
       });
 
       await refreshAfterSave(app);
+      notifySuccess('Booking saved successfully.');
       close();
     } catch (error) {
       setError(error?.message || 'Booking could not be saved.');
@@ -810,15 +874,18 @@ function BookingForm({ app, close, submitting, setSubmitting, setError }) {
   );
 }
 
-function CleaningForm({ app, close, submitting, setSubmitting, setError }) {
+function CleaningForm({ app, close, submitting, setSubmitting, setError, notifySuccess }) {
   const properties = app.data.properties || [];
   const members = app.data.members || [];
+  const bookings = app.data.bookings || [];
   const initialPropertyId = firstPropertyId(properties);
 
   const [form, setForm] = React.useState({
     property_id: initialPropertyId,
     assigned_cleaner_id: '',
     scheduled_for: today(),
+    scheduled_time: '11:00',
+    booking_id: '',
     status: 'scheduled',
     checklist_items: 'Strip beds\nSanitize bathrooms\nMop floors\nRestock supplies\nConfirm guest-ready condition',
     supplies_used: '',
@@ -854,12 +921,15 @@ function CleaningForm({ app, close, submitting, setSubmitting, setError }) {
       await runAppAction(app, ['createCleaningTask'], {
         ...form,
         assigned_cleaner_id: form.assigned_cleaner_id || null,
+        booking_id: form.booking_id || null,
+        scheduled_for: `${form.scheduled_for}T${form.scheduled_time || '11:00'}:00`,
         checklist_items: toLines(form.checklist_items),
         supplies_used: form.supplies_used.trim() || null,
         cleaner_notes: form.cleaner_notes.trim() || null,
       });
 
       await refreshAfterSave(app);
+      notifySuccess('Cleaning task saved successfully.');
       close();
     } catch (error) {
       setError(error?.message || 'Cleaning task could not be saved.');
@@ -903,6 +973,18 @@ function CleaningForm({ app, close, submitting, setSubmitting, setError }) {
           </label>
 
           <label>
+            Cleaning time
+            <input type="time" value={form.scheduled_time} onChange={set('scheduled_time')} required />
+          </label>
+
+          <label>
+            Related booking
+            <select value={form.booking_id} onChange={set('booking_id')}>
+              <BookingOptions bookings={bookings} properties={properties} />
+            </select>
+          </label>
+
+          <label>
             Status
             <select value={form.status} onChange={set('status')}>
               <OptionList options={cleaningStatusOptions} />
@@ -943,7 +1025,7 @@ function CleaningForm({ app, close, submitting, setSubmitting, setError }) {
   );
 }
 
-function MaintenanceForm({ app, close, submitting, setSubmitting, setError }) {
+function MaintenanceForm({ app, close, submitting, setSubmitting, setError, notifySuccess }) {
   const properties = app.data.properties || [];
   const members = app.data.members || [];
   const initialPropertyId = firstPropertyId(properties);
@@ -1016,6 +1098,7 @@ function MaintenanceForm({ app, close, submitting, setSubmitting, setError }) {
       });
 
       await refreshAfterSave(app);
+      notifySuccess('Maintenance work order saved successfully.');
       close();
     } catch (error) {
       setError(error?.message || 'Maintenance work order could not be saved.');
@@ -1123,8 +1206,10 @@ function MaintenanceForm({ app, close, submitting, setSubmitting, setError }) {
   );
 }
 
-function ContactForm({ app, close, submitting, setSubmitting, setError, type }) {
+function ContactForm({ app, close, submitting, setSubmitting, setError, notifySuccess, type }) {
   const isOwner = type === 'owner';
+  const properties = app.data.properties || [];
+  const bookings = app.data.bookings || [];
 
   const [form, setForm] = React.useState({
     contact_type: isOwner ? 'owner' : 'guest',
@@ -1132,6 +1217,9 @@ function ContactForm({ app, close, submitting, setSubmitting, setError, type }) 
     email: '',
     phone: '',
     company_name: '',
+    property_id: '',
+    booking_id: '',
+    payout_percentage: '',
     notes: '',
   });
 
@@ -1156,6 +1244,24 @@ function ContactForm({ app, close, submitting, setSubmitting, setError, type }) 
     try {
       setSubmitting(true);
 
+      const selectedPropertyName = selectedPropertyNames(
+        properties,
+        form.property_id ? [form.property_id] : [],
+      );
+      const relatedBooking = bookings.find((booking) => booking.id === form.booking_id);
+      const notes = buildContactNotes({
+        notes: form.notes,
+        contextLines: [
+          selectedPropertyName && `Requested property context: ${selectedPropertyName}`,
+          isOwner && form.payout_percentage && `Requested payout percentage: ${form.payout_percentage}%`,
+          !isOwner &&
+            relatedBooking &&
+            `Related booking: ${
+              relatedBooking.guest_name || relatedBooking.guestName || relatedBooking.id
+            }`,
+        ],
+      });
+
       await runAppAction(
         app,
         isOwner
@@ -1168,11 +1274,12 @@ function ContactForm({ app, close, submitting, setSubmitting, setError, type }) 
           email: form.email.trim() || null,
           phone: form.phone.trim() || null,
           company_name: form.company_name.trim() || null,
-          notes: form.notes.trim() || null,
+          notes,
         },
       );
 
       await refreshAfterSave(app);
+      notifySuccess(`${type === 'owner' ? 'Owner' : 'Guest'} saved successfully.`);
       close();
     } catch (error) {
       setError(error?.message || `${isOwner ? 'Owner' : 'Guest'} could not be saved.`);
@@ -1207,6 +1314,35 @@ function ContactForm({ app, close, submitting, setSubmitting, setError, type }) 
             <input value={form.company_name} onChange={set('company_name')} />
           </label>
 
+          <label>
+            {isOwner ? 'Assigned property' : 'Property / stay context'}
+            <select value={form.property_id} onChange={set('property_id')}>
+              <option value="">No property selected</option>
+              <PropertyOptions properties={properties} />
+            </select>
+          </label>
+
+          {isOwner ? (
+            <label>
+              Payout percentage
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                value={form.payout_percentage}
+                onChange={set('payout_percentage')}
+              />
+            </label>
+          ) : (
+            <label>
+              Related booking
+              <select value={form.booking_id} onChange={set('booking_id')}>
+                <BookingOptions bookings={bookings} properties={properties} />
+              </select>
+            </label>
+          )}
+
           <label className="full">
             Notes
             <textarea rows={4} value={form.notes} onChange={set('notes')} />
@@ -1226,13 +1362,13 @@ function ContactForm({ app, close, submitting, setSubmitting, setError, type }) 
   );
 }
 
-function InviteForm({ app, close, submitting, setSubmitting, setError }) {
+function InviteForm({ app, close, submitting, setSubmitting, setError, notifySuccess }) {
   const properties = app.data.properties || [];
 
   const [form, setForm] = React.useState({
     email: '',
     role: inviteRoleOptions[0] || 'property_manager',
-    property_id: '',
+    assigned_property_ids: [],
     expires_at: inDays(7),
     permission_level: 'standard',
     message: '',
@@ -1240,6 +1376,11 @@ function InviteForm({ app, close, submitting, setSubmitting, setError }) {
 
   const set = (key) => (event) => {
     setForm((current) => ({ ...current, [key]: event.target.value }));
+  };
+
+  const setAssignedPropertyIds = (event) => {
+    const values = Array.from(event.target.selectedOptions).map((option) => option.value);
+    setForm((current) => ({ ...current, assigned_property_ids: values }));
   };
 
   const submit = async (event) => {
@@ -1264,14 +1405,16 @@ function InviteForm({ app, close, submitting, setSubmitting, setError }) {
         email: form.email.trim().toLowerCase(),
         role: form.role,
         roles: [form.role],
-        property_id: form.property_id || null,
-        assigned_property_id: form.property_id || null,
+        property_id: form.assigned_property_ids[0] || null,
+        assigned_property_id: form.assigned_property_ids[0] || null,
+        assigned_property_ids: form.assigned_property_ids,
         expires_at: form.expires_at || null,
         permission_level: form.permission_level,
         message: form.message.trim() || null,
       });
 
       await refreshAfterSave(app);
+      notifySuccess('Team invite saved successfully.');
       close();
     } catch (error) {
       setError(error?.message || 'Invite could not be saved.');
@@ -1303,11 +1446,16 @@ function InviteForm({ app, close, submitting, setSubmitting, setError }) {
           </label>
 
           <label>
-            Assigned property, if relevant
-            <select value={form.property_id} onChange={set('property_id')}>
-              <option value="">No specific property</option>
-              <PropertyOptions properties={properties} />
+            Assigned properties, if relevant
+            <select
+              multiple
+              value={form.assigned_property_ids}
+              onChange={setAssignedPropertyIds}
+              size={Math.min(Math.max(properties.length, 2), 5)}
+            >
+              <PropertyOptions properties={properties} emptyLabel="No properties available" />
             </select>
+            <small className="form-hint">Hold Cmd/Ctrl to select multiple assigned properties.</small>
           </label>
 
           <label>
@@ -1343,7 +1491,7 @@ function InviteForm({ app, close, submitting, setSubmitting, setError }) {
   );
 }
 
-function ExpenseForm({ app, close, submitting, setSubmitting, setError }) {
+function ExpenseForm({ app, close, submitting, setSubmitting, setError, notifySuccess }) {
   const properties = app.data.properties || [];
   const initialPropertyId = firstPropertyId(properties);
 
@@ -1395,6 +1543,7 @@ function ExpenseForm({ app, close, submitting, setSubmitting, setError }) {
       });
 
       await refreshAfterSave(app);
+      notifySuccess('Expense saved successfully.');
       close();
     } catch (error) {
       setError(
@@ -1482,7 +1631,7 @@ function ExpenseForm({ app, close, submitting, setSubmitting, setError }) {
   );
 }
 
-function ReportForm({ app, close, submitting, setSubmitting, setError }) {
+function ReportForm({ app, close, submitting, setSubmitting, setError, notifySuccess }) {
   const properties = app.data.properties || [];
 
   const [form, setForm] = React.useState({
@@ -1523,6 +1672,7 @@ function ReportForm({ app, close, submitting, setSubmitting, setError }) {
       });
 
       await refreshAfterSave(app);
+      notifySuccess('Report saved successfully.');
       close();
     } catch (error) {
       setError(
@@ -1596,8 +1746,8 @@ function ReportForm({ app, close, submitting, setSubmitting, setError }) {
   );
 }
 
-function CreateForm({ action, app, close, submitting, setSubmitting, setError }) {
-  const sharedProps = { app, close, submitting, setSubmitting, setError };
+function CreateForm({ action, app, close, submitting, setSubmitting, setError, notifySuccess }) {
+  const sharedProps = { app, close, submitting, setSubmitting, setError, notifySuccess };
 
   if (action === 'property') return <PropertyForm {...sharedProps} />;
   if (action === 'booking') return <BookingForm {...sharedProps} />;
@@ -1652,6 +1802,19 @@ export function CreateActionProvider({ children }) {
   const [action, setAction] = React.useState(null);
   const [error, setError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
+  const [toast, setToast] = React.useState(null);
+
+  const notifySuccess = React.useCallback((message) => {
+    setToast({ id: Date.now(), message });
+  }, []);
+
+  React.useEffect(() => {
+    if (!toast) return undefined;
+
+    const timeout = window.setTimeout(() => setToast(null), 4000);
+
+    return () => window.clearTimeout(timeout);
+  }, [toast]);
 
   const openCreateAction = React.useCallback((nextAction) => {
     if (!nextAction) return;
@@ -1704,6 +1867,12 @@ export function CreateActionProvider({ children }) {
     <CreateActionContext.Provider value={contextValue}>
       {children}
 
+      {toast && (
+        <div className="create-action-toast" role="status" aria-live="polite">
+          {toast.message}
+        </div>
+      )}
+
       {action && (
         <ModalShell action={action} error={error} onClose={close} submitting={submitting}>
           <CreateForm
@@ -1713,6 +1882,7 @@ export function CreateActionProvider({ children }) {
             submitting={submitting}
             setSubmitting={setSubmitting}
             setError={setError}
+            notifySuccess={notifySuccess}
           />
         </ModalShell>
       )}
