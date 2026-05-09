@@ -21,7 +21,7 @@ const plans = [
     featured: false,
     audience: 'Small operators',
     features: [
-      '14-day free trial',
+      '14-day trial model planned',
       '1 workspace',
       'Core dashboard',
       'Properties',
@@ -133,12 +133,12 @@ function PricingCard({ plan }) {
       </ul>
 
       <button className="primary" type="button" onClick={() => navigate('/signup')}>
-        Start {plan.name}
+        Create account
         <ArrowRight size={16} />
       </button>
 
       <small className="todo">
-        Stripe checkout should be connected through secure backend endpoints before live billing.
+        Stripe checkout and trial enforcement should be connected through secure backend endpoints before live billing.
       </small>
     </article>
   );
@@ -160,7 +160,7 @@ export function PricingPage() {
           </button>
 
           <button className="primary" type="button" onClick={() => navigate('/signup')}>
-            Start free
+            Create account
           </button>
         </div>
       </nav>
@@ -170,13 +170,13 @@ export function PricingPage() {
           <p className="eyebrow">Simple launch pricing</p>
           <h1>Plans for serious property operations.</h1>
           <p>
-            Start with a 14-day free trial, then choose the plan that matches your rental operation.
-            Stripe checkout is prepared as a backend phase and is not live yet.
+            Review the planned launch pricing, create an account, then choose the plan that matches your rental operation during workspace setup.
+            Stripe checkout and trial enforcement are prepared as a backend phase and are not live yet.
           </p>
 
           <div className="hero-actions">
             <button className="primary large" type="button" onClick={() => navigate('/signup')}>
-              Start 14-day trial
+              Create account
               <ArrowRight size={18} />
             </button>
 
@@ -191,7 +191,7 @@ export function PricingPage() {
             <Sparkles size={20} />
             <span>
               <strong>No permanent free plan recommended</strong>
-              <small>Use a trial to attract serious users and reduce launch support load.</small>
+              <small>Use a trial to attract serious users and reduce launch support load after billing is connected.</small>
             </span>
           </div>
 
@@ -224,9 +224,9 @@ export function PricingPage() {
           <section className="card">
             <div className="card-header">
               <div>
-                <h3>What is included in the trial?</h3>
+                <h3>What should be included in the trial?</h3>
                 <p>
-                  The trial should let new workspaces create properties, invite team members, test
+                  After billing is connected, the trial should let new workspaces create properties, invite team members, test
                   dashboards, add bookings, create cleaning tasks, create maintenance work orders,
                   and review reports before paying.
                 </p>
@@ -312,7 +312,7 @@ export function PricingPage() {
               <h3>Recommended launch model</h3>
               <p>
                 Avoid a permanent free plan at launch. Free users can create support load before the
-                product is stable. Use a trial instead, then convert serious users into paid
+                product is stable. Use a trial after billing is connected, then convert serious users into paid
                 workspaces.
               </p>
             </div>
@@ -323,7 +323,7 @@ export function PricingPage() {
           <div className="pricing-model-grid">
             <span>
               <strong>14-day trial</strong>
-              <small>Let users test the actual workspace flow.</small>
+              <small>Planned after billing and subscription enforcement are connected.</small>
             </span>
 
             <span>
@@ -339,7 +339,7 @@ export function PricingPage() {
 
           <div className="action-row">
             <button className="primary large" type="button" onClick={() => navigate('/signup')}>
-              Start 14-day trial
+              Create account
               <ArrowRight size={18} />
             </button>
 
