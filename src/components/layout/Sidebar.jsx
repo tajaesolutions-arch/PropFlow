@@ -166,6 +166,30 @@ function getSidebarNav(currentUser) {
   return roleNav[primaryRole] || operationalNav;
 }
 
+function getSidebarSearchTarget(currentUser) {
+  const primaryRole = resolvePrimaryRole(currentUser);
+
+  if (primaryRole === roles.ADMIN) return '/admin';
+  if (primaryRole === roles.OWNER) return '/properties';
+  if (primaryRole === roles.CLEANER) return '/cleaning';
+  if (primaryRole === roles.MAINTENANCE) return '/maintenance';
+  if (primaryRole === roles.ACCOUNTANT) return '/properties';
+
+  return '/properties';
+}
+
+function getSidebarSearchLabel(currentUser) {
+  const primaryRole = resolvePrimaryRole(currentUser);
+
+  if (primaryRole === roles.ADMIN) return 'Search platform';
+  if (primaryRole === roles.OWNER) return 'Search assigned properties';
+  if (primaryRole === roles.CLEANER) return 'Search cleaning tasks';
+  if (primaryRole === roles.MAINTENANCE) return 'Search work orders';
+  if (primaryRole === roles.ACCOUNTANT) return 'Search finance properties';
+
+  return 'Search workspace';
+}
+
 function normalizePath(pathname) {
   if (!pathname) return '/';
 
@@ -239,6 +263,8 @@ export function Sidebar({ collapsed = false, setCollapsed, mobileOpen = false, s
   const { currentUser, currentWorkspace } = useApp();
   const path = normalizePath(window.location.pathname);
   const navSections = getSidebarNav(currentUser);
+  const searchTarget = getSidebarSearchTarget(currentUser);
+  const searchLabel = getSidebarSearchLabel(currentUser);
 
   const closeMobileMenu = () => {
     if (typeof setMobileOpen === 'function') {
@@ -305,12 +331,12 @@ export function Sidebar({ collapsed = false, setCollapsed, mobileOpen = false, s
       <button
         type="button"
         className="sidebar-search"
-        onClick={() => goTo('/properties')}
-        title={collapsed ? 'Search workspace' : undefined}
+        onClick={() => goTo(searchTarget)}
+        title={collapsed ? searchLabel : undefined}
         data-skip-create-action="true"
       >
         <Search size={16} />
-        <span>Search workspace</span>
+        <span>{searchLabel}</span>
       </button>
 
       <nav aria-label="Main navigation">
