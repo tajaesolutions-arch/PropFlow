@@ -43,6 +43,8 @@ const assignmentRoleOptions = [
   roles.ACCOUNTANT,
 ];
 
+const billingAccessRoles = [roles.ADMIN, roles.OWNER_ADMIN, roles.ACCOUNTANT];
+
 const defaultAssignment = {
   userId: '',
   propertyId: '',
@@ -168,6 +170,7 @@ export function SettingsPage() {
 
   const canInvite = hasAnyRole(currentUser, [roles.OWNER_ADMIN]);
   const canManageAssignments = hasAnyRole(currentUser, [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER]);
+  const canOpenBilling = hasAnyRole(currentUser, billingAccessRoles);
 
   const activeProperties = (data.properties || []).filter((property) => property.status !== 'archived');
   const members = data.members || [];
@@ -491,9 +494,15 @@ export function SettingsPage() {
           title="Subscription / billing"
           description="Stripe subscription controls and grace-period enforcement."
         >
-          <button type="button" onClick={() => navigate('/billing')} data-skip-create-action="true">
-            Open billing page
-          </button>
+          {canOpenBilling ? (
+            <button type="button" onClick={() => navigate('/billing')} data-skip-create-action="true">
+              Open billing page
+            </button>
+          ) : (
+            <div className="helper">
+              Billing controls are available to Workspace Owners and Accountants. Property Managers and Hosts can continue using workspace settings without billing access.
+            </div>
+          )}
 
           <div className="helper">
             Billing page should connect Stripe checkout, billing portal, subscription status, failed-payment warnings, and grace-period access.
