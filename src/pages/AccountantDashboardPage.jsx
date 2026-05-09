@@ -330,19 +330,22 @@ export function AccountantDashboardPage() {
   return (
     <AppLayout
       title="Accountant dashboard"
-      subtitle="Finance-only view for revenue, expenses, owner payouts, reports, receipts, and export placeholders."
+      subtitle="Read-only finance view for derived revenue, expenses, owner payouts, reports, receipts, and export placeholders."
     >
       <section className="card accountant-dashboard-notice finance-safety-notice">
         <div className="card-header">
           <div>
-            <h3>Finance-only access</h3>
+            <h3>Read-only finance access</h3>
             <p>
-              Accountant / Bookkeeper access is finance-focused. This dashboard avoids operational
-              editing and focuses on revenue, expenses, owner payouts, receipts, reports, and export
-              preparation.
+              Accountant / Bookkeeper access is finance-focused and read-only. This dashboard avoids operational
+              editing and shows derived summaries from existing bookings, cleaning tasks, maintenance work orders, and reports.
             </p>
           </div>
           <ShieldCheck size={22} className="muted" />
+        </div>
+
+        <div className="helper">
+          These values are operational finance previews, not finalized accounting ledgers, invoices, tax filings, or exported statements. Dedicated accounting records and backend-generated exports should be connected in a later phase.
         </div>
       </section>
 
@@ -461,7 +464,7 @@ export function AccountantDashboardPage() {
           <div className="card-header">
             <div>
               <h3>Property finance summary</h3>
-              <p>Revenue, expenses, net profit, owner payout, and maintenance exposure by property.</p>
+              <p>Derived revenue, expenses, net profit, owner payout, and maintenance exposure by property.</p>
             </div>
             <Building2 size={20} className="muted" />
           </div>
