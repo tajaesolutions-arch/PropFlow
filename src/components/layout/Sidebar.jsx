@@ -38,7 +38,7 @@ const operationalNav = [
       ['/dashboard', 'Dashboard', LayoutDashboard],
       ['/properties', 'Properties', Building2],
       ['/bookings', 'Bookings', CalendarDays],
-      ['/calendar', 'Calendar', CalendarDays],
+      ['/calendar', 'Operations Calendar', CalendarDays],
       ['/cleaning', 'Cleaning', ClipboardCheck],
       ['/maintenance', 'Maintenance', Wrench],
     ],
@@ -51,16 +51,16 @@ const operationalNav = [
       ['/expenses', 'Expenses', Receipt],
       ['/reports', 'Reports', BarChart3],
       ['/inventory', 'Supplies / Inventory', Boxes],
-      ['/team', 'Team', Users, teamAccessRoles],
-      ['/smart-tools', 'Smart Tools / AI', Sparkles],
+      ['/team', 'Team Access', Users, teamAccessRoles],
+      ['/smart-tools', 'Smart Tools / AI Preview', Sparkles],
     ],
   },
   {
     section: 'Account',
     items: [
       ['/notifications', 'Notifications', Bell],
-      ['/settings', 'Settings', Settings],
-      ['/billing', 'Billing', CreditCard, billingAccessRoles],
+      ['/settings', 'Workspace Settings', Settings],
+      ['/billing', 'Billing Preview', CreditCard, billingAccessRoles],
       ['/help', 'Help / Support', HelpCircle],
     ],
   },
@@ -72,15 +72,15 @@ const ownerNav = [
     items: [
       ['/owner-dashboard', 'Owner Dashboard', Home],
       ['/properties', 'Assigned Properties', Building2],
-      ['/reports', 'Reports', BarChart3],
-      ['/owner-dashboard?section=maintenance', 'Maintenance Updates', Wrench],
+      ['/reports', 'Released Reports', BarChart3],
+      ['/owner-dashboard', 'Maintenance Updates', Wrench],
     ],
   },
   {
     section: 'Account',
     items: [
       ['/notifications', 'Notifications', Bell],
-      ['/account', 'Account', Settings],
+      ['/account', 'Account Settings', Settings],
     ],
   },
 ];
@@ -90,14 +90,14 @@ const cleanerNav = [
     section: 'Cleaner Portal',
     items: [
       ['/cleaner-dashboard', 'Cleaner Dashboard', ClipboardCheck],
-      ['/cleaning', 'Cleaning Tasks', ClipboardCheck],
+      ['/cleaning', 'Assigned Cleaning Tasks', ClipboardCheck],
     ],
   },
   {
     section: 'Account',
     items: [
       ['/notifications', 'Notifications', Bell],
-      ['/account', 'Account', Settings],
+      ['/account', 'Account Settings', Settings],
     ],
   },
 ];
@@ -106,35 +106,35 @@ const maintenanceNav = [
   {
     section: 'Maintenance Portal',
     items: [
-      ['/maintenance-dashboard', 'Maintenance Dashboard', Wrench],
+      ['/maintenance-dashboard', 'Assigned Repairs', Wrench],
     ],
   },
   {
     section: 'Account',
     items: [
       ['/notifications', 'Notifications', Bell],
-      ['/account', 'Account', Settings],
+      ['/account', 'Account Settings', Settings],
     ],
   },
 ];
 
 const accountantNav = [
   {
-    section: 'Finance',
+    section: 'Finance Review',
     items: [
-      ['/accountant-dashboard', 'Accountant Dashboard', BarChart3],
-      ['/properties', 'Properties', Building2],
-      ['/expenses', 'Expenses', Receipt],
-      ['/reports', 'Reports', BarChart3],
-      ['/inventory', 'Supplies / Inventory', Boxes],
-      ['/billing', 'Billing', CreditCard],
+      ['/accountant-dashboard', 'Read-only Finance', BarChart3],
+      ['/properties', 'Property Review', Building2],
+      ['/expenses', 'Expense Placeholders', Receipt],
+      ['/reports', 'Reports Review', BarChart3],
+      ['/inventory', 'Inventory Review', Boxes],
+      ['/billing', 'Billing Preview', CreditCard],
     ],
   },
   {
     section: 'Account',
     items: [
       ['/notifications', 'Notifications', Bell],
-      ['/account', 'Account', Settings],
+      ['/account', 'Account Settings', Settings],
     ],
   },
 ];
@@ -144,13 +144,13 @@ const adminNav = [
     section: 'Platform',
     items: [
       ['/admin', 'Admin Dashboard', Shield],
-      ['/billing', 'Billing', CreditCard],
+      ['/billing', 'Billing Preview', CreditCard],
       ['/notifications', 'Notifications', Bell],
     ],
   },
   {
     section: 'Account',
-    items: [['/account', 'Account', Settings]],
+    items: [['/account', 'Account Settings', Settings]],
   },
 ];
 
@@ -188,7 +188,7 @@ function getSidebarSearchTarget(currentUser) {
   if (primaryRole === roles.OWNER) return '/properties';
   if (primaryRole === roles.CLEANER) return '/cleaning';
   if (primaryRole === roles.MAINTENANCE) return '/maintenance-dashboard';
-  if (primaryRole === roles.ACCOUNTANT) return '/properties';
+  if (primaryRole === roles.ACCOUNTANT) return '/accountant-dashboard';
 
   return '/properties';
 }
@@ -198,9 +198,9 @@ function getSidebarSearchLabel(currentUser) {
 
   if (primaryRole === roles.ADMIN) return 'Search platform';
   if (primaryRole === roles.OWNER) return 'Search assigned properties';
-  if (primaryRole === roles.CLEANER) return 'Search cleaning tasks';
-  if (primaryRole === roles.MAINTENANCE) return 'Search assigned work orders';
-  if (primaryRole === roles.ACCOUNTANT) return 'Search finance properties';
+  if (primaryRole === roles.CLEANER) return 'Search assigned cleaning';
+  if (primaryRole === roles.MAINTENANCE) return 'Search assigned repairs';
+  if (primaryRole === roles.ACCOUNTANT) return 'Search finance review';
 
   return 'Search workspace';
 }
