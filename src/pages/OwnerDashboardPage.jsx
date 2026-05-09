@@ -22,6 +22,7 @@ import { navigate } from '../routes/AppRouter.jsx';
 
 const closedStatuses = new Set(['completed', 'cancelled']);
 const cancelledStatuses = new Set(['cancelled', 'void', 'refunded']);
+const ownerVisibleReportStatuses = new Set(['ready', 'published', 'sent', 'delivered', 'completed']);
 
 function toNumber(value) {
   const numericValue = Number(value);
@@ -130,8 +131,15 @@ function isAssignedToCurrentOwner(property, currentUser) {
   return assignedOwnerId === currentUser?.id;
 }
 
+function isOwnerVisibleReportStatus(report) {
+  const status = String(report.status || '').toLowerCase();
+  return ownerVisibleReportStatuses.has(status);
+}
+
 function canOwnerSeeReport(report, assignedPropertyIds, currentUser) {
   if (!isOwnerRole(currentUser)) return true;
+
+  if (!isOwnerVisibleReportStatus(report)) return false;
 
   const propertyId = getPropertyId(report);
   const ownerId = report.owner_id || report.ownerId || report.contact_id || report.contactId;
@@ -147,7 +155,7 @@ function statusTone(value) {
 
   if (['cancelled', 'missed', 'urgent', 'overdue'].includes(status)) return 'error';
   if (['pending', 'scheduled', 'reported', 'in_progress', 'waiting_parts'].includes(status)) return 'warning';
-  if (['active', 'confirmed', 'completed', 'guest_ready', 'ready'].includes(status)) return 'success';
+  if (['active', 'confirmed', 'completed', 'guest_ready', 'ready', 'published', 'sent', 'delivered'].includes(status)) return 'success';
 
   return 'info';
 }
@@ -313,15 +321,14 @@ export function OwnerDashboardPage() {
             <h3>Owner portal access</h3>
             <p>
               Property owners should only see assigned properties, revenue, expenses, owner payout,
-              maintenance updates, cleaning history, reports, and property health information.
+              maintenance updates, cleaning history, published reports, and property health information.
             </p>
           </div>
           <ShieldCheck size={22} className="muted" />
         </div>
 
         <div className="helper">
-          This page is intentionally view-only. Operational editing stays with Workspace Owners,
-          Property Managers, and permitted staff roles.
+          This page is intentionally view-only. Draft/internal reports stay hidden until they are ready, published, sent, or delivered by the property manager.
         </div>
       </section>
 
@@ -513,7 +520,7 @@ export function OwnerDashboardPage() {
               <div className="card-header">
                 <div>
                   <h3>Owner reports</h3>
-                  <p>Reports prepared by the property manager.</p>
+                  <p>Reports prepared and released by the property manager.</p>
                 </div>
                 <FileText size={20} className="muted" />
               </div>
@@ -532,8 +539,8 @@ export function OwnerDashboardPage() {
                 <EmptyState
                   compact
                   icon={FileText}
-                  title="No owner reports"
-                  description="Published owner reports will appear here."
+                  title="No released owner reports"
+                  description="Ready, published, sent, or delivered owner reports for assigned properties will appear here. Draft/internal reports stay hidden."
                 />
               )}
             </section>
