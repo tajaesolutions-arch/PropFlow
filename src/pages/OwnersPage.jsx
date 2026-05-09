@@ -25,7 +25,8 @@ import { navigate } from '../routes/AppRouter.jsx';
 const closedStatuses = new Set(['completed', 'cancelled']);
 const cancelledStatuses = new Set(['cancelled', 'void', 'refunded']);
 
-const ownerManagerRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
+const ownerManagerRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER];
+const ownerInviteRoles = [roles.OWNER_ADMIN];
 
 function toNumber(value) {
   const numericValue = Number(value);
@@ -326,6 +327,7 @@ export function OwnersPage() {
 
   const currency = currentWorkspace?.defaultCurrency || currentWorkspace?.default_currency || 'USD';
   const canManageOwners = hasAnyRole(currentUser, ownerManagerRoles);
+  const canInviteOwners = hasAnyRole(currentUser, ownerInviteRoles);
 
   const properties = data.properties || [];
   const bookings = data.bookings || [];
@@ -445,10 +447,14 @@ export function OwnersPage() {
             </button>
           )}
 
-          {canManageOwners && (
+          {canInviteOwners && (
             <button type="button" data-create-action="invite">
               Invite Owner
             </button>
+          )}
+
+          {!canManageOwners && !canInviteOwners && (
+            <span className="helper">Owner management actions are restricted to workspace owners and property managers.</span>
           )}
 
           <button type="button" onClick={() => navigate('/reports')} data-skip-create-action="true">
