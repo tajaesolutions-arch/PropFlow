@@ -62,6 +62,7 @@ function isAssignedToCurrentMaintenance(workOrder, currentUser) {
 }
 
 function canUpdateMaintenanceJob(workOrder, currentUser) {
+  if (closedStatuses.has(workOrder.status)) return false;
   if (!isMaintenanceUser(currentUser)) return true;
   return isAssignedToCurrentMaintenance(workOrder, currentUser);
 }
@@ -177,13 +178,14 @@ function MaintenanceJobCard({
   const actualCost = getActualCost(workOrder);
   const estimatedCost = getEstimatedCost(workOrder);
   const partsNeeded = getPartsNeeded(workOrder);
+  const closed = closedStatuses.has(status);
 
   return (
     <article className={`card maintenance-dashboard-job-card ${overdue || priority === 'urgent' ? 'urgent' : ''}`}>
       <div className="maintenance-dashboard-job-top">
         <div>
           <p className="eyebrow">
-            {overdue ? 'Overdue repair' : priority === 'urgent' ? 'Urgent issue' : 'Assigned repair'}
+            {closed ? 'Closed repair' : overdue ? 'Overdue repair' : priority === 'urgent' ? 'Urgent issue' : 'Assigned repair'}
           </p>
           <h3>{workOrder.title || 'Maintenance issue'}</h3>
           <p>
@@ -206,6 +208,13 @@ function MaintenanceJobCard({
         <div className="helper error-helper">
           <AlertTriangle size={16} />
           This repair is overdue.
+        </div>
+      )}
+
+      {closed && (
+        <div className="helper">
+          <ShieldCheck size={16} />
+          This repair is closed. Status, notes, parts, cost, and upload controls are read-only here.
         </div>
       )}
 
@@ -241,7 +250,7 @@ function MaintenanceJobCard({
         Status
         <select
           value={status}
-          disabled={saving}
+          disabled={saving || closed}
           onChange={(event) => onStatusUpdate(workOrder, event.target.value)}
         >
           {statuses.map((statusOption) => (
@@ -257,7 +266,7 @@ function MaintenanceJobCard({
           Parts/materials needed
           <input
             defaultValue={partsNeeded}
-            disabled={saving}
+            disabled={saving || closed}
             onBlur={(event) => {
               if (event.target.value !== partsNeeded) {
                 onFieldUpdate(workOrder, {
@@ -275,7 +284,7 @@ function MaintenanceJobCard({
             min="0"
             step="0.01"
             defaultValue={actualCost || ''}
-            disabled={saving}
+            disabled={saving || closed}
             onBlur={(event) => {
               const nextValue = cleanNumber(event.target.value);
               if (nextValue !== cleanNumber(actualCost)) {
@@ -291,7 +300,7 @@ function MaintenanceJobCard({
           Repair notes
           <textarea
             defaultValue={workOrder.notes || ''}
-            disabled={saving}
+            disabled={saving || closed}
             placeholder="Add repair notes, access issues, parts updates, or completion details."
             onBlur={(event) => {
               if (event.target.value !== (workOrder.notes || '')) {
@@ -304,50 +313,52 @@ function MaintenanceJobCard({
         </label>
       </div>
 
-      <div className="maintenance-dashboard-actions">
-        {status !== 'in_progress' && !closedStatuses.has(status) && (
-          <button
-            type="button"
-            onClick={() => onStatusUpdate(workOrder, 'in_progress')}
-            disabled={saving}
-            data-skip-create-action="true"
-          >
-            Start repair
-          </button>
-        )}
+      {!closed && (
+        <div className="maintenance-dashboard-actions">
+          {status !== 'in_progress' && (
+            <button
+              type="button"
+              onClick={() => onStatusUpdate(workOrder, 'in_progress')}
+              disabled={saving}
+              data-skip-create-action="true"
+            >
+              Start repair
+            </button>
+          )}
 
-        {status !== 'waiting_parts' && !closedStatuses.has(status) && (
-          <button
-            type="button"
-            onClick={() => onStatusUpdate(workOrder, 'waiting_parts')}
-            disabled={saving}
-            data-skip-create-action="true"
-          >
-            Waiting for parts
-          </button>
-        )}
+          {status !== 'waiting_parts' && (
+            <button
+              type="button"
+              onClick={() => onStatusUpdate(workOrder, 'waiting_parts')}
+              disabled={saving}
+              data-skip-create-action="true"
+            >
+              Waiting for parts
+            </button>
+          )}
 
-        {status !== 'completed' && (
-          <button
-            type="button"
-            className="primary"
-            onClick={() => onStatusUpdate(workOrder, 'completed')}
-            disabled={saving}
-            data-skip-create-action="true"
-          >
-            <CheckCircle2 size={16} />
-            Mark completed
-          </button>
-        )}
-      </div>
+          {status !== 'completed' && (
+            <button
+              type="button"
+              className="primary"
+              onClick={() => onStatusUpdate(workOrder, 'completed')}
+              disabled={saving}
+              data-skip-create-action="true"
+            >
+              <CheckCircle2 size={16} />
+              Mark completed
+            </button>
+          )}
+        </div>
+      )}
 
       <label className="upload-button">
         <Camera size={16} />
-        {uploading ? 'Uploading…' : 'Upload issue/completion photo'}
+        {closed ? 'Upload disabled for closed repair' : uploading ? 'Uploading…' : 'Upload issue/completion photo'}
         <input
           type="file"
           accept="image/*,video/*"
-          disabled={uploading}
+          disabled={uploading || closed}
           onChange={(event) => {
             const file = event.target.files?.[0];
             onUpload(workOrder, file);
@@ -425,7 +436,7 @@ export function MaintenanceDashboardPage() {
 
   const updateStatus = async (workOrder, status) => {
     if (!canUpdateMaintenanceJob(workOrder, currentUser)) {
-      setMessage('You do not have permission to update this maintenance work order.');
+      setMessage('You do not have permission to update this maintenance work order, or this repair is already closed.');
       return;
     }
 
@@ -449,7 +460,7 @@ export function MaintenanceDashboardPage() {
 
   const updateField = async (workOrder, payload) => {
     if (!canUpdateMaintenanceJob(workOrder, currentUser)) {
-      setMessage('You do not have permission to update this maintenance work order.');
+      setMessage('You do not have permission to update this maintenance work order, or this repair is already closed.');
       return;
     }
 
@@ -471,7 +482,7 @@ export function MaintenanceDashboardPage() {
     if (!file) return;
 
     if (!canUpdateMaintenanceJob(workOrder, currentUser)) {
-      setMessage('You do not have permission to upload files for this maintenance work order.');
+      setMessage('You do not have permission to upload files for this maintenance work order, or this repair is already closed.');
       return;
     }
 
@@ -520,7 +531,7 @@ export function MaintenanceDashboardPage() {
       {message && (
         <section
           className={
-            message.toLowerCase().includes('could not') || message.toLowerCase().includes('failed')
+            message.toLowerCase().includes('could not') || message.toLowerCase().includes('failed') || message.toLowerCase().includes('permission')
               ? 'helper error-helper'
               : 'helper'
           }
@@ -550,8 +561,8 @@ export function MaintenanceDashboardPage() {
           <p className="eyebrow">Repair cost visibility</p>
           <h3>Maintenance cost fields are work-order only</h3>
           <p>
-            Maintenance users can view and update assigned repair estimates, actual repair costs,
-            parts, notes, photos, and statuses. This dashboard does not show owner payout, revenue,
+            Maintenance users can view and update assigned open repair estimates, actual repair costs,
+            parts, notes, photos, and statuses. Closed repairs are read-only. This dashboard does not show owner payout, revenue,
             net profit, payroll, or full workspace accounting.
           </p>
         </div>
@@ -572,7 +583,7 @@ export function MaintenanceDashboardPage() {
           <h3>Priority repair queue</h3>
           <p>
             Start assigned repairs, update work status, list parts needed, add repair cost notes,
-            upload repair photos, and mark jobs completed.
+            upload repair photos, and mark jobs completed. Closed repair records stay read-only.
           </p>
         </div>
 
