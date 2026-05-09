@@ -33,48 +33,56 @@ const reportTypes = [
     title: 'Owner Statement',
     category: 'Owner',
     description: 'Revenue, expenses, owner payout, maintenance, cleaning, and assigned property summary.',
+    ownerVisible: true,
   },
   {
     id: 'revenue_report',
     title: 'Revenue Report',
     category: 'Finance',
-    description: 'Booking revenue, direct booking revenue, payment status, and property-level totals.',
+    description: 'Booking revenue, payment status, direct-booking revenue, and property-level totals.',
+    ownerVisible: false,
   },
   {
     id: 'expense_report',
     title: 'Expense Report',
     category: 'Finance',
     description: 'Maintenance, cleaning, supplies, taxes, platform fees, and other tracked expenses.',
+    ownerVisible: false,
   },
   {
     id: 'occupancy_report',
     title: 'Occupancy Report',
     category: 'Operations',
     description: 'Booked nights, available nights, occupancy rate, check-ins, and check-outs.',
+    ownerVisible: true,
   },
   {
     id: 'maintenance_cost_report',
     title: 'Maintenance Cost Report',
     category: 'Maintenance',
     description: 'Estimated cost, actual cost, open repairs, completed repairs, and urgent issues.',
+    ownerVisible: false,
   },
   {
     id: 'cleaning_cost_report',
     title: 'Cleaning Cost Report',
     category: 'Cleaning',
     description: 'Completed cleanings, guest-ready status, supplies used, and cleaning cost tracking.',
+    ownerVisible: false,
   },
   {
     id: 'booking_summary',
     title: 'Booking Summary',
     category: 'Bookings',
     description: 'Guest stays, booking source, dates, payment status, and booking totals.',
+    ownerVisible: true,
   },
   {
     id: 'property_performance',
     title: 'Property Performance',
     category: 'Portfolio',
     description: 'Per-property revenue, expenses, net profit, occupancy, repairs, and operations health.',
+    ownerVisible: true,
   },
 ];
 
@@ -407,9 +415,16 @@ export function ReportsPage() {
 
   const exportHistory = buildExportHistory(ownerReports);
 
-  const categories = [...new Set(reportTypes.map((report) => report.category))];
+  const roleSafeReportTypes = reportTypes.filter((report) => !ownerView || report.ownerVisible);
+  const categories = [...new Set(roleSafeReportTypes.map((report) => report.category))];
 
-  const visibleReportTypes = reportTypes.filter(
+  React.useEffect(() => {
+    if (filters.reportCategory !== 'all' && !categories.includes(filters.reportCategory)) {
+      setFilters((current) => ({ ...current, reportCategory: 'all' }));
+    }
+  }, [categories, filters.reportCategory]);
+
+  const visibleReportTypes = roleSafeReportTypes.filter(
     (report) => filters.reportCategory === 'all' || report.category === filters.reportCategory,
   );
 
@@ -426,7 +441,7 @@ export function ReportsPage() {
     <AppLayout
       title="Reports & Exports"
       subtitle={ownerView
-        ? 'Assigned-property owner reports, finance summaries, operations reports, and export placeholders.'
+        ? 'Assigned-property owner reports, owner-visible summaries, and export placeholders.'
         : 'Owner reports, finance summaries, operations reports, and export placeholders.'}
     >
       {ownerView && (
@@ -545,7 +560,7 @@ export function ReportsPage() {
                 setFilters((current) => ({ ...current, reportCategory: event.target.value }))
               }
             >
-              <option value="all">All categories</option>
+              <option value="all">All visible categories</option>
               {categories.map((category) => (
                 <option key={category} value={category}>
                   {category}
@@ -773,9 +788,11 @@ export function ReportsPage() {
           title="No scheduled reports configured"
           description="Automated weekly, monthly, and quarterly exports can be enabled after backend report jobs are configured."
           action={
-            <button type="button" onClick={() => navigate('/owners')} data-skip-create-action="true">
-              Review Owners
-            </button>
+            canManageReports ? (
+              <button type="button" onClick={() => navigate('/owners')} data-skip-create-action="true">
+                Review Owners
+              </button>
+            ) : null
           }
         />
       </section>
