@@ -7,6 +7,7 @@ import {
   Clock,
   Home,
   Search,
+  ShieldCheck,
   Sparkles,
   X,
 } from 'lucide-react';
@@ -58,8 +59,8 @@ function getAssignedCleanerId(task) {
   return task.assignedCleanerId || task.assigned_cleaner_id || task.cleanerId || task.cleaner_id || '';
 }
 
-function hasCleanerAssignmentData(tasks = []) {
-  return tasks.some((task) => Boolean(getAssignedCleanerId(task)));
+function isCleanerUser(currentUser) {
+  return Boolean(currentUser?.roles?.includes(roles.CLEANER));
 }
 
 function isAssignedToCurrentCleaner(task, currentUser) {
@@ -69,11 +70,8 @@ function isAssignedToCurrentCleaner(task, currentUser) {
   return assignedCleanerId === currentUser?.id;
 }
 
-function canUpdateCleanerTask(task, currentUser, allTasks = []) {
-  if (!currentUser?.roles?.includes(roles.CLEANER)) return true;
-
-  if (!hasCleanerAssignmentData(allTasks)) return true;
-
+function canUpdateCleanerTask(task, currentUser) {
+  if (!isCleanerUser(currentUser)) return true;
   return isAssignedToCurrentCleaner(task, currentUser);
 }
 
@@ -115,16 +113,7 @@ function statusTone(status) {
 }
 
 function getVisibleCleanerTasks(tasks, currentUser) {
-  const isCleaner = currentUser?.roles?.includes(roles.CLEANER);
-
-  if (!isCleaner) {
-    return tasks;
-  }
-
-  if (!hasCleanerAssignmentData(tasks)) {
-    return tasks;
-  }
-
+  if (!isCleanerUser(currentUser)) return tasks;
   return tasks.filter((task) => isAssignedToCurrentCleaner(task, currentUser));
 }
 
@@ -352,6 +341,7 @@ export function CleanerDashboardPage() {
   const overdueTasks = visibleTasks.filter(isOverdue);
   const guestReadyTasks = visibleTasks.filter((task) => task.status === 'guest_ready');
   const issueTasks = visibleTasks.filter((task) => task.issue_reported);
+  const isCleaner = isCleanerUser(currentUser);
 
   const filteredTasks = sortCleanerTasks(
     visibleTasks
@@ -375,7 +365,7 @@ export function CleanerDashboardPage() {
   };
 
   const changeStatus = async (task, status) => {
-    if (!canUpdateCleanerTask(task, currentUser, allTasks)) {
+    if (!canUpdateCleanerTask(task, currentUser)) {
       setMessage('You do not have permission to update this cleaning task.');
       return;
     }
@@ -400,7 +390,7 @@ export function CleanerDashboardPage() {
   };
 
   const updateNotes = async (task, notes) => {
-    if (!canUpdateCleanerTask(task, currentUser, allTasks)) {
+    if (!canUpdateCleanerTask(task, currentUser)) {
       setMessage('You do not have permission to update notes for this cleaning task.');
       return;
     }
@@ -422,7 +412,7 @@ export function CleanerDashboardPage() {
   };
 
   const reportIssue = async (task, issueReported) => {
-    if (!canUpdateCleanerTask(task, currentUser, allTasks)) {
+    if (!canUpdateCleanerTask(task, currentUser)) {
       setMessage('You do not have permission to report an issue for this cleaning task.');
       return;
     }
@@ -447,7 +437,7 @@ export function CleanerDashboardPage() {
   const handleUpload = async (task, file) => {
     if (!file) return;
 
-    if (!canUpdateCleanerTask(task, currentUser, allTasks)) {
+    if (!canUpdateCleanerTask(task, currentUser)) {
       setMessage('You do not have permission to upload photos for this cleaning task.');
       return;
     }
@@ -506,6 +496,21 @@ export function CleanerDashboardPage() {
         </section>
       )}
 
+      {isCleaner && (
+        <section className="card cleaner-dashboard-hero">
+          <div className="card-header">
+            <div>
+              <p className="eyebrow">Assignment visibility</p>
+              <h3>Only assigned cleaning tasks are shown</h3>
+              <p>
+                Cleaner users only see tasks explicitly assigned to their user account. Unassigned cleaning tasks stay hidden until a workspace owner or property manager assigns them.
+              </p>
+            </div>
+            <ShieldCheck size={22} className="muted" />
+          </div>
+        </section>
+      )}
+
       <section className="stat-grid dense">
         <StatCard label="Open cleanings" value={openTasks.length} icon={ClipboardCheck} />
         <StatCard label="Due today" value={dueTodayTasks.length} icon={Clock} />
@@ -554,7 +559,7 @@ export function CleanerDashboardPage() {
             Status
             <select value={filters.status} onChange={setFilter('status')}>
               <option value="open">Open tasks</option>
-              <option value="all">All tasks</option>
+              <option value="all">All visible tasks</option>
               {statuses.map((status) => (
                 <option key={status} value={status}>
                   {formatLabel(status)}
@@ -613,7 +618,7 @@ export function CleanerDashboardPage() {
           eyebrow="Cleaner dashboard"
           icon={ClipboardCheck}
           title="No assigned cleaning tasks right now"
-          description="Assigned cleaning tasks, checklists, photo uploads, and guest-ready updates will appear here."
+          description="Assigned cleaning tasks, checklists, photo uploads, and guest-ready updates will appear here after a workspace owner or property manager assigns tasks to your account."
         />
       )}
 
@@ -622,7 +627,7 @@ export function CleanerDashboardPage() {
           <div className="card-header">
             <div>
               <h3>Issue reports</h3>
-              <p>Cleaning tasks where an issue has been reported.</p>
+              <p>Assigned cleaning tasks where an issue has been reported.</p>
             </div>
             <AlertTriangle size={20} className="muted" />
           </div>
@@ -643,7 +648,7 @@ export function CleanerDashboardPage() {
               compact
               icon={CheckCircle2}
               title="No reported cleaning issues"
-              description="Cleaning issue reports will appear here."
+              description="Issue reports from assigned cleaning tasks will appear here."
             />
           )}
         </section>
