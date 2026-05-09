@@ -3,6 +3,7 @@ import {
   Building2,
   Copy,
   KeyRound,
+  Lock,
   LogOut,
   Mail,
   ShieldCheck,
@@ -16,9 +17,11 @@ import { EmptyState } from '../components/EmptyState.jsx';
 import { StatCard } from '../components/StatCard.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
 import { useApp } from '../lib/AppContext.jsx';
-import { roleLabels } from '../data/constants.js';
-import { resolvePrimaryRole } from '../lib/auth.js';
+import { roleLabels, roles } from '../data/constants.js';
+import { hasAnyRole, resolvePrimaryRole } from '../lib/auth.js';
 import { navigate } from '../routes/AppRouter.jsx';
+
+const workspaceSettingsRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
 
 function roleList(roles = []) {
   if (!Array.isArray(roles) || !roles.length) {
@@ -164,6 +167,7 @@ export function AccountSettingsPage() {
   const primaryRoleLabel = roleLabels[primaryRole] || 'No workspace role';
   const userWorkspaces = workspaces || [];
   const userMemberships = memberships || [];
+  const canOpenWorkspaceSettings = hasAnyRole(currentUser, workspaceSettingsRoles);
 
   const handleSignOut = async () => {
     setBusy(true);
@@ -179,6 +183,12 @@ export function AccountSettingsPage() {
   };
 
   const copyWorkspaceCode = async () => {
+    if (!canOpenWorkspaceSettings) {
+      setMessage('Workspace code is available to workspace administrators only.');
+      window.setTimeout(() => setMessage(''), 3000);
+      return;
+    }
+
     const copied = await copyToClipboard(getWorkspaceCode(currentWorkspace));
 
     setMessage(copied ? 'Workspace code copied.' : 'Workspace code could not be copied.');
@@ -268,29 +278,45 @@ export function AccountSettingsPage() {
                 <small>Default currency</small>
               </span>
 
-              <span>
-                <Copy size={16} />
-                <strong>{getWorkspaceCode(currentWorkspace)}</strong>
-                <small>Company code</small>
-              </span>
+              {canOpenWorkspaceSettings ? (
+                <span>
+                  <Copy size={16} />
+                  <strong>{getWorkspaceCode(currentWorkspace)}</strong>
+                  <small>Company code</small>
+                </span>
+              ) : (
+                <span>
+                  <Lock size={16} />
+                  <strong>Hidden</strong>
+                  <small>Company code is admin-only</small>
+                </span>
+              )}
 
-              <button
-                type="button"
-                onClick={copyWorkspaceCode}
-                disabled={!currentWorkspace}
-                data-skip-create-action="true"
-              >
-                <Copy size={16} />
-                Copy workspace code
-              </button>
+              {canOpenWorkspaceSettings ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={copyWorkspaceCode}
+                    disabled={!currentWorkspace}
+                    data-skip-create-action="true"
+                  >
+                    <Copy size={16} />
+                    Copy workspace code
+                  </button>
 
-              <button
-                type="button"
-                onClick={() => navigate('/settings')}
-                data-skip-create-action="true"
-              >
-                Open workspace settings
-              </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/settings')}
+                    data-skip-create-action="true"
+                  >
+                    Open workspace settings
+                  </button>
+                </>
+              ) : (
+                <div className="helper">
+                  Workspace code and workspace settings are managed by authorized workspace administrators.
+                </div>
+              )}
             </div>
           ) : (
             <EmptyState
