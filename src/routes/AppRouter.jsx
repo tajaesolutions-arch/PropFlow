@@ -105,6 +105,7 @@ const allWorkspaceRoles = [
 ];
 
 const ownerVisibleRoles = [...operationalRoles, roles.OWNER, roles.ACCOUNTANT];
+const propertyDetailRoles = ownerVisibleRoles;
 const maintenancePageRoles = [...operationalRoles, roles.MAINTENANCE];
 const financeRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
 const calendarManagerRoles = [...operationalRoles, roles.ACCOUNTANT];
@@ -482,7 +483,7 @@ export function AppRouter() {
 
   if (propertyId) {
     return (
-      <RoleGuard allowed={allWorkspaceRoles}>
+      <RoleGuard allowed={propertyDetailRoles}>
         {renderRoute(PropertyDetailPage, { propertyId }, path)}
       </RoleGuard>
     );
