@@ -9,12 +9,60 @@ import { StatusBadge } from './StatusBadge.jsx';
 const assignmentManagerRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
 const ownerRole = [roles.OWNER];
 
-function count(array) {
-  return Array.isArray(array) ? array.length : 0;
-}
-
 function getAssignedOwnerId(property) {
   return property?.assignedOwnerId || property?.assigned_owner_id || property?.ownerId || property?.owner_id || '';
+}
+
+function getRecordPropertyId(record) {
+  return record?.propertyId || record?.property_id || '';
+}
+
+function getReportOwnerId(report) {
+  return report?.ownerId || report?.owner_id || report?.contactId || report?.contact_id || '';
+}
+
+function getVisibleOwnerAssignmentData({ properties = [], ownerReports = [], currentUser }) {
+  if (hasAnyRole(currentUser, assignmentManagerRoles)) {
+    const assignedProperties = properties.filter((property) => Boolean(getAssignedOwnerId(property)));
+
+    return {
+      properties,
+      assignedProperties,
+      unassignedPropertiesCount: Math.max(properties.length - assignedProperties.length, 0),
+      ownerReports,
+      visibilityLabel: 'workspace assignment view',
+    };
+  }
+
+  if (hasAnyRole(currentUser, ownerRole)) {
+    const assignedProperties = properties.filter((property) => getAssignedOwnerId(property) === currentUser?.id);
+    const assignedPropertyIds = new Set(assignedProperties.map((property) => property.id).filter(Boolean));
+    const visibleOwnerReports = ownerReports.filter((report) => {
+      const propertyId = getRecordPropertyId(report);
+      const reportOwnerId = getReportOwnerId(report);
+
+      if (propertyId) return assignedPropertyIds.has(propertyId);
+      if (reportOwnerId) return reportOwnerId === currentUser?.id;
+
+      return false;
+    });
+
+    return {
+      properties: assignedProperties,
+      assignedProperties,
+      unassignedPropertiesCount: 0,
+      ownerReports: visibleOwnerReports,
+      visibilityLabel: 'assigned owner view',
+    };
+  }
+
+  return {
+    properties: [],
+    assignedProperties: [],
+    unassignedPropertiesCount: 0,
+    ownerReports: [],
+    visibilityLabel: 'restricted view',
+  };
 }
 
 function getOwnerAssignmentMessage(currentUser) {
@@ -23,7 +71,7 @@ function getOwnerAssignmentMessage(currentUser) {
   }
 
   if (hasAnyRole(currentUser, ownerRole)) {
-    return 'Property Owners should only see properties explicitly assigned to their owner account.';
+    return 'Property Owners see assignment status for properties explicitly assigned to their owner account only.';
   }
 
   return 'Owner/property assignment visibility should remain restricted unless the role has a clear operational reason.';
@@ -32,10 +80,16 @@ function getOwnerAssignmentMessage(currentUser) {
 export function OwnerAssignmentSafetyNotice() {
   const { currentUser, data } = useApp();
   const primaryRole = resolvePrimaryRole(currentUser);
-  const properties = Array.isArray(data?.properties) ? data.properties : [];
-  const ownerReports = Array.isArray(data?.ownerReports) ? data.ownerReports : [];
-  const assignedPropertiesCount = properties.filter((property) => Boolean(getAssignedOwnerId(property))).length;
-  const unassignedPropertiesCount = Math.max(properties.length - assignedPropertiesCount, 0);
+  const allProperties = Array.isArray(data?.properties) ? data.properties : [];
+  const allOwnerReports = Array.isArray(data?.ownerReports) ? data.ownerReports : [];
+  const visibleData = getVisibleOwnerAssignmentData({
+    properties: allProperties,
+    ownerReports: allOwnerReports,
+    currentUser,
+  });
+  const assignedPropertiesCount = visibleData.assignedProperties.length;
+  const unassignedPropertiesCount = visibleData.unassignedPropertiesCount;
+  const ownerReportsCount = visibleData.ownerReports.length;
   const canManageAssignments = hasAnyRole(currentUser, assignmentManagerRoles);
   const isOwner = hasAnyRole(currentUser, ownerRole);
 
@@ -56,19 +110,21 @@ export function OwnerAssignmentSafetyNotice() {
         <div className="owner-assignment-card">
           <Building2 size={18} />
           <span>
-            <strong>Assigned properties</strong>
-            <small>{assignedPropertiesCount ? `${assignedPropertiesCount} property record${assignedPropertiesCount === 1 ? '' : 's'} include owner assignment fields.` : 'No owner-assigned property records found yet. Owner dashboards should show a clean empty state.'}</small>
+            <strong>{isOwner ? 'Assigned properties visible' : 'Assigned properties'}</strong>
+            <small>{assignedPropertiesCount ? `${assignedPropertiesCount} visible property record${assignedPropertiesCount === 1 ? '' : 's'} include owner assignment fields.` : isOwner ? 'No properties are assigned to this owner account yet.' : 'No owner-assigned property records found yet. Owner dashboards should show a clean empty state.'}</small>
           </span>
-          <StatusBadge tone={assignedPropertiesCount ? 'info' : 'warning'}>{assignedPropertiesCount ? 'assignment fields' : 'empty'}</StatusBadge>
+          <StatusBadge tone={assignedPropertiesCount ? 'info' : 'warning'}>{assignedPropertiesCount ? visibleData.visibilityLabel : 'empty'}</StatusBadge>
         </div>
 
         <div className="owner-assignment-card">
           <LockKeyhole size={18} />
           <span>
             <strong>Unassigned property data</strong>
-            <small>Property Owners must not see unassigned properties, operational records, reports, or private workspace data.</small>
+            <small>{isOwner ? 'Unassigned workspace property counts stay hidden from owner-facing views.' : 'Property Owners must not see unassigned properties, operational records, reports, or private workspace data.'}</small>
           </span>
-          <StatusBadge tone={unassignedPropertiesCount && isOwner ? 'error' : 'info'}>{unassignedPropertiesCount} unassigned</StatusBadge>
+          <StatusBadge tone={unassignedPropertiesCount && isOwner ? 'error' : 'info'}>
+            {isOwner ? 'hidden' : `${unassignedPropertiesCount} unassigned`}
+          </StatusBadge>
         </div>
 
         <div className="owner-assignment-card">
@@ -84,9 +140,9 @@ export function OwnerAssignmentSafetyNotice() {
           <FileText size={18} />
           <span>
             <strong>Owner reports</strong>
-            <small>{ownerReports.length ? `${ownerReports.length} owner report record${ownerReports.length === 1 ? '' : 's'} found. Reports must stay assigned-property scoped.` : 'Owner report visibility remains placeholder-safe until report publishing is connected.'}</small>
+            <small>{ownerReportsCount ? `${ownerReportsCount} visible owner report record${ownerReportsCount === 1 ? '' : 's'} found. Reports must stay assigned-property scoped.` : 'Owner report visibility remains placeholder-safe until report publishing is connected.'}</small>
           </span>
-          <StatusBadge tone={ownerReports.length ? 'info' : 'warning'}>{ownerReports.length ? 'scope required' : 'placeholder'}</StatusBadge>
+          <StatusBadge tone={ownerReportsCount ? 'info' : 'warning'}>{ownerReportsCount ? 'visible scope' : 'placeholder'}</StatusBadge>
         </div>
 
         <div className="owner-assignment-card">
