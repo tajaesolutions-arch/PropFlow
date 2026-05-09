@@ -106,6 +106,7 @@ const allWorkspaceRoles = [
 
 const ownerVisibleRoles = [...operationalRoles, roles.OWNER, roles.ACCOUNTANT];
 const propertyDetailRoles = ownerVisibleRoles;
+const bookingPageRoles = [...operationalRoles, roles.ACCOUNTANT];
 const maintenancePageRoles = [...operationalRoles, roles.MAINTENANCE];
 const financeRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
 const inventoryPageRoles = financeRoles;
@@ -125,7 +126,7 @@ const protectedRoutes = {
   '/properties': { Page: PropertiesPage, access: ownerVisibleRoles },
   '/bookings': {
     Page: BookingsPage,
-    access: [...operationalRoles, roles.OWNER, roles.ACCOUNTANT],
+    access: bookingPageRoles,
   },
   '/calendar': { Page: CalendarPage, access: calendarManagerRoles },
   '/cleaning': { Page: CleaningPage, access: [...operationalRoles, roles.CLEANER] },

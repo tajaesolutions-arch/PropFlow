@@ -9,6 +9,7 @@ import { navigate } from '../routes/AppRouter.jsx';
 const operationalRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
 const ownerVisibleRoles = [...operationalRoles, roles.OWNER, roles.ACCOUNTANT];
 const propertyDetailRoles = ownerVisibleRoles;
+const bookingPageRoles = [...operationalRoles, roles.ACCOUNTANT];
 const maintenancePageRoles = [...operationalRoles, roles.MAINTENANCE];
 const financeRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
 const inventoryPageRoles = financeRoles;
@@ -18,7 +19,7 @@ const routeAccess = {
   '/dashboard': operationalRoles,
   '/properties': ownerVisibleRoles,
   '/properties/:id': propertyDetailRoles,
-  '/bookings': [...operationalRoles, roles.OWNER, roles.ACCOUNTANT],
+  '/bookings': bookingPageRoles,
   '/calendar': calendarManagerRoles,
   '/cleaning': [...operationalRoles, roles.CLEANER],
   '/maintenance': maintenancePageRoles,
@@ -242,21 +243,17 @@ function getVisibleReports(data, user) {
 function getVisibleBookings(data, user) {
   const bookings = data.bookings || [];
 
-  if (!isOwnerRole(user)) return bookings;
+  if (!canAccessPath(user, '/bookings')) return [];
 
-  const visiblePropertyIds = getVisiblePropertyIds(data, user);
-
-  return bookings.filter((booking) => visiblePropertyIds.has(getPropertyId(booking)));
+  return bookings;
 }
 
 function getVisibleLeases(data, user) {
   const leases = data.leases || [];
 
-  if (!isOwnerRole(user)) return leases;
+  if (!canAccessPath(user, '/bookings')) return [];
 
-  const visiblePropertyIds = getVisiblePropertyIds(data, user);
-
-  return leases.filter((lease) => visiblePropertyIds.has(getPropertyId(lease)));
+  return leases;
 }
 
 function canAccessPath(user, path) {
