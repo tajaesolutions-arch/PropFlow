@@ -20,12 +20,11 @@ import { useApp } from '../lib/AppContext.jsx';
 import { roles } from '../data/constants.js';
 import '../styles/expense-finance-safety.css';
 
-const expenseCategories = [
+const baseExpenseCategories = [
   'Cleaning',
   'Maintenance',
   'Supplies',
   'Utilities',
-  'Owner payout',
   'Platform fee',
   'Other',
 ];
@@ -38,6 +37,26 @@ function canSeeWorkspaceExpensePage(currentUser) {
   return [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT].some((role) =>
     hasRole(currentUser, role),
   );
+}
+
+function canSeeOwnerFinancePlaceholders(currentUser) {
+  return [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.ACCOUNTANT].some((role) =>
+    hasRole(currentUser, role),
+  );
+}
+
+function getExpenseCategories(currentUser) {
+  if (!canSeeOwnerFinancePlaceholders(currentUser)) return baseExpenseCategories;
+
+  return [
+    'Cleaning',
+    'Maintenance',
+    'Supplies',
+    'Utilities',
+    'Owner payout',
+    'Platform fee',
+    'Other',
+  ];
 }
 
 function SafeFinanceCard({ icon: Icon, title, description, badge = 'placeholder' }) {
@@ -58,6 +77,8 @@ function SafeFinanceCard({ icon: Icon, title, description, badge = 'placeholder'
 export function ExpensesPage() {
   const { currentUser } = useApp();
   const canAccessFinance = canSeeWorkspaceExpensePage(currentUser);
+  const canSeeOwnerFinance = canSeeOwnerFinancePlaceholders(currentUser);
+  const expenseCategories = getExpenseCategories(currentUser);
 
   if (!canAccessFinance) {
     return (
@@ -78,7 +99,7 @@ export function ExpensesPage() {
   return (
     <AppLayout
       title="Expenses"
-      subtitle="Placeholder-safe expense tracking for cleaning costs, maintenance costs, supplies, owner payouts, and finance reporting."
+      subtitle="Placeholder-safe expense tracking for cleaning costs, maintenance costs, supplies, and permitted finance reporting."
     >
       <section className="card finance-safety-notice">
         <div className="card-header">
@@ -113,11 +134,20 @@ export function ExpensesPage() {
           title="Maintenance cost visibility"
           description="Maintenance costs will appear here once expense tracking is connected."
         />
-        <SafeFinanceCard
-          icon={Building2}
-          title="Owner payout visibility"
-          description="Owner payout details will appear here once finance reporting is connected."
-        />
+        {canSeeOwnerFinance ? (
+          <SafeFinanceCard
+            icon={Building2}
+            title="Owner payout visibility"
+            description="Owner payout details will appear here once finance reporting is connected."
+          />
+        ) : (
+          <SafeFinanceCard
+            icon={ShieldCheck}
+            title="Owner finance hidden"
+            description="Owner payout placeholders stay hidden for Host users until owner finance permissions are fully implemented."
+            badge="restricted"
+          />
+        )}
       </section>
 
       <section className="card reports-toolbar finance-actions-toolbar">
@@ -164,8 +194,9 @@ export function ExpensesPage() {
           empty={{
             eyebrow: 'Expenses',
             title: 'No expenses added yet',
-            description:
-              'Expense tracking is being prepared for this workspace. You’ll be able to track cleaning costs, maintenance costs, supplies, owner payouts, receipts, and reports here. This is a safe placeholder. No expense or payment records are created yet.',
+            description: canSeeOwnerFinance
+              ? 'Expense tracking is being prepared for this workspace. You’ll be able to track cleaning costs, maintenance costs, supplies, owner payouts, receipts, and reports here. This is a safe placeholder. No expense or payment records are created yet.'
+              : 'Expense tracking is being prepared for this workspace. Host users see permitted operating expense placeholders only. Owner payout details remain hidden until finance permissions are fully implemented. No expense or payment records are created yet.',
           }}
         />
       </section>
@@ -187,6 +218,12 @@ export function ExpensesPage() {
           ))}
           <span className="finance-category-pill muted-pill">Uncategorized</span>
         </div>
+
+        {!canSeeOwnerFinance && (
+          <div className="helper">
+            Owner finance categories are hidden for Host users. They should only appear for workspace owners, property managers, and accountant roles.
+          </div>
+        )}
       </section>
 
       <section className="card finance-mobile-note">
