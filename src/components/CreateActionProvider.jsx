@@ -2,7 +2,7 @@ import React from 'react';
 import { X } from 'lucide-react';
 
 import { useApp } from '../lib/AppContext.jsx';
-import { currencies, inviteRoleOptions, roleLabels } from '../data/constants.js';
+import { currencies, inviteRoleOptions, roleLabels, roles } from '../data/constants.js';
 
 const CreateActionContext = React.createContext(null);
 
@@ -267,6 +267,57 @@ function MemberOptions({ members, fallbackLabel = 'Unassigned' }) {
   );
 }
 
+function memberHasRole(member, role) {
+  return (member.roles || []).includes(role);
+}
+
+function ownerMembers(members) {
+  return members.filter((member) => memberHasRole(member, roles.OWNER));
+}
+
+function BookingOptions({ bookings, properties, emptyLabel = 'No related booking' }) {
+  return (
+    <>
+      <option value="">{emptyLabel}</option>
+      {bookings.map((booking) => {
+        const property = properties.find(
+          (item) => item.id === (booking.property_id || booking.propertyId),
+        );
+        const label = [
+          booking.guest_name || booking.guestName || 'Guest booking',
+          property?.name || booking.property,
+          booking.check_in || booking.checkIn,
+        ]
+          .filter(Boolean)
+          .join(' · ');
+
+        return (
+          <option key={booking.id} value={booking.id}>
+            {label}
+          </option>
+        );
+      })}
+    </>
+  );
+}
+
+function selectedPropertyNames(properties, propertyIds) {
+  const selected = properties
+    .filter((property) => propertyIds.includes(property.id))
+    .map((property) => property.name || property.address || 'Unnamed property');
+
+  return selected.join(', ');
+}
+
+function buildContactNotes({ notes, contextLines }) {
+  const cleanNotes = String(notes || '').trim();
+  const cleanContext = contextLines.filter(Boolean);
+
+  if (!cleanContext.length) return cleanNotes || null;
+
+  return [cleanNotes, cleanContext.join('\n')].filter(Boolean).join('\n\n');
+}
+
 async function runAppAction(app, actionNames, payload) {
   const actionName = actionNames.find((name) => typeof app?.[name] === 'function');
 
@@ -360,6 +411,7 @@ function WorkspaceBlockedNotice({ app }) {
 
 function PropertyForm({ app, close, submitting, setSubmitting, setError, notifySuccess }) {
   const workspaceCurrency = getWorkspaceCurrency(app.currentWorkspace);
+  const owners = ownerMembers(app.data.members || []);
 
   const [form, setForm] = React.useState({
     name: '',
@@ -373,6 +425,7 @@ function PropertyForm({ app, close, submitting, setSubmitting, setError, notifyS
     status: 'active',
     nightly_rate: '',
     monthly_rent: '',
+    assigned_owner_id: '',
     bedrooms: '',
     bathrooms: '',
     square_feet: '',
@@ -414,6 +467,7 @@ function PropertyForm({ app, close, submitting, setSubmitting, setError, notifyS
         country: form.country.trim() || null,
         nightly_rate: cleanNumber(form.nightly_rate),
         monthly_rent: cleanNumber(form.monthly_rent),
+        assigned_owner_id: form.assigned_owner_id || null,
         bedrooms: cleanNumber(form.bedrooms),
         bathrooms: cleanNumber(form.bathrooms),
         square_feet: cleanNumber(form.square_feet),
@@ -513,6 +567,14 @@ function PropertyForm({ app, close, submitting, setSubmitting, setError, notifyS
               onChange={set('monthly_rent')}
               data-comma-format="true"
             />
+          </label>
+
+          <label>
+            Assigned owner
+            <select value={form.assigned_owner_id} onChange={set('assigned_owner_id')}>
+              <MemberOptions members={owners} fallbackLabel="No owner assigned" />
+            </select>
+            <small className="form-hint">Only invited property owner users can be assigned here.</small>
           </label>
 
           <label>
@@ -815,12 +877,15 @@ function BookingForm({ app, close, submitting, setSubmitting, setError, notifySu
 function CleaningForm({ app, close, submitting, setSubmitting, setError, notifySuccess }) {
   const properties = app.data.properties || [];
   const members = app.data.members || [];
+  const bookings = app.data.bookings || [];
   const initialPropertyId = firstPropertyId(properties);
 
   const [form, setForm] = React.useState({
     property_id: initialPropertyId,
     assigned_cleaner_id: '',
     scheduled_for: today(),
+    scheduled_time: '11:00',
+    booking_id: '',
     status: 'scheduled',
     checklist_items: 'Strip beds\nSanitize bathrooms\nMop floors\nRestock supplies\nConfirm guest-ready condition',
     supplies_used: '',
@@ -856,6 +921,8 @@ function CleaningForm({ app, close, submitting, setSubmitting, setError, notifyS
       await runAppAction(app, ['createCleaningTask'], {
         ...form,
         assigned_cleaner_id: form.assigned_cleaner_id || null,
+        booking_id: form.booking_id || null,
+        scheduled_for: `${form.scheduled_for}T${form.scheduled_time || '11:00'}:00`,
         checklist_items: toLines(form.checklist_items),
         supplies_used: form.supplies_used.trim() || null,
         cleaner_notes: form.cleaner_notes.trim() || null,
@@ -903,6 +970,18 @@ function CleaningForm({ app, close, submitting, setSubmitting, setError, notifyS
               onChange={set('scheduled_for')}
               required
             />
+          </label>
+
+          <label>
+            Cleaning time
+            <input type="time" value={form.scheduled_time} onChange={set('scheduled_time')} required />
+          </label>
+
+          <label>
+            Related booking
+            <select value={form.booking_id} onChange={set('booking_id')}>
+              <BookingOptions bookings={bookings} properties={properties} />
+            </select>
           </label>
 
           <label>
@@ -1129,6 +1208,8 @@ function MaintenanceForm({ app, close, submitting, setSubmitting, setError, noti
 
 function ContactForm({ app, close, submitting, setSubmitting, setError, notifySuccess, type }) {
   const isOwner = type === 'owner';
+  const properties = app.data.properties || [];
+  const bookings = app.data.bookings || [];
 
   const [form, setForm] = React.useState({
     contact_type: isOwner ? 'owner' : 'guest',
@@ -1136,6 +1217,9 @@ function ContactForm({ app, close, submitting, setSubmitting, setError, notifySu
     email: '',
     phone: '',
     company_name: '',
+    property_id: '',
+    booking_id: '',
+    payout_percentage: '',
     notes: '',
   });
 
@@ -1160,6 +1244,24 @@ function ContactForm({ app, close, submitting, setSubmitting, setError, notifySu
     try {
       setSubmitting(true);
 
+      const selectedPropertyName = selectedPropertyNames(
+        properties,
+        form.property_id ? [form.property_id] : [],
+      );
+      const relatedBooking = bookings.find((booking) => booking.id === form.booking_id);
+      const notes = buildContactNotes({
+        notes: form.notes,
+        contextLines: [
+          selectedPropertyName && `Requested property context: ${selectedPropertyName}`,
+          isOwner && form.payout_percentage && `Requested payout percentage: ${form.payout_percentage}%`,
+          !isOwner &&
+            relatedBooking &&
+            `Related booking: ${
+              relatedBooking.guest_name || relatedBooking.guestName || relatedBooking.id
+            }`,
+        ],
+      });
+
       await runAppAction(
         app,
         isOwner
@@ -1172,7 +1274,7 @@ function ContactForm({ app, close, submitting, setSubmitting, setError, notifySu
           email: form.email.trim() || null,
           phone: form.phone.trim() || null,
           company_name: form.company_name.trim() || null,
-          notes: form.notes.trim() || null,
+          notes,
         },
       );
 
@@ -1212,6 +1314,35 @@ function ContactForm({ app, close, submitting, setSubmitting, setError, notifySu
             <input value={form.company_name} onChange={set('company_name')} />
           </label>
 
+          <label>
+            {isOwner ? 'Assigned property' : 'Property / stay context'}
+            <select value={form.property_id} onChange={set('property_id')}>
+              <option value="">No property selected</option>
+              <PropertyOptions properties={properties} />
+            </select>
+          </label>
+
+          {isOwner ? (
+            <label>
+              Payout percentage
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                value={form.payout_percentage}
+                onChange={set('payout_percentage')}
+              />
+            </label>
+          ) : (
+            <label>
+              Related booking
+              <select value={form.booking_id} onChange={set('booking_id')}>
+                <BookingOptions bookings={bookings} properties={properties} />
+              </select>
+            </label>
+          )}
+
           <label className="full">
             Notes
             <textarea rows={4} value={form.notes} onChange={set('notes')} />
@@ -1237,7 +1368,7 @@ function InviteForm({ app, close, submitting, setSubmitting, setError, notifySuc
   const [form, setForm] = React.useState({
     email: '',
     role: inviteRoleOptions[0] || 'property_manager',
-    property_id: '',
+    assigned_property_ids: [],
     expires_at: inDays(7),
     permission_level: 'standard',
     message: '',
@@ -1245,6 +1376,11 @@ function InviteForm({ app, close, submitting, setSubmitting, setError, notifySuc
 
   const set = (key) => (event) => {
     setForm((current) => ({ ...current, [key]: event.target.value }));
+  };
+
+  const setAssignedPropertyIds = (event) => {
+    const values = Array.from(event.target.selectedOptions).map((option) => option.value);
+    setForm((current) => ({ ...current, assigned_property_ids: values }));
   };
 
   const submit = async (event) => {
@@ -1269,8 +1405,9 @@ function InviteForm({ app, close, submitting, setSubmitting, setError, notifySuc
         email: form.email.trim().toLowerCase(),
         role: form.role,
         roles: [form.role],
-        property_id: form.property_id || null,
-        assigned_property_id: form.property_id || null,
+        property_id: form.assigned_property_ids[0] || null,
+        assigned_property_id: form.assigned_property_ids[0] || null,
+        assigned_property_ids: form.assigned_property_ids,
         expires_at: form.expires_at || null,
         permission_level: form.permission_level,
         message: form.message.trim() || null,
@@ -1309,11 +1446,16 @@ function InviteForm({ app, close, submitting, setSubmitting, setError, notifySuc
           </label>
 
           <label>
-            Assigned property, if relevant
-            <select value={form.property_id} onChange={set('property_id')}>
-              <option value="">No specific property</option>
-              <PropertyOptions properties={properties} />
+            Assigned properties, if relevant
+            <select
+              multiple
+              value={form.assigned_property_ids}
+              onChange={setAssignedPropertyIds}
+              size={Math.min(Math.max(properties.length, 2), 5)}
+            >
+              <PropertyOptions properties={properties} emptyLabel="No properties available" />
             </select>
+            <small className="form-hint">Hold Cmd/Ctrl to select multiple assigned properties.</small>
           </label>
 
           <label>
