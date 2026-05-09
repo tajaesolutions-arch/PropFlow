@@ -159,8 +159,13 @@ function countEnabledPreferences(preferences) {
   return Object.values(preferences).filter(Boolean).length;
 }
 
+function countConfiguredEnabledChannels(channels) {
+  return channelDefinitions.filter((channel) => channel.configured && channels[channel.key]).length;
+}
+
 function ChannelCard({ channel, enabled, onToggle }) {
   const Icon = channel.icon;
+  const disabled = !channel.configured;
 
   return (
     <article className="card notification-channel-card">
@@ -187,18 +192,18 @@ function ChannelCard({ channel, enabled, onToggle }) {
 
         <span>
           <strong>{enabled ? 'Enabled' : 'Disabled'}</strong>
-          <small>User preference</small>
+          <small>{disabled ? 'Locked until backend setup' : 'User preference'}</small>
         </span>
       </div>
 
-      <label className="notification-toggle-row">
-        <input type="checkbox" checked={enabled} onChange={onToggle} />
+      <label className={disabled ? 'notification-toggle-row disabled' : 'notification-toggle-row'}>
+        <input type="checkbox" checked={enabled} onChange={onToggle} disabled={disabled} />
         <span>
           <strong>{enabled ? 'Enabled' : 'Disabled'}</strong>
           <small>
             {channel.configured
               ? 'Ready to use after preferences are persisted.'
-              : 'Can be selected now, but backend provider setup is still required.'}
+              : 'Disabled until backend provider credentials and secure delivery functions are connected.'}
           </small>
         </span>
       </label>
@@ -233,7 +238,7 @@ export function NotificationSettingsPage() {
 
   const [channels, setChannels] = React.useState({
     inApp: true,
-    email: true,
+    email: false,
     sms: false,
     whatsapp: false,
   });
@@ -255,10 +260,14 @@ export function NotificationSettingsPage() {
     );
   }
 
-  const enabledChannels = Object.values(channels).filter(Boolean).length;
+  const enabledChannels = countConfiguredEnabledChannels(channels);
   const enabledPreferences = countEnabledPreferences(preferences);
 
   const toggleChannel = (key) => {
+    const channel = channelDefinitions.find((item) => item.key === key);
+
+    if (!channel?.configured) return;
+
     setChannels((value) => ({
       ...value,
       [key]: !value[key],
@@ -281,7 +290,7 @@ export function NotificationSettingsPage() {
         <StatCard
           label="Enabled channels"
           value={`${enabledChannels}/4`}
-          subtitle="Local preference state"
+          subtitle="Only configured providers can be enabled"
           icon={Bell}
         />
 
@@ -323,7 +332,7 @@ export function NotificationSettingsPage() {
         </div>
 
         <div className="helper">
-          Resend, Twilio SMS, and Twilio WhatsApp credentials must stay server-side. Do not expose
+          Email, SMS, and WhatsApp toggles stay disabled until backend provider setup is complete. Resend, Twilio SMS, and Twilio WhatsApp credentials must stay server-side. Do not expose
           API keys, auth tokens, or provider secrets in frontend code.
         </div>
       </section>
