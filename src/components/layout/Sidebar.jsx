@@ -25,7 +25,11 @@ import {
 import { navigate } from '../../routes/AppRouter.jsx';
 import { useApp } from '../../lib/AppContext.jsx';
 import { roles, roleLabels } from '../../data/constants.js';
-import { getPostLoginPath, resolvePrimaryRole } from '../../lib/auth.js';
+import { getPostLoginPath, hasAnyRole, resolvePrimaryRole } from '../../lib/auth.js';
+
+const operationalRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
+const billingAccessRoles = [roles.ADMIN, roles.OWNER_ADMIN, roles.ACCOUNTANT];
+const teamAccessRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER];
 
 const operationalNav = [
   {
@@ -47,7 +51,7 @@ const operationalNav = [
       ['/expenses', 'Expenses', Receipt],
       ['/reports', 'Reports', BarChart3],
       ['/inventory', 'Supplies / Inventory', Boxes],
-      ['/team', 'Team', Users],
+      ['/team', 'Team', Users, teamAccessRoles],
       ['/smart-tools', 'Smart Tools / AI', Sparkles],
     ],
   },
@@ -56,7 +60,7 @@ const operationalNav = [
     items: [
       ['/notifications', 'Notifications', Bell],
       ['/settings', 'Settings', Settings],
-      ['/billing', 'Billing', CreditCard],
+      ['/billing', 'Billing', CreditCard, billingAccessRoles],
       ['/help', 'Help / Support', HelpCircle],
     ],
   },
@@ -129,7 +133,10 @@ const accountantNav = [
   },
   {
     section: 'Account',
-    items: [['/account', 'Account', Settings]],
+    items: [
+      ['/notifications', 'Notifications', Bell],
+      ['/account', 'Account', Settings],
+    ],
   },
 ];
 
@@ -156,14 +163,23 @@ const roleNav = {
   [roles.ACCOUNTANT]: accountantNav,
 };
 
+function filterNavByAccess(sections, currentUser) {
+  return sections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => {
+        const allowedRoles = item[3];
+        return !allowedRoles || hasAnyRole(currentUser, allowedRoles);
+      }),
+    }))
+    .filter((section) => section.items.length > 0);
+}
+
 function getSidebarNav(currentUser) {
   const primaryRole = resolvePrimaryRole(currentUser);
+  const sections = operationalRoles.includes(primaryRole) ? operationalNav : roleNav[primaryRole] || operationalNav;
 
-  if ([roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST].includes(primaryRole)) {
-    return operationalNav;
-  }
-
-  return roleNav[primaryRole] || operationalNav;
+  return filterNavByAccess(sections, currentUser);
 }
 
 function getSidebarSearchTarget(currentUser) {
