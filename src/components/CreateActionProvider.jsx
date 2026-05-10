@@ -118,12 +118,14 @@ const bookingStatusOptions = [
   ['checked_in', 'Checked in'],
   ['checked_out', 'Checked out'],
   ['completed', 'Completed'],
+  ['cancelled', 'Cancelled'],
 ];
 
 const paymentStatusOptions = [
   ['unpaid', 'Unpaid'],
   ['partially_paid', 'Partially paid'],
   ['paid', 'Paid'],
+  ['refunded', 'Refunded'],
 ];
 
 const cleaningStatusOptions = [
@@ -779,6 +781,9 @@ function BookingForm({ app, close, submitting, setSubmitting, setError, notifySu
 
   const submit = async (event) => {
     event.preventDefault();
+
+    if (submitting) return;
+
     setError('');
 
     if (!app.currentWorkspace?.id) {
@@ -816,6 +821,45 @@ function BookingForm({ app, close, submitting, setSubmitting, setError, notifySu
       return;
     }
 
+    if (!isAllowedValue(form.source, bookingSourceOptions)) {
+      setError('Select a valid booking source.');
+      return;
+    }
+
+    if (!isAllowedValue(form.status, bookingStatusOptions)) {
+      setError('Select a valid booking status.');
+      return;
+    }
+
+    if (!isAllowedValue(form.payment_status, paymentStatusOptions)) {
+      setError('Select a valid payment status.');
+      return;
+    }
+
+    if (!currencies.includes(form.currency)) {
+      setError('Select a valid currency.');
+      return;
+    }
+
+    const guestCount = cleanNumber(form.guest_count);
+
+    if (!Number.isInteger(guestCount) || guestCount < 1) {
+      setError('Guest count must be at least 1.');
+      return;
+    }
+
+    const invalidAmount = [
+      ['total_amount', 'Total amount'],
+      ['cleaning_fee', 'Cleaning fee'],
+      ['taxes_fees', 'Taxes / fees'],
+      ['owner_payout', 'Owner payout'],
+    ].find(([key]) => form[key] !== '' && (cleanNumber(form[key]) === null || cleanNumber(form[key]) < 0));
+
+    if (invalidAmount) {
+      setError(`${invalidAmount[1]} must be 0 or more.`);
+      return;
+    }
+
     try {
       setSubmitting(true);
 
@@ -831,7 +875,7 @@ function BookingForm({ app, close, submitting, setSubmitting, setError, notifySu
         guest_name: form.guest_name.trim(),
         guest_email: normalizeEmail(form.guest_email) || null,
         guest_phone: form.guest_phone.trim() || null,
-        guest_count: Number(form.guest_count || 1),
+        guest_count: guestCount,
         total_amount: cleanNumber(form.total_amount),
         cleaning_fee: cleanNumber(form.cleaning_fee),
         taxes_fees: cleanNumber(form.taxes_fees),
