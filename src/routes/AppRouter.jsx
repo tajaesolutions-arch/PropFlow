@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 
 import { getPostLoginPath, hasAnyRole } from '../lib/auth.js';
-import { useApp } from '../lib/AppContext.jsx';
+import { getWorkspaceBillingGate, useApp } from '../lib/AppContext.jsx';
 import { roles } from '../data/constants.js';
 
 function lazyPage(importer, exportName) {
@@ -378,6 +378,29 @@ function NotFoundPage({ currentUser }) {
   );
 }
 
+
+const billingRecoveryPaths = new Set(['/billing', '/account', '/settings', '/notification-settings', '/suspended']);
+
+function BillingRestrictedScreen({ currentUser }) {
+  const canRecover = hasAnyRole(currentUser, [roles.ADMIN, roles.OWNER_ADMIN, roles.ACCOUNTANT]);
+  return (
+    <div className="auth-page router-state-page">
+      <div className="auth-card wide router-state-card">
+        <div className="router-state-icon warning"><ShieldAlert size={30} /></div>
+        <p className="eyebrow">Billing recovery required</p>
+        <h1>Workspace access is temporarily limited</h1>
+        <p>
+          This workspace is past its billing grace period. Operational staff access is limited until a Workspace Owner resolves billing.
+        </p>
+        <div className="router-error-actions">
+          {canRecover && <button className="primary" type="button" onClick={() => navigate('/billing')}>Open billing recovery</button>}
+          <button type="button" onClick={() => navigate('/account')}>Account settings</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function isPublicPath(path) {
   return Boolean(publicRoutes[path]) || path.startsWith('/book/');
 }
@@ -428,7 +451,7 @@ function RoleGuard({ allowed, children }) {
 
 export function AppRouter() {
   const [, forceRender] = React.useReducer((x) => x + 1, 0);
-  const { authLoading, currentUser, currentWorkspace } = useApp();
+  const { authLoading, currentUser, currentWorkspace, data } = useApp();
 
   React.useEffect(() => {
     window.addEventListener('popstate', forceRender);
@@ -480,6 +503,14 @@ export function AppRouter() {
 
   if (path === '/admin' && !isPropFlowAdmin) {
     return renderRoute(SuspendedPage, { variant: 'denied' }, path);
+  }
+
+  const billingGate = getWorkspaceBillingGate(currentWorkspace, data?.subscription, currentUser);
+  if (billingGate.restricted && !billingRecoveryPaths.has(path) && !isPropFlowAdmin) {
+    if (billingGate.recoveryOnly && hasAnyRole(currentUser, [roles.OWNER_ADMIN, roles.ACCOUNTANT])) {
+      return <RedirectTo to="/billing" />;
+    }
+    return <BillingRestrictedScreen currentUser={currentUser} />;
   }
 
   if (dashboardAccess[path] && !hasAnyRole(currentUser, dashboardAccess[path])) {

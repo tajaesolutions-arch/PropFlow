@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
-import { currencies, deliveryStatuses, expenseCategories, expensePaymentStatuses, expenseStatuses, invitePermissionLevels, inviteRoleOptions, notificationChannels, notificationEventTypes, notificationPreferenceGroups, notificationStatuses, propertyAssignmentRoleOptions, propertyScopedInviteRoles, propertyStatuses, propertyTypes, rentalTypes, roles } from '../data/constants.js';
+import { billingAccessRoles, billingEventTypes, billingManageRoles, billingPlans, currencies, deliveryStatuses, expenseCategories, expensePaymentStatuses, expenseStatuses, invitePermissionLevels, inviteRoleOptions, notificationChannels, notificationEventTypes, notificationPreferenceGroups, notificationStatuses, propertyAssignmentRoleOptions, propertyScopedInviteRoles, propertyStatuses, propertyTypes, rentalTypes, roles } from '../data/constants.js';
 import { resolvePrimaryRole } from './auth.js';
 import { isSupabaseConfigured, supabase } from './supabase.js';
 
@@ -110,6 +110,11 @@ const emptyData = {
   members: [],
   propertyAssignments: [],
   expenses: [],
+  subscription: null,
+  billingEvents: [],
+  billingPlanLimits: [],
+  billingAccessState: { allowed: true, warning: false, restricted: false, recoveryOnly: false, reason: 'not_configured', gracePeriodEndsAt: null },
+  billingTablesReady: false,
 };
 
 function firstResult(data) {
@@ -465,6 +470,105 @@ function normalizeNotificationProviderSetting(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function normalizeSubscription(row) {
+  if (!row) return null;
+
+  return {
+    ...row,
+    workspaceId: row.workspace_id,
+    billingProvider: row.billing_provider,
+    stripeCustomerId: row.stripe_customer_id,
+    stripeSubscriptionId: row.stripe_subscription_id,
+    stripePriceId: row.stripe_price_id,
+    trialStartedAt: row.trial_started_at,
+    trialEndsAt: row.trial_ends_at,
+    currentPeriodStart: row.current_period_start,
+    currentPeriodEnd: row.current_period_end,
+    cancelAtPeriodEnd: row.cancel_at_period_end,
+    canceledAt: row.canceled_at,
+    paymentFailedAt: row.payment_failed_at,
+    gracePeriodStartedAt: row.grace_period_started_at,
+    gracePeriodEndsAt: row.grace_period_ends_at,
+    restrictedAt: row.restricted_at,
+    restoredAt: row.restored_at,
+    lastWebhookEventId: row.last_webhook_event_id,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function normalizeBillingEvent(row) {
+  if (!row) return row;
+
+  return {
+    ...row,
+    workspaceId: row.workspace_id,
+    subscriptionId: row.subscription_id,
+    actorUserId: row.actor_user_id,
+    eventType: row.event_type,
+    providerEventId: row.provider_event_id,
+    createdAt: row.created_at,
+  };
+}
+
+function normalizeBillingPlanLimit(row) {
+  if (!row) return row;
+
+  return {
+    ...row,
+    maxProperties: row.max_properties,
+    maxTeamMembers: row.max_team_members,
+    maxFileStorageMb: row.max_file_storage_mb,
+    includesOwnerReports: row.includes_owner_reports,
+    includesInventory: row.includes_inventory,
+    includesAccountantDashboard: row.includes_accountant_dashboard,
+    includesDirectBooking: row.includes_direct_booking,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function tableIsMissing(error) {
+  const text = getErrorText(error);
+  return error?.code === '42P01' || error?.code === 'PGRST205' || text.includes('does not exist') || text.includes('schema cache');
+}
+
+function userHasAnyWorkspaceRole(currentUser, memberships, currentWorkspace, allowedRoles) {
+  if (currentUser?.roles?.includes(roles.ADMIN)) return true;
+  return getActiveWorkspaceRoles(currentUser, memberships, currentWorkspace).some((role) => allowedRoles.includes(role));
+}
+
+export function getWorkspaceBillingGate(currentWorkspace, subscription, currentUser) {
+  if (!currentWorkspace?.id || !subscription) {
+    return { allowed: true, warning: false, restricted: false, recoveryOnly: false, reason: 'not_configured', gracePeriodEndsAt: null };
+  }
+
+  if (currentUser?.roles?.includes(roles.ADMIN)) {
+    return { allowed: true, warning: false, restricted: false, recoveryOnly: false, reason: 'platform_admin', gracePeriodEndsAt: null };
+  }
+
+  const status = String(subscription.status || 'not_configured').toLowerCase();
+  const gracePeriodEndsAt = subscription.gracePeriodEndsAt || subscription.grace_period_ends_at || null;
+  const graceEnds = gracePeriodEndsAt ? new Date(gracePeriodEndsAt) : null;
+  const graceActive = graceEnds && !Number.isNaN(graceEnds.getTime()) && graceEnds.getTime() > Date.now();
+  const isBillingRole = currentUser?.roles?.some((role) => billingAccessRoles.includes(role));
+
+  if (['trialing', 'active'].includes(status)) {
+    return { allowed: true, warning: false, restricted: false, recoveryOnly: false, reason: status, gracePeriodEndsAt };
+  }
+
+  if (['past_due', 'unpaid', 'grace_period'].includes(status) && graceActive) {
+    return { allowed: true, warning: true, restricted: false, recoveryOnly: false, reason: 'grace_period', gracePeriodEndsAt };
+  }
+
+  if (status === 'restricted' || ['past_due', 'unpaid', 'grace_period'].includes(status)) {
+    return { allowed: Boolean(isBillingRole), warning: true, restricted: true, recoveryOnly: Boolean(isBillingRole), reason: 'billing_restricted', gracePeriodEndsAt };
+  }
+
+  return { allowed: true, warning: ['incomplete', 'paused', 'canceled', 'cancelled'].includes(status), restricted: false, recoveryOnly: false, reason: status, gracePeriodEndsAt };
 }
 
 function requireSupabase() {
@@ -1126,6 +1230,36 @@ export function AppProvider({ children }) {
           .order('created_at', { ascending: false }),
         normalize: (rows) => rows.map((row) => normalizeExpense(row, properties)),
       },
+      {
+        label: 'workspace subscription',
+        key: 'subscription',
+        query: supabase
+          .from('workspace_subscriptions')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .maybeSingle(),
+        normalize: (row) => normalizeSubscription(firstResult(row)),
+      },
+      {
+        label: 'billing events',
+        key: 'billingEvents',
+        query: supabase
+          .from('billing_events')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .order('created_at', { ascending: false })
+          .limit(50),
+        normalize: (rows) => rows.map(normalizeBillingEvent),
+      },
+      {
+        label: 'billing plan limits',
+        key: 'billingPlanLimits',
+        query: supabase
+          .from('billing_plan_limits')
+          .select('*')
+          .order('plan', { ascending: true }),
+        normalize: (rows) => rows.map(normalizeBillingPlanLimit),
+      },
     ];
 
     const results = await Promise.all(
@@ -1136,10 +1270,21 @@ export function AppProvider({ children }) {
     );
 
     results.forEach((result) => {
-      if (result.error) warnings.push(`${result.label}: ${formatSupabaseError(result.error)}`);
-      nextData[result.key] = result.error ? [] : result.normalize(asArray(result.data));
+      if (result.error) {
+        warnings.push(`${result.label}: ${formatSupabaseError(result.error)}`);
+        if (['workspace subscription', 'billing events', 'billing plan limits'].includes(result.label) && tableIsMissing(result.error)) {
+          console.warn('[PropFlow] Billing tables are not available yet. Apply the billing subscription foundation migration.');
+        }
+      }
+      if (result.key === 'subscription') {
+        nextData.subscription = result.error ? null : result.normalize(result.data);
+      } else {
+        nextData[result.key] = result.error ? [] : result.normalize(asArray(result.data));
+      }
     });
 
+    nextData.billingTablesReady = !results.some((result) => ['subscription', 'billingEvents', 'billingPlanLimits'].includes(result.key) && tableIsMissing(result.error));
+    nextData.billingAccessState = getWorkspaceBillingGate(workspace, nextData.subscription, currentUser);
     nextData.unreadNotificationCount = asArray(nextData.notifications).filter(isUnreadNotification).length;
 
     setData(nextData);
@@ -1466,7 +1611,7 @@ export function AppProvider({ children }) {
       p_phone: cleanText(payload.phone),
       p_website: cleanText(payload.website),
       p_property_count_estimate: cleanNumber(payload.property_count_estimate),
-      p_plan_placeholder: cleanText(payload.plan_placeholder || payload.plan) || 'starter',
+      p_plan_placeholder: billingPlans.map(([value]) => value).includes(cleanText(payload.plan_placeholder || payload.plan)) ? cleanText(payload.plan_placeholder || payload.plan) : 'starter',
     };
 
     let rpcResponse;
@@ -1493,6 +1638,24 @@ export function AppProvider({ children }) {
     }
 
     saveWorkspaceId(workspace.id);
+
+    try {
+      const trialStartedAt = new Date();
+      const trialEndsAt = new Date(trialStartedAt.getTime() + 14 * 24 * 60 * 60 * 1000);
+      await client.from('workspace_subscriptions').insert({
+        workspace_id: workspace.id,
+        plan: rpcPayload.p_plan_placeholder,
+        status: 'trialing',
+        billing_provider: 'stripe',
+        trial_started_at: trialStartedAt.toISOString(),
+        trial_ends_at: trialEndsAt.toISOString(),
+        metadata: { initialized_from: 'workspace_setup' },
+        created_by: session.user.id,
+      });
+    } catch (billingSetupError) {
+      console.warn('[PropFlow] Workspace created but billing trial initialization was skipped. Apply the billing migration if needed.', billingSetupError);
+    }
+
     await loadAccount();
 
     return workspace;
@@ -3480,6 +3643,185 @@ export function AppProvider({ children }) {
     );
   };
 
+
+  const getBillingAccessState = () => getWorkspaceBillingGate(currentWorkspace, data.subscription, currentUser);
+
+  const requireBillingRole = (allowedRoles, message) => {
+    requireWorkspaceSession(currentWorkspace, session);
+    if (!userHasAnyWorkspaceRole(currentUser, memberships, currentWorkspace, allowedRoles)) {
+      throw new Error(message);
+    }
+  };
+
+  const writeBillingEvent = async (eventType, message, metadata = {}) => {
+    try {
+      const client = requireSupabase();
+      requireWorkspaceSession(currentWorkspace, session);
+      requireAllowedValue(eventType, billingEventTypes, 'billing event type');
+      const safeMetadata = metadata && typeof metadata === 'object'
+        ? Object.fromEntries(Object.entries(metadata).filter(([key]) => !/secret|token|api.?key|service.?role/i.test(key)))
+        : {};
+
+      const { error: insertError } = await client.from('billing_events').insert({
+        workspace_id: currentWorkspace.id,
+        subscription_id: data.subscription?.id || null,
+        actor_user_id: session.user.id,
+        event_type: eventType,
+        provider: 'stripe',
+        status: 'recorded',
+        message,
+        metadata: safeMetadata,
+      });
+
+      if (insertError) console.warn('[PropFlow] Billing event insert skipped', insertError);
+    } catch (eventError) {
+      console.warn('[PropFlow] Billing event hook skipped', eventError);
+    }
+  };
+
+  const notifyBillingRoles = async (payload) => {
+    const billingRecipients = getActiveWorkspaceMembers(data.members, currentWorkspace?.id)
+      .filter((member) => asArray(member.roles).some((role) => [roles.OWNER_ADMIN, roles.ACCOUNTANT].includes(role)));
+
+    await Promise.all(
+      billingRecipients
+        .map(memberUserId)
+        .filter(Boolean)
+        .filter((userId, index, list) => list.indexOf(userId) === index)
+        .map((recipientUserId) => safeCreateNotification({ ...payload, recipient_user_id: recipientUserId })),
+    );
+  };
+
+  const ensureWorkspaceSubscription = async (preferredPlan = 'starter') => {
+    const client = requireSupabase();
+    requireBillingRole(billingManageRoles, 'Only Workspace Owners can initialize workspace billing.');
+
+    if (data.subscription?.id) return data.subscription;
+
+    const plan = String(preferredPlan || currentWorkspace?.selected_plan || currentWorkspace?.plan || 'starter').toLowerCase();
+    requireAllowedValue(plan, billingPlans.map(([value]) => value), 'billing plan');
+
+    const trialStartedAt = new Date();
+    const trialEndsAt = new Date(trialStartedAt.getTime() + 14 * 24 * 60 * 60 * 1000);
+    const { data: row, error: insertError } = await client
+      .from('workspace_subscriptions')
+      .insert({
+        workspace_id: currentWorkspace.id,
+        plan,
+        status: 'trialing',
+        billing_provider: 'stripe',
+        trial_started_at: trialStartedAt.toISOString(),
+        trial_ends_at: trialEndsAt.toISOString(),
+        metadata: { initialized_from: 'frontend_trial_setup' },
+        created_by: session.user.id,
+      })
+      .select('*')
+      .single();
+
+    if (insertError) throw new Error(formatSupabaseError(insertError, 'Trial subscription could not be initialized. Apply the billing migration and try again.'));
+
+    await writeBillingEvent('trial_started', '14-day workspace billing trial initialized.', { plan });
+    await notifyBillingRoles({
+      event_type: 'billing_trial_ending',
+      title: 'Workspace trial initialized',
+      body: 'A 14-day PropFlow trial subscription record was created for this workspace.',
+      priority: 'normal',
+      action_url: '/billing',
+      channels: ['in_app'],
+    });
+    await refreshWorkspaceData();
+
+    return normalizeSubscription(row);
+  };
+
+  const callBillingEndpoint = async (url, payload) => {
+    if (!session?.access_token) throw new Error('Your session expired. Sign in again before managing billing.');
+
+    let response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+    } catch {
+      throw new Error('Stripe checkout is not configured yet.');
+    }
+
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || body?.code === 'provider_not_configured') {
+      throw new Error(body?.message || 'Stripe checkout is not configured yet.');
+    }
+
+    return body;
+  };
+
+  const startCheckout = async (plan) => {
+    requireBillingRole(billingManageRoles, 'Only Workspace Owners can change billing plans.');
+    const normalizedPlan = String(plan || '').toLowerCase();
+    requireAllowedValue(normalizedPlan, billingPlans.map(([value]) => value), 'billing plan');
+
+    await writeBillingEvent('checkout_started', 'Checkout requested from Billing page.', { plan: normalizedPlan });
+
+    try {
+      const result = await callBillingEndpoint('/api/create-checkout-session', { workspaceId: currentWorkspace.id, plan: normalizedPlan });
+      if (result?.url) {
+        window.location.assign(result.url);
+        return result;
+      }
+      throw new Error('Stripe checkout is not configured yet.');
+    } catch (checkoutError) {
+      await writeBillingEvent('provider_not_configured', 'Stripe checkout is not configured yet.', { action: 'checkout', plan: normalizedPlan });
+      await notifyBillingRoles({
+        event_type: 'billing_provider_not_configured',
+        title: 'Stripe checkout not configured',
+        body: 'Checkout was requested, but the secure Stripe backend endpoint is not configured yet.',
+        priority: 'normal',
+        action_url: '/billing',
+        channels: ['in_app'],
+      });
+      await refreshWorkspaceData();
+      throw checkoutError;
+    }
+  };
+
+  const openBillingPortal = async () => {
+    requireBillingRole(billingAccessRoles, 'Only Workspace Owners and Accountants can open billing recovery.');
+    await writeBillingEvent('billing_portal_opened', 'Billing portal requested from Billing page.', { action: 'portal' });
+
+    try {
+      const result = await callBillingEndpoint('/api/create-billing-portal-session', { workspaceId: currentWorkspace.id });
+      if (result?.url) {
+        window.location.assign(result.url);
+        return result;
+      }
+      throw new Error('Stripe billing portal is not configured yet.');
+    } catch (portalError) {
+      await writeBillingEvent('provider_not_configured', 'Stripe billing portal is not configured yet.', { action: 'portal' });
+      await notifyBillingRoles({
+        event_type: 'billing_provider_not_configured',
+        title: 'Stripe billing portal not configured',
+        body: 'Billing portal recovery was requested, but the secure Stripe backend endpoint is not configured yet.',
+        priority: 'normal',
+        action_url: '/billing',
+        channels: ['in_app'],
+      });
+      await refreshWorkspaceData();
+      throw portalError;
+    }
+  };
+
+  const refreshBillingStatus = async () => {
+    const result = await refreshWorkspaceData();
+    if (!data.billingTablesReady) {
+      await writeBillingEvent('provider_not_configured', 'Billing tables or Stripe provider configuration are not ready.', { action: 'refresh' });
+    }
+    return result;
+  };
+
   const markNotificationRead = async (notificationId, read = true) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
@@ -3662,6 +4004,11 @@ export function AppProvider({ children }) {
       archiveNotification,
       updateNotificationPreference,
       updateNotificationProviderSetting,
+      ensureWorkspaceSubscription,
+      startCheckout,
+      openBillingPortal,
+      refreshBillingStatus,
+      getBillingAccessState,
     }),
     [
       session,

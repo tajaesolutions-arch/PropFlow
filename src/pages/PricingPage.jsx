@@ -10,82 +10,15 @@ import {
   Users,
 } from 'lucide-react';
 
+import { billingPlanDetails } from '../data/constants.js';
 import { navigate } from '../routes/AppRouter.jsx';
 
-const plans = [
-  {
-    name: 'Starter',
-    key: 'starter',
-    price: '$29/mo',
-    description: 'For individual hosts, homeowners, and small landlords getting organized.',
-    featured: false,
-    audience: 'Small operators',
-    features: [
-      '14-day trial model planned',
-      '1 workspace',
-      'Core dashboard',
-      'Properties',
-      'Bookings and leases',
-      'Cleaning tasks',
-      'Maintenance work orders',
-      'Calendar view',
-    ],
-  },
-  {
-    name: 'Pro',
-    key: 'pro',
-    price: '$79/mo',
-    description: 'For growing Airbnb hosts, property managers, and rental operators.',
-    featured: true,
-    audience: 'Growing teams',
-    features: [
-      'Everything in Starter',
-      'Owner dashboard',
-      'Cleaner dashboard',
-      'Maintenance crew dashboard',
-      'Reports foundation',
-      'Supplies / inventory',
-      'Team roles and invites',
-      'Private file uploads',
-    ],
-  },
-  {
-    name: 'Business',
-    key: 'business',
-    price: '$199/mo',
-    description: 'For professional property management companies and larger teams.',
-    featured: false,
-    audience: 'Property companies',
-    features: [
-      'Everything in Pro',
-      'Multiple workspaces prepared',
-      'Accountant dashboard',
-      'Advanced reports foundation',
-      'Direct booking page foundation',
-      'Notification center',
-      'Billing recovery workflow prepared',
-      'Priority setup support',
-    ],
-  },
-  {
-    name: 'Enterprise',
-    key: 'enterprise',
-    price: 'Custom',
-    description: 'For agencies, real estate companies, villas, resorts, and large operators.',
-    featured: false,
-    audience: 'Large operators',
-    features: [
-      'Custom onboarding',
-      'Custom workspace limits',
-      'Advanced permission planning',
-      'Team training',
-      'Custom reporting support',
-      'Future integrations support',
-      'Dedicated support path',
-      'Founder review required',
-    ],
-  },
-];
+const plans = billingPlanDetails.map((plan) => ({
+  ...plan,
+  name: plan.name || plan.title,
+  features: plan.features || [],
+}));
+
 
 const faqs = [
   {
@@ -138,7 +71,7 @@ function PricingCard({ plan }) {
       </button>
 
       <small className="todo">
-        Stripe checkout and trial enforcement should be connected through secure backend endpoints before live billing.
+        Create an account to start setup. Stripe checkout remains guarded until secure backend endpoints and server-side env vars are configured.
       </small>
     </article>
   );
@@ -171,7 +104,7 @@ export function PricingPage() {
           <h1>Plans for serious property operations.</h1>
           <p>
             Review the planned launch pricing, create an account, then choose the plan that matches your rental operation during workspace setup.
-            Stripe checkout and trial enforcement are prepared as a backend phase and are not live yet.
+            Stripe checkout remains guarded until secure backend endpoints and server-side env vars are configured.
           </p>
 
           <div className="hero-actions">
@@ -190,7 +123,7 @@ export function PricingPage() {
           <div>
             <Sparkles size={20} />
             <span>
-              <strong>No permanent free plan recommended</strong>
+              <strong>14-day trial, no fake free plan</strong>
               <small>Use a trial to attract serious users and reduce launch support load after billing is connected.</small>
             </span>
           </div>
@@ -277,7 +210,7 @@ export function PricingPage() {
               <span>
                 <CreditCard size={16} />
                 <strong>Stripe checkout</strong>
-                <small>Pending backend endpoint</small>
+                <small>Provider-not-configured until backend env is set</small>
               </span>
 
               <span>
