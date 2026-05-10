@@ -436,3 +436,11 @@ PDF export, CSV export, scheduled report automation, and generated owner stateme
 Manual expenses are workspace-scoped Supabase records once the expenses foundation migration is applied. The Expenses page and Accountant Dashboard use those records for operational finance previews alongside bookings, cleaning tasks, maintenance work orders, and owner reports.
 
 Finance summaries in PropFlow are not finalized accounting ledgers, tax filings, invoices, owner statements, or payout instructions. CSV/PDF exports remain disabled until backend export generation is added, and receipt upload stays placeholder-safe unless private receipt storage is explicitly connected. Real records require the Supabase environment variables to be configured and migrations applied; frontend code uses the Supabase anon client and does not use or expose a service-role key.
+
+## Supplies / Inventory safety note
+
+Supplies are real, workspace-scoped Supabase records that can be tracked either against a specific property or as workspace-wide inventory. Low-stock status is derived in-app from `current_quantity` and `low_stock_threshold`: zero or below is out of stock, quantities at or below the threshold are low stock, archived records are soft-hidden by `archived_at`, and all other active records are in stock.
+
+Estimated inventory value is an operational preview based on current quantity and estimated unit cost; it is not finalized accounting, tax, invoice, payout, purchase-order, or payment data. Adding or editing supplies does not automatically create expenses, vendor invoices, supplier payments, purchase orders, exports, or accounting automation.
+
+Supplier/contact details and cost visibility are role-limited. Workspace Owner / Company Admin, Property Manager, and Host roles can manage supplies; Accountant users can review supplier details and estimated inventory value in read-only mode; Property Owner, Cleaner, and Maintenance Crew roles do not receive broad inventory-ledger access. Real inventory records require Supabase environment variables and applied migrations, and frontend code uses only the Supabase anon client without any service-role key.
