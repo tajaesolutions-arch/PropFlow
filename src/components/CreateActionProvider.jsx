@@ -472,6 +472,7 @@ function WorkspaceBlockedNotice({ app }) {
 function PropertyForm({ app, close, submitting, setSubmitting, setError, notifySuccess }) {
   const workspaceCurrency = getWorkspaceCurrency(app.currentWorkspace);
   const owners = ownerMembers(app.data.members || []);
+  const ownerIds = new Set(owners.map((owner) => owner.user_id || owner.userId || owner.id).filter(Boolean));
 
   const [form, setForm] = React.useState({
     name: '',
@@ -498,6 +499,9 @@ function PropertyForm({ app, close, submitting, setSubmitting, setError, notifyS
 
   const submit = async (event) => {
     event.preventDefault();
+
+    if (submitting) return;
+
     setError('');
 
     if (!app.currentWorkspace?.id) {
@@ -515,6 +519,50 @@ function PropertyForm({ app, close, submitting, setSubmitting, setError, notifyS
       return;
     }
 
+    if (!isAllowedValue(form.property_type, propertyTypeOptions)) {
+      setError('Select a valid property type.');
+      return;
+    }
+
+    if (!isAllowedValue(form.rental_type, rentalTypeOptions)) {
+      setError('Select a valid rental type.');
+      return;
+    }
+
+    if (!isAllowedValue(form.status, propertyStatusOptions)) {
+      setError('Select a valid property status.');
+      return;
+    }
+
+    if (!currencies.includes(form.currency)) {
+      setError('Select a valid currency.');
+      return;
+    }
+
+    const numericChecks = [
+      ['nightly_rate', 'Nightly rate'],
+      ['monthly_rent', 'Monthly rent'],
+      ['bedrooms', 'Bedrooms'],
+      ['bathrooms', 'Bathrooms'],
+      ['square_feet', 'Square footage'],
+    ];
+
+    const invalidNumber = numericChecks.find(([key]) => {
+      const value = form[key];
+      const numericValue = cleanNumber(value);
+      return value !== '' && (numericValue === null || numericValue < 0);
+    });
+
+    if (invalidNumber) {
+      setError(`${invalidNumber[1]} must be 0 or more.`);
+      return;
+    }
+
+    if (form.assigned_owner_id && !ownerIds.has(form.assigned_owner_id)) {
+      setError('Assigned owner must be an invited Property Owner in this workspace.');
+      return;
+    }
+
     try {
       setSubmitting(true);
 
@@ -524,6 +572,10 @@ function PropertyForm({ app, close, submitting, setSubmitting, setError, notifyS
         city: form.city.trim() || null,
         state: form.state.trim() || null,
         country: form.country.trim() || null,
+        property_type: form.property_type,
+        rental_type: form.rental_type,
+        currency: form.currency || workspaceCurrency,
+        status: form.status,
         nightly_rate: cleanNumber(form.nightly_rate),
         monthly_rent: cleanNumber(form.monthly_rent),
         assigned_owner_id: form.assigned_owner_id || null,
@@ -633,7 +685,11 @@ function PropertyForm({ app, close, submitting, setSubmitting, setError, notifyS
             <select value={form.assigned_owner_id} onChange={set('assigned_owner_id')}>
               <MemberOptions members={owners} fallbackLabel="No owner assigned" />
             </select>
-            <small className="form-hint">Only invited property owner users can be assigned here.</small>
+            <small className="form-hint">
+              {owners.length
+                ? 'Only active property owner members in this workspace can be assigned here.'
+                : 'Invite a Property Owner to this workspace before assigning owner access.'}
+            </small>
           </label>
 
           <label>

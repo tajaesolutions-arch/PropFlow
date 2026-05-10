@@ -28,7 +28,6 @@ import { StatCard } from '../components/StatCard.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
 import { useApp } from '../lib/AppContext.jsx';
 import { formatCurrency, formatDate } from '../lib/formatters.js';
-import { hasAnyRole } from '../lib/auth.js';
 import {
   currencies,
   propertyEditorRoles,
@@ -43,7 +42,16 @@ import { navigate } from '../routes/AppRouter.jsx';
 const closedStatuses = new Set(['completed', 'cancelled', 'guest_ready']);
 const cancelledStatuses = new Set(['cancelled', 'void', 'refunded']);
 const financePropertyRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT, roles.OWNER];
-const broadPropertyAccessRoles = [roles.ADMIN, roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
+const broadPropertyAccessRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
+
+function hasAnyActiveWorkspaceRole(memberships = [], currentWorkspace, allowedRoles = []) {
+  const activeMembership = memberships.find(
+    (membership) => membership.workspace_id === currentWorkspace?.id && membership.status === 'active',
+  );
+  const activeRoles = Array.isArray(activeMembership?.roles) ? activeMembership.roles : [];
+
+  return allowedRoles.some((role) => activeRoles.includes(role));
+}
 
 function cleanNumber(value) {
   if (value === '' || value === null || value === undefined) return null;
@@ -224,8 +232,8 @@ function hasAssignedMaintenanceForProperty(propertyId, maintenance = [], current
   );
 }
 
-function canViewPropertyDetail({ property, currentUser, cleaning, maintenance }) {
-  if (hasAnyRole(currentUser, broadPropertyAccessRoles)) return true;
+function canViewPropertyDetail({ property, currentUser, cleaning, maintenance, memberships, currentWorkspace }) {
+  if (hasAnyActiveWorkspaceRole(memberships, currentWorkspace, broadPropertyAccessRoles)) return true;
   if (isOwnerAssignedToProperty(property, currentUser)) return true;
   if (hasAssignedCleaningForProperty(property.id, cleaning, currentUser)) return true;
   if (hasAssignedMaintenanceForProperty(property.id, maintenance, currentUser)) return true;
@@ -233,8 +241,8 @@ function canViewPropertyDetail({ property, currentUser, cleaning, maintenance })
   return false;
 }
 
-function canViewPropertyFinance(property, currentUser) {
-  if (!hasAnyRole(currentUser, financePropertyRoles)) return false;
+function canViewPropertyFinance(property, currentUser, memberships, currentWorkspace) {
+  if (!hasAnyActiveWorkspaceRole(memberships, currentWorkspace, financePropertyRoles)) return false;
   if (currentUser?.roles?.includes(roles.OWNER)) return isOwnerAssignedToProperty(property, currentUser);
 
   return true;
@@ -523,6 +531,8 @@ export function PropertyDetailPage({ propertyId }) {
     archiveProperty,
     uploadWorkspaceFile,
     currentUser,
+    memberships,
+    currentWorkspace,
   } = useApp();
 
   const property = (data.properties || []).find((item) => item.id === propertyId);
@@ -558,6 +568,8 @@ export function PropertyDetailPage({ propertyId }) {
     currentUser,
     cleaning: allCleaning,
     maintenance: allMaintenance,
+    memberships,
+    currentWorkspace,
   });
 
   if (!canView) {
@@ -578,9 +590,9 @@ export function PropertyDetailPage({ propertyId }) {
     );
   }
 
-  const canEdit = hasAnyRole(currentUser, propertyEditorRoles);
-  const canCreateOperationalRecords = hasAnyRole(currentUser, taskManagerRoles);
-  const canSeeFinance = canViewPropertyFinance(property, currentUser);
+  const canEdit = hasAnyActiveWorkspaceRole(memberships, currentWorkspace, propertyEditorRoles);
+  const canCreateOperationalRecords = hasAnyActiveWorkspaceRole(memberships, currentWorkspace, taskManagerRoles);
+  const canSeeFinance = canViewPropertyFinance(property, currentUser, memberships, currentWorkspace);
   const propertyCurrency = property.currency || 'USD';
 
   const bookings = (data.bookings || []).filter((booking) => getPropertyId(booking) === property.id);

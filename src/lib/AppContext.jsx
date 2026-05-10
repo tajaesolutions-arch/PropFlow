@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
-import { inviteRoleOptions, roles } from '../data/constants.js';
+import { currencies, inviteRoleOptions, propertyStatuses, propertyTypes, rentalTypes, roles } from '../data/constants.js';
 import { resolvePrimaryRole } from './auth.js';
 import { isSupabaseConfigured, supabase } from './supabase.js';
 
@@ -444,6 +444,37 @@ function requireAllowedValue(value, allowedValues, label) {
   if (!allowedValues.includes(value)) {
     throw new Error(`Select a valid ${label}.`);
   }
+}
+
+function findActiveWorkspaceMember(members, workspaceId, userId) {
+  if (!userId) return null;
+
+  return asArray(members).find(
+    (member) =>
+      member.workspace_id === workspaceId &&
+      member.status === 'active' &&
+      (member.user_id === userId || member.userId === userId || member.id === userId),
+  );
+}
+
+function assertAssignedOwnerIsWorkspaceMember(members, workspaceId, assignedOwnerId) {
+  if (!assignedOwnerId) return;
+
+  const member = findActiveWorkspaceMember(members, workspaceId, assignedOwnerId);
+
+  if (!member || !asArray(member.roles).includes(roles.OWNER)) {
+    throw new Error('Assigned owner must be an active Property Owner member in this workspace.');
+  }
+}
+
+function cleanNonNegativeNumber(value, label) {
+  const numericValue = cleanNumber(value);
+
+  if (numericValue !== null && numericValue < 0) {
+    throw new Error(`${label} must be 0 or more.`);
+  }
+
+  return numericValue;
 }
 
 export function AppProvider({ children }) {
@@ -1089,16 +1120,26 @@ export function AppProvider({ children }) {
 
     if (!propertyPayload.name) throw new Error('Property name is required.');
     if (!propertyPayload.address) throw new Error('Address or location is required.');
+    propertyPayload.city = cleanText(propertyPayload.city);
+    propertyPayload.state = cleanText(propertyPayload.state);
     propertyPayload.country = cleanText(propertyPayload.country) || currentWorkspace.country || 'United States';
     propertyPayload.property_type = propertyPayload.property_type || 'short_term_rental';
     propertyPayload.rental_type = propertyPayload.rental_type || 'short_term';
     propertyPayload.currency = propertyPayload.currency || currentWorkspace.defaultCurrency || 'USD';
     propertyPayload.status = propertyPayload.status || 'active';
-    propertyPayload.nightly_rate = cleanNumber(propertyPayload.nightly_rate);
-    propertyPayload.monthly_rent = cleanNumber(propertyPayload.monthly_rent);
-    propertyPayload.bedrooms = cleanNumber(propertyPayload.bedrooms);
-    propertyPayload.bathrooms = cleanNumber(propertyPayload.bathrooms);
-    propertyPayload.square_feet = cleanNumber(propertyPayload.square_feet);
+    propertyPayload.notes = cleanText(propertyPayload.notes);
+    propertyPayload.assigned_owner_id = propertyPayload.assigned_owner_id || null;
+
+    requireAllowedValue(propertyPayload.property_type, propertyTypes, 'property type');
+    requireAllowedValue(propertyPayload.rental_type, rentalTypes, 'rental type');
+    requireAllowedValue(propertyPayload.currency, currencies, 'currency');
+    requireAllowedValue(propertyPayload.status, propertyStatuses, 'property status');
+    assertAssignedOwnerIsWorkspaceMember(memberships, currentWorkspace.id, propertyPayload.assigned_owner_id);
+    propertyPayload.nightly_rate = cleanNonNegativeNumber(propertyPayload.nightly_rate, 'Nightly rate');
+    propertyPayload.monthly_rent = cleanNonNegativeNumber(propertyPayload.monthly_rent, 'Monthly rent');
+    propertyPayload.bedrooms = cleanNonNegativeNumber(propertyPayload.bedrooms, 'Bedrooms');
+    propertyPayload.bathrooms = cleanNonNegativeNumber(propertyPayload.bathrooms, 'Bathrooms');
+    propertyPayload.square_feet = cleanNonNegativeNumber(propertyPayload.square_feet, 'Square footage');
 
     const { data: row, error: insertError } = await client
       .from('properties')
@@ -1137,10 +1178,38 @@ export function AppProvider({ children }) {
       'archived_at',
     ];
 
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'property');
+
     const updatePayload = stripUnsupportedPayloadKeys(payload, allowed);
 
+    if ('name' in updatePayload) updatePayload.name = cleanText(updatePayload.name);
+    if ('address' in updatePayload) updatePayload.address = cleanText(updatePayload.address);
+    if ('city' in updatePayload) updatePayload.city = cleanText(updatePayload.city);
+    if ('state' in updatePayload) updatePayload.state = cleanText(updatePayload.state);
+    if ('country' in updatePayload) updatePayload.country = cleanText(updatePayload.country);
+    if ('notes' in updatePayload) updatePayload.notes = cleanText(updatePayload.notes);
+    if ('assigned_owner_id' in updatePayload) updatePayload.assigned_owner_id = updatePayload.assigned_owner_id || null;
+
+    if ('name' in updatePayload && !updatePayload.name) throw new Error('Property name is required.');
+    if ('address' in updatePayload && !updatePayload.address) throw new Error('Address or location is required.');
+    if ('property_type' in updatePayload) requireAllowedValue(updatePayload.property_type, propertyTypes, 'property type');
+    if ('rental_type' in updatePayload) requireAllowedValue(updatePayload.rental_type, rentalTypes, 'rental type');
+    if ('currency' in updatePayload) requireAllowedValue(updatePayload.currency, currencies, 'currency');
+    if ('status' in updatePayload) requireAllowedValue(updatePayload.status, propertyStatuses, 'property status');
+    if ('assigned_owner_id' in updatePayload) {
+      assertAssignedOwnerIsWorkspaceMember(memberships, currentWorkspace.id, updatePayload.assigned_owner_id);
+    }
+
+    const numericLabels = {
+      nightly_rate: 'Nightly rate',
+      monthly_rent: 'Monthly rent',
+      bedrooms: 'Bedrooms',
+      bathrooms: 'Bathrooms',
+      square_feet: 'Square footage',
+    };
+
     ['nightly_rate', 'monthly_rent', 'bedrooms', 'bathrooms', 'square_feet'].forEach((key) => {
-      if (key in updatePayload) updatePayload[key] = cleanNumber(updatePayload[key]);
+      if (key in updatePayload) updatePayload[key] = cleanNonNegativeNumber(updatePayload[key], numericLabels[key]);
     });
 
     const { data: row, error: updateError } = await client
