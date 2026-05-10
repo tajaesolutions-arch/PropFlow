@@ -73,7 +73,7 @@ const actionMeta = {
   },
   report: {
     title: 'Add report',
-    description: 'Prepare report details. Saving will be connected when report generation is ready.',
+    description: 'Create a workspace-scoped report record. PDF/CSV generation remains disabled.',
   },
 };
 
@@ -151,6 +151,26 @@ const maintenanceStatusOptions = [
   ['waiting_parts', 'Waiting for parts'],
   ['completed', 'Completed'],
   ['cancelled', 'Cancelled'],
+];
+
+const reportTypeOptions = [
+  ['owner_statement', 'Owner statement'],
+  ['revenue_report', 'Revenue report'],
+  ['expense_report', 'Expense report'],
+  ['occupancy_report', 'Occupancy report'],
+  ['maintenance_cost_report', 'Maintenance cost report'],
+  ['cleaning_cost_report', 'Cleaning cost report'],
+  ['property_performance', 'Property performance'],
+  ['booking_summary', 'Booking summary'],
+];
+
+const reportStatusOptions = [
+  ['draft', 'Draft / internal'],
+  ['released', 'Released to owner'],
+  ['published', 'Published'],
+  ['sent', 'Sent'],
+  ['delivered', 'Delivered'],
+  ['completed', 'Completed'],
 ];
 
 function normalizeText(value) {
@@ -335,6 +355,19 @@ function MemberOptions({ members, fallbackLabel = 'Unassigned' }) {
           </option>
         );
       })}
+    </>
+  );
+}
+
+function ContactOptions({ contacts, fallbackLabel = 'No owner contact' }) {
+  return (
+    <>
+      <option value="">{fallbackLabel}</option>
+      {contacts.map((contact) => (
+        <option key={contact.id} value={contact.id}>
+          {contact.fullName || contact.full_name || contact.name || contact.email || 'Owner contact'}
+        </option>
+      ))}
     </>
   );
 }
@@ -1930,12 +1963,19 @@ function ExpenseForm({ app, close, submitting, setSubmitting, setError, notifySu
 }
 
 function ReportForm({ app, close, submitting, setSubmitting, setError, notifySuccess }) {
-  const properties = app.data.properties || [];
+  const properties = (app.data.properties || []).filter((property) => property.status !== 'archived');
+  const ownerContacts = (app.data.contacts || []).filter((contact) => contact.contact_type === 'owner');
+  const owners = ownerMembers(app.data.members || []);
+  const ownerIds = new Set(owners.map((owner) => owner.user_id || owner.userId || owner.id).filter(Boolean));
+  const ownerContactIds = new Set(ownerContacts.map((contact) => contact.id));
 
   const [form, setForm] = React.useState({
     title: '',
-    report_type: 'owner_report',
-    property_id: '',
+    report_type: 'owner_statement',
+    status: 'draft',
+    property_id: firstPropertyId(properties),
+    owner_id: '',
+    contact_id: '',
     start_date: today(),
     end_date: today(),
     notes: '',
@@ -1945,9 +1985,86 @@ function ReportForm({ app, close, submitting, setSubmitting, setError, notifySuc
     setForm((current) => ({ ...current, [key]: event.target.value }));
   };
 
-  const submit = (event) => {
+  const submit = async (event) => {
     event.preventDefault();
-    setError('Report generation is not connected yet. No report, PDF, or CSV export was created.');
+
+    if (submitting) return;
+
+    setError('');
+
+    if (!app.currentWorkspace?.id) {
+      setError('Select or create a workspace before saving a report.');
+      return;
+    }
+
+    if (!properties.length) {
+      setError('Add a real property before creating a report record.');
+      return;
+    }
+
+    if (!form.property_id || !findProperty(properties, form.property_id)) {
+      setError('Select an existing property in this workspace before saving the report.');
+      return;
+    }
+
+    if (!isAllowedValue(form.report_type, reportTypeOptions)) {
+      setError('Select a valid report type.');
+      return;
+    }
+
+    if (!isAllowedValue(form.status, reportStatusOptions)) {
+      setError('Select a valid report status.');
+      return;
+    }
+
+    if (form.owner_id && !ownerIds.has(form.owner_id)) {
+      setError('Selected owner must be an active Property Owner member in this workspace.');
+      return;
+    }
+
+    if (form.contact_id && !ownerContactIds.has(form.contact_id)) {
+      setError('Selected owner contact must be an owner contact in this workspace.');
+      return;
+    }
+
+    let startDate = '';
+    let endDate = '';
+    try {
+      startDate = cleanDateOrNull(form.start_date, 'Start date');
+      endDate = cleanDateOrNull(form.end_date, 'End date');
+    } catch (error) {
+      setError(error.message);
+      return;
+    }
+
+    if (new Date(`${endDate}T00:00:00`) < new Date(`${startDate}T00:00:00`)) {
+      setError('End date must be on or after start date.');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+
+      await runAppAction(app, ['createReport', 'createOwnerReport'], {
+        title: form.title.trim() || 'Owner report',
+        report_type: form.report_type,
+        status: form.status,
+        property_id: form.property_id,
+        owner_id: form.owner_id || null,
+        contact_id: form.contact_id || null,
+        start_date: startDate,
+        end_date: endDate,
+        notes: form.notes.trim() || null,
+      });
+
+      await refreshAfterSave(app);
+      notifySuccess('Report record saved. PDF/CSV export generation is still disabled.');
+      close();
+    } catch (error) {
+      setError(error?.message || 'Report could not be saved.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -1955,47 +2072,66 @@ function ReportForm({ app, close, submitting, setSubmitting, setError, notifySuc
       <div className="modal-body">
         <WorkspaceBlockedNotice app={app} />
 
-        <EmptyDependencyNotice message="Report generation is not connected yet. This placeholder is safe and will not create reports or exports." />
+        <EmptyDependencyNotice message="This saves only report metadata from real workspace records. PDF/CSV export and scheduled generation remain disabled." />
+
+        {!properties.length && (
+          <EmptyDependencyNotice message="Add your first property before creating owner or finance report records." />
+        )}
 
         <div className="form-grid">
           <label>
             Report title
-            <input value={form.title} onChange={set('title')} required />
+            <input value={form.title} onChange={set('title')} placeholder="Monthly owner statement" />
           </label>
 
           <label>
             Report type
             <select value={form.report_type} onChange={set('report_type')}>
-              <option value="owner_report">Owner report</option>
-              <option value="revenue_report">Revenue report</option>
-              <option value="expense_report">Expense report</option>
-              <option value="maintenance_report">Maintenance cost report</option>
-              <option value="cleaning_report">Cleaning cost report</option>
-              <option value="occupancy_report">Occupancy report</option>
+              <OptionList options={reportTypeOptions} />
+            </select>
+          </label>
+
+          <label>
+            Status
+            <select value={form.status} onChange={set('status')}>
+              <OptionList options={reportStatusOptions} />
             </select>
           </label>
 
           <label>
             Property
-            <select value={form.property_id} onChange={set('property_id')}>
-              <option value="">All properties</option>
-              <PropertyOptions properties={properties} />
+            <select value={form.property_id} onChange={set('property_id')} required>
+              <PropertyOptions properties={properties} emptyLabel="No properties available" />
+            </select>
+          </label>
+
+          <label>
+            Owner member
+            <select value={form.owner_id} onChange={set('owner_id')}>
+              <MemberOptions members={owners} fallbackLabel="No owner member" />
+            </select>
+          </label>
+
+          <label>
+            Owner contact
+            <select value={form.contact_id} onChange={set('contact_id')}>
+              <ContactOptions contacts={ownerContacts} />
             </select>
           </label>
 
           <label>
             Start date
-            <input type="date" value={form.start_date} onChange={set('start_date')} />
+            <input type="date" value={form.start_date} onChange={set('start_date')} required />
           </label>
 
           <label>
             End date
-            <input type="date" value={form.end_date} onChange={set('end_date')} />
+            <input type="date" value={form.end_date} onChange={set('end_date')} required />
           </label>
 
           <label className="full">
-            Notes
-            <textarea rows={4} value={form.notes} onChange={set('notes')} />
+            Summary / notes
+            <textarea rows={4} value={form.notes} onChange={set('notes')} placeholder="Optional summary from real records. Not a finalized tax or accounting statement." />
           </label>
         </div>
       </div>
@@ -2004,8 +2140,8 @@ function ReportForm({ app, close, submitting, setSubmitting, setError, notifySuc
         <button type="button" onClick={close} disabled={submitting} data-skip-create-action="true">
           Cancel
         </button>
-        <button className="primary" type="submit" disabled={submitting} data-skip-create-action="true">
-          Generation not connected
+        <button className="primary" type="submit" disabled={submitting || !app.currentWorkspace?.id || !properties.length} data-skip-create-action="true">
+          {submitting ? 'Saving…' : 'Save report record'}
         </button>
       </footer>
     </form>

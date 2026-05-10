@@ -22,7 +22,7 @@ import { navigate } from '../routes/AppRouter.jsx';
 
 const closedStatuses = new Set(['completed', 'cancelled']);
 const cancelledStatuses = new Set(['cancelled', 'void', 'refunded']);
-const ownerVisibleReportStatuses = new Set(['ready', 'published', 'sent', 'delivered', 'completed']);
+const ownerVisibleReportStatuses = new Set(['released', 'published', 'sent', 'delivered', 'completed']);
 
 function toNumber(value) {
   const numericValue = Number(value);
@@ -155,7 +155,7 @@ function statusTone(value) {
 
   if (['cancelled', 'missed', 'urgent', 'overdue'].includes(status)) return 'error';
   if (['pending', 'scheduled', 'reported', 'in_progress', 'waiting_parts'].includes(status)) return 'warning';
-  if (['active', 'confirmed', 'completed', 'guest_ready', 'ready', 'published', 'sent', 'delivered'].includes(status)) return 'success';
+  if (['active', 'confirmed', 'completed', 'guest_ready', 'released', 'published', 'sent', 'delivered'].includes(status)) return 'success';
 
   return 'info';
 }
@@ -328,7 +328,7 @@ export function OwnerDashboardPage() {
         </div>
 
         <div className="helper">
-          This page is intentionally view-only. Draft/internal reports stay hidden until they are ready, published, sent, or delivered by the property manager.
+          This page is intentionally view-only. Draft/internal reports stay hidden until they are released, published, sent, delivered, or completed by the property manager.
         </div>
       </section>
 
@@ -530,9 +530,9 @@ export function OwnerDashboardPage() {
                   <div className="list-row" key={report.id}>
                     <span>
                       <strong>{report.title || 'Owner report'}</strong>
-                      <small>{report.period || formatDate(report.created_at) || 'Report period not set'}</small>
+                      <small>{report.startDate || report.start_date ? `${formatDate(report.startDate || report.start_date)} – ${formatDate(report.endDate || report.end_date, 'Not set')}` : formatDate(report.created_at, 'Report period not set')}</small>
                     </span>
-                    <StatusBadge tone={statusTone(report.status || 'ready')}>{report.status || 'ready'}</StatusBadge>
+                    <StatusBadge tone={statusTone(report.status || 'released')}>{report.status || 'released'}</StatusBadge>
                   </div>
                 ))
               ) : (
@@ -540,7 +540,7 @@ export function OwnerDashboardPage() {
                   compact
                   icon={FileText}
                   title="No released owner reports"
-                  description="Ready, published, sent, or delivered owner reports for assigned properties will appear here. Draft/internal reports stay hidden."
+                  description="Released, published, sent, delivered, or completed owner reports for assigned properties will appear here. Draft/internal reports stay hidden."
                 />
               )}
             </section>
