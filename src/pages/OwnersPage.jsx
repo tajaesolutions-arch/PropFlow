@@ -146,6 +146,7 @@ function buildOwnerMap({ properties, members, contacts }) {
       phone: '—',
       source: 'workspace member',
       status: member.status || 'active',
+      notes: '',
       properties: [],
       contactRecord: null,
       memberRecord: member,
@@ -164,6 +165,7 @@ function buildOwnerMap({ properties, members, contacts }) {
         name: existing.name || getContactName(contact),
         email: existing.email || getContactEmail(contact),
         phone: getContactPhone(contact),
+        notes: existing.notes || contact.notes || '',
         contactRecord: contact,
       });
       return;
@@ -176,6 +178,7 @@ function buildOwnerMap({ properties, members, contacts }) {
       phone: getContactPhone(contact),
       source: 'contact',
       status: contact.status || 'active',
+      notes: contact.notes || '',
       properties: [],
       contactRecord: contact,
       memberRecord: null,
@@ -460,6 +463,7 @@ export function OwnersPage() {
         owner.source,
         owner.status,
         owner.propertyNames,
+        owner.notes,
       ]
         .filter(Boolean)
         .join(' ')
@@ -540,8 +544,8 @@ export function OwnersPage() {
         <div>
           <h3>Owner management</h3>
           <p>
-            Owner records are built from owner-role workspace members, owner contacts, and assigned
-            property records.
+            Owner contacts are CRM records. Owner portal access is controlled through workspace
+            member invites, and assigned_owner_id points to invited owner members rather than CRM contacts.
           </p>
         </div>
 
@@ -576,7 +580,7 @@ export function OwnersPage() {
             <input
               value={filters.query}
               onChange={setFilter('query')}
-              placeholder="Search owner, email, property, source, or status..."
+              placeholder="Search owner, email, phone, property, notes, source, or status..."
               aria-label="Search owners"
             />
 
