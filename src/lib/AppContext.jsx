@@ -502,6 +502,7 @@ const workspaceActionRoles = {
   invite: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
   report: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT],
   expense: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
+  inventory: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
 };
 
 function getActiveWorkspaceRoles(currentUser, memberships, currentWorkspace) {
@@ -529,6 +530,11 @@ function requireWorkspaceProperty(properties, propertyId, label = 'property') {
   }
 
   return property;
+}
+
+function optionalWorkspaceProperty(properties, propertyId, label = 'property') {
+  if (!propertyId) return null;
+  return requireWorkspaceProperty(properties, propertyId, label);
 }
 
 function memberUserId(member) {
@@ -2086,21 +2092,35 @@ export function AppProvider({ children }) {
   const createSupply = async (payload) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'inventory');
+
+    const propertyId = payload.property_id || payload.propertyId || null;
+    const selectedProperty = optionalWorkspaceProperty(data.properties, propertyId, 'property');
+    const itemName = cleanText(payload.item_name || payload.itemName);
+    const currentQuantity = cleanNonNegativeNumber(payload.current_quantity ?? payload.currentQuantity ?? 0, 'Current quantity') ?? 0;
+    const lowStockThreshold = cleanNonNegativeNumber(payload.low_stock_threshold ?? payload.lowStockThreshold ?? 0, 'Low-stock threshold') ?? 0;
+    const estimatedUnitCost = cleanNonNegativeMoney(payload.estimated_unit_cost ?? payload.estimatedUnitCost, 'Estimated unit cost');
+    const currency = normalizeWorkspaceCurrency(
+      payload.currency || selectedProperty?.currency || currentWorkspace.defaultCurrency || currentWorkspace.default_currency || 'USD',
+    );
+
+    if (!itemName) throw new Error('Item name is required.');
+    requireAllowedValue(currency, workspaceCreationCurrencies, 'currency');
 
     const supplyPayload = {
       workspace_id: currentWorkspace.id,
-      property_id: payload.property_id || null,
-      item_name: cleanText(payload.item_name),
+      property_id: propertyId,
+      item_name: itemName,
       category: cleanText(payload.category),
-      current_quantity: cleanNumber(payload.current_quantity) ?? 0,
-      low_stock_threshold: cleanNumber(payload.low_stock_threshold) ?? 0,
+      current_quantity: currentQuantity,
+      low_stock_threshold: lowStockThreshold,
       unit: cleanText(payload.unit) || 'unit',
-      supplier_name: cleanText(payload.supplier_name),
-      supplier_contact: cleanText(payload.supplier_contact),
-      estimated_unit_cost: cleanNumber(payload.estimated_unit_cost),
-      currency: payload.currency || currentWorkspace.defaultCurrency || 'USD',
+      supplier_name: cleanText(payload.supplier_name || payload.supplierName),
+      supplier_contact: cleanText(payload.supplier_contact || payload.supplierContact),
+      estimated_unit_cost: estimatedUnitCost,
+      currency,
       notes: cleanText(payload.notes),
-      archived_at: payload.archived_at || null,
+      archived_at: null,
       created_by: session.user.id,
     };
 
@@ -2120,6 +2140,7 @@ export function AppProvider({ children }) {
   const updateSupply = async (supplyId, payload) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'inventory');
 
     const allowed = [
       'property_id',
@@ -2138,9 +2159,38 @@ export function AppProvider({ children }) {
 
     const updatePayload = stripUnsupportedPayloadKeys(payload, allowed);
 
-    ['current_quantity', 'low_stock_threshold', 'estimated_unit_cost'].forEach((key) => {
-      if (key in updatePayload) updatePayload[key] = cleanNumber(updatePayload[key]);
-    });
+    if ('property_id' in updatePayload) {
+      updatePayload.property_id = updatePayload.property_id || null;
+      optionalWorkspaceProperty(data.properties, updatePayload.property_id, 'property');
+    }
+
+    if ('item_name' in updatePayload) {
+      updatePayload.item_name = cleanText(updatePayload.item_name);
+      if (!updatePayload.item_name) throw new Error('Item name is required.');
+    }
+
+    if ('category' in updatePayload) updatePayload.category = cleanText(updatePayload.category);
+    if ('unit' in updatePayload) updatePayload.unit = cleanText(updatePayload.unit) || 'unit';
+    if ('supplier_name' in updatePayload) updatePayload.supplier_name = cleanText(updatePayload.supplier_name);
+    if ('supplier_contact' in updatePayload) updatePayload.supplier_contact = cleanText(updatePayload.supplier_contact);
+    if ('notes' in updatePayload) updatePayload.notes = cleanText(updatePayload.notes);
+
+    if ('current_quantity' in updatePayload) {
+      updatePayload.current_quantity = cleanNonNegativeNumber(updatePayload.current_quantity, 'Current quantity') ?? 0;
+    }
+
+    if ('low_stock_threshold' in updatePayload) {
+      updatePayload.low_stock_threshold = cleanNonNegativeNumber(updatePayload.low_stock_threshold, 'Low-stock threshold') ?? 0;
+    }
+
+    if ('estimated_unit_cost' in updatePayload) {
+      updatePayload.estimated_unit_cost = cleanNonNegativeMoney(updatePayload.estimated_unit_cost, 'Estimated unit cost');
+    }
+
+    if ('currency' in updatePayload) {
+      updatePayload.currency = normalizeWorkspaceCurrency(updatePayload.currency);
+      requireAllowedValue(updatePayload.currency, workspaceCreationCurrencies, 'currency');
+    }
 
     const { data: row, error: updateError } = await client
       .from('supplies')

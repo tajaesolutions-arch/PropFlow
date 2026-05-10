@@ -22,7 +22,7 @@ import { StatCard } from '../components/StatCard.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
 import { useApp } from '../lib/AppContext.jsx';
 import { hasAnyRole } from '../lib/auth.js';
-import { roles } from '../data/constants.js';
+import { currencies, roles } from '../data/constants.js';
 import { formatCurrency } from '../lib/formatters.js';
 
 const inventoryManagerRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
@@ -30,6 +30,7 @@ const inventoryCostRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOS
 const supplierDetailRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
 
 const statusOptions = ['in_stock', 'low_stock', 'out_of_stock', 'archived'];
+const inventoryCurrencies = currencies.filter((currency) => ['USD', 'JMD', 'CAD', 'GBP', 'EUR'].includes(currency));
 
 const defaultForm = {
   item_name: '',
@@ -57,7 +58,7 @@ function statusTone(status) {
 }
 
 function statusFor(item) {
-  if (item.archivedAt || item.archived_at || item.status === 'archived') return 'archived';
+  if (item.archivedAt || item.archived_at) return 'archived';
 
   const quantity = Number(item.current_quantity ?? item.currentQuantity ?? 0);
   const threshold = Number(item.low_stock_threshold ?? item.lowStockThreshold ?? 0);
@@ -132,10 +133,14 @@ function toForm(item, fallbackCurrency) {
   };
 }
 
-function validate(form) {
+function validate(form, properties = []) {
   const errors = [];
 
   if (!form.item_name.trim()) errors.push('Item name is required.');
+
+  if (form.property_id && !properties.some((property) => property.id === form.property_id)) {
+    errors.push('Selected property must belong to this workspace.');
+  }
 
   if (numberValue(form.current_quantity) === null || numberValue(form.current_quantity) < 0) {
     errors.push('Current quantity must be 0 or more.');
@@ -153,6 +158,9 @@ function validate(form) {
   }
 
   if (!form.currency.trim()) errors.push('Currency is required.');
+  else if (!inventoryCurrencies.includes(form.currency.trim().toUpperCase())) {
+    errors.push('Currency must be USD, JMD, CAD, GBP, or EUR.');
+  }
 
   return errors;
 }
@@ -208,7 +216,7 @@ function SupplyForm({ initial, properties, workspace, onSubmit, onCancel, submit
   const submit = (event) => {
     event.preventDefault();
 
-    const nextErrors = validate(form);
+    const nextErrors = validate(form, properties);
     setErrors(nextErrors);
 
     if (nextErrors.length) return;
@@ -359,7 +367,13 @@ function SupplyForm({ initial, properties, workspace, onSubmit, onCancel, submit
 
               <label>
                 Currency
-                <input value={form.currency} onChange={set('currency')} required />
+                <select value={form.currency} onChange={set('currency')} required>
+                  {inventoryCurrencies.map((currency) => (
+                    <option key={currency} value={currency}>
+                      {currency}
+                    </option>
+                  ))}
+                </select>
               </label>
 
               <label className="full">
