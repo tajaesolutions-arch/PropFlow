@@ -221,6 +221,52 @@ export const expenseStatuses = [
   ['draft', 'Draft'],
 ];
 
+
+export const leaseStatuses = [
+  ['draft', 'Draft'],
+  ['active', 'Active'],
+  ['month_to_month', 'Month-to-month'],
+  ['expiring_soon', 'Expiring soon'],
+  ['ended', 'Ended'],
+  ['terminated', 'Terminated'],
+  ['archived', 'Archived'],
+];
+
+export const leasePaymentStatuses = [
+  ['not_tracked', 'Not tracked'],
+  ['current', 'Current'],
+  ['overdue', 'Overdue'],
+  ['partially_paid', 'Partially paid'],
+  ['paid', 'Paid'],
+  ['waived', 'Waived'],
+];
+
+export const leaseTypes = [
+  ['fixed_term', 'Fixed term'],
+  ['month_to_month', 'Month-to-month'],
+  ['renewal', 'Renewal'],
+  ['short_term_extension', 'Short-term extension'],
+  ['other', 'Other'],
+];
+
+export const rentFrequencies = [
+  ['weekly', 'Weekly'],
+  ['biweekly', 'Biweekly'],
+  ['monthly', 'Monthly'],
+  ['quarterly', 'Quarterly'],
+  ['yearly', 'Yearly'],
+];
+
+export const contactTypes = [
+  ['owner', 'Owner'],
+  ['guest', 'Guest'],
+  ['tenant', 'Tenant'],
+  ['vendor', 'Vendor'],
+  ['cleaner', 'Cleaner'],
+  ['maintenance', 'Maintenance'],
+  ['other', 'Other'],
+];
+
 export const propertyTypes = [
   'short_term_rental',
   'long_term_rental',
@@ -274,6 +320,10 @@ export const notificationEventTypes = [
   ['billing_access_restricted', 'Billing access restricted'],
   ['billing_access_restored', 'Billing access restored'],
   ['billing_provider_not_configured', 'Billing provider not configured'],
+  ['lease_created', 'Lease created'],
+  ['lease_expiring_soon', 'Lease expiring soon'],
+  ['lease_archived', 'Lease archived'],
+  ['lease_document_linked', 'Lease document linked'],
   ['workspace_activity', 'Workspace activity'],
 ];
 
@@ -287,6 +337,7 @@ export const notificationPreferenceGroups = [
   ['files', 'Files'],
   ['team', 'Team'],
   ['billing', 'Billing'],
+  ['leases', 'Long-term rentals / leases'],
   ['workspace_activity', 'Workspace activity'],
 ];
 

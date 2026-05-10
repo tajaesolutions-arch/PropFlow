@@ -2,7 +2,7 @@ import React from 'react';
 import { X } from 'lucide-react';
 
 import { useApp } from '../lib/AppContext.jsx';
-import { currencies, expenseCategories, expensePaymentStatuses, inviteRoleOptions, roleLabels, roles } from '../data/constants.js';
+import { currencies, expenseCategories, expensePaymentStatuses, inviteRoleOptions, leasePaymentStatuses, leaseStatuses, leaseTypes, rentFrequencies, roleLabels, roles } from '../data/constants.js';
 
 const CreateActionContext = React.createContext(null);
 
@@ -17,6 +17,7 @@ const inDays = (days) => {
 const actionMatchers = [
   { action: 'property', labels: ['add property', 'add first property', 'new property'] },
   { action: 'booking', labels: ['add booking', 'new booking', 'add reservation', 'new reservation'] },
+  { action: 'lease', labels: ['add lease', 'new lease', 'add long-term rental', 'new long-term rental'] },
   {
     action: 'cleaning',
     labels: ['add cleaning task', 'new cleaning task', 'add cleaning', 'schedule cleaning'],
@@ -46,6 +47,10 @@ const actionMeta = {
   booking: {
     title: 'Add booking',
     description: 'Create a reservation, guest record, and optional checkout cleaning task.',
+  },
+  lease: {
+    title: 'Add lease',
+    description: 'Track a manual long-term rental lease. No rent collection, e-signature, or legal document generation is included.',
   },
   cleaning: {
     title: 'Add cleaning task',
@@ -248,6 +253,7 @@ const scopedInviteRoles = [roles.OWNER, roles.CLEANER, roles.MAINTENANCE];
 const createActionAllowedRoles = {
   property: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
   booking: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
+  lease: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
   cleaning: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
   maintenance: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
   owner: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
@@ -1103,6 +1109,294 @@ function BookingForm({ app, close, submitting, setSubmitting, setError, notifySu
         </button>
         <button className="primary" type="submit" disabled={submitting} data-skip-create-action="true">
           {submitting ? 'Saving…' : 'Save booking'}
+        </button>
+      </footer>
+    </form>
+  );
+}
+
+
+function LeaseForm({ app, close, submitting, setSubmitting, setError, notifySuccess }) {
+  const properties = app.data.properties || [];
+  const initialPropertyId = firstPropertyId(properties);
+
+  const [form, setForm] = React.useState({
+    property_id: initialPropertyId,
+    tenant_name: '',
+    tenant_email: '',
+    tenant_phone: '',
+    lease_type: 'fixed_term',
+    lease_status: 'draft',
+    lease_start: today(),
+    lease_end: '',
+    rent_amount: '',
+    rent_frequency: 'monthly',
+    currency: propertyCurrency(properties, app.currentWorkspace, initialPropertyId),
+    security_deposit_amount: '',
+    deposit_status: 'not_tracked',
+    payment_status: 'not_tracked',
+    due_day: '',
+    grace_period_days: '0',
+    late_fee_amount: '',
+    move_in_notes: '',
+    internal_notes: '',
+  });
+
+  const set = (key) => (event) => {
+    setForm((current) => {
+      const next = { ...current, [key]: event.target.value };
+      if (key === 'property_id') next.currency = propertyCurrency(properties, app.currentWorkspace, event.target.value);
+      return next;
+    });
+  };
+
+  const submit = async (event) => {
+    event.preventDefault();
+    if (submitting) return;
+    setError('');
+
+    if (!app.currentWorkspace?.id) {
+      setError('Select or create a workspace before saving a lease.');
+      return;
+    }
+
+    if (!properties.length) {
+      setError('Add a property before creating a long-term lease.');
+      return;
+    }
+
+    if (!form.property_id || !findProperty(properties, form.property_id)) {
+      setError('Select an existing property in this workspace before saving the lease.');
+      return;
+    }
+
+    if (!form.tenant_name.trim()) {
+      setError('Tenant name is required.');
+      return;
+    }
+
+    if (form.tenant_email && !isValidEmail(form.tenant_email)) {
+      setError('Enter a valid tenant email or leave it blank.');
+      return;
+    }
+
+    if (!form.lease_start) {
+      setError('Lease start is required.');
+      return;
+    }
+
+    if (form.lease_end && form.lease_end <= form.lease_start) {
+      setError('Lease end must be after lease start.');
+      return;
+    }
+
+    const invalidAmount = [
+      ['rent_amount', 'Rent amount'],
+      ['security_deposit_amount', 'Security deposit'],
+      ['late_fee_amount', 'Late fee amount'],
+    ].find(([key]) => form[key] !== '' && (cleanNumber(form[key]) === null || cleanNumber(form[key]) < 0));
+
+    if (invalidAmount) {
+      setError(`${invalidAmount[1]} must be 0 or more.`);
+      return;
+    }
+
+    const dueDay = form.due_day === '' ? null : Number(form.due_day);
+    if (dueDay !== null && (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31)) {
+      setError('Due day must be between 1 and 31.');
+      return;
+    }
+
+    const gracePeriodDays = form.grace_period_days === '' ? 0 : Number(form.grace_period_days);
+    if (!Number.isInteger(gracePeriodDays) || gracePeriodDays < 0) {
+      setError('Grace period days must be 0 or more.');
+      return;
+    }
+
+    if (!isAllowedValue(form.lease_type, leaseTypes)) {
+      setError('Select a valid lease type.');
+      return;
+    }
+
+    if (!isAllowedValue(form.lease_status, leaseStatuses)) {
+      setError('Select a valid lease status.');
+      return;
+    }
+
+    if (!isAllowedValue(form.rent_frequency, rentFrequencies)) {
+      setError('Select a valid rent frequency.');
+      return;
+    }
+
+    if (!isAllowedValue(form.payment_status, leasePaymentStatuses) || !isAllowedValue(form.deposit_status, leasePaymentStatuses)) {
+      setError('Select valid manual payment and deposit statuses.');
+      return;
+    }
+
+    if (!currencies.includes(form.currency)) {
+      setError('Select a valid currency.');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await runAppAction(app, ['createLease'], {
+        property_id: form.property_id,
+        tenant_name: form.tenant_name.trim(),
+        tenant_email: normalizeEmail(form.tenant_email) || null,
+        tenant_phone: cleanPhone(form.tenant_phone),
+        lease_type: form.lease_type,
+        lease_status: form.lease_status,
+        lease_start: form.lease_start,
+        lease_end: form.lease_end || null,
+        rent_amount: cleanNumber(form.rent_amount) ?? 0,
+        rent_frequency: form.rent_frequency,
+        currency: form.currency,
+        security_deposit_amount: cleanNumber(form.security_deposit_amount),
+        deposit_status: form.deposit_status,
+        payment_status: form.payment_status,
+        due_day: dueDay,
+        grace_period_days: gracePeriodDays,
+        late_fee_amount: cleanNumber(form.late_fee_amount),
+        move_in_notes: form.move_in_notes.trim() || null,
+        internal_notes: form.internal_notes.trim() || null,
+      });
+
+      await refreshAfterSave(app);
+      notifySuccess('Lease saved successfully.');
+      close();
+    } catch (error) {
+      setError(error?.message || 'Lease could not be saved.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form className="modal-form" onSubmit={submit} noValidate>
+      <div className="modal-body">
+        <WorkspaceBlockedNotice app={app} />
+        {!properties.length && <EmptyDependencyNotice message="Add your first property before creating leases." />}
+        <div className="helper">
+          Manual tracking only: PropFlow will not collect rent, generate legal documents, or request e-signatures from this form.
+        </div>
+
+        <div className="form-grid">
+          <label>
+            Property
+            <select value={form.property_id} onChange={set('property_id')} required>
+              <PropertyOptions properties={properties} emptyLabel="No properties available" />
+            </select>
+          </label>
+
+          <label>
+            Tenant name
+            <input value={form.tenant_name} onChange={set('tenant_name')} required />
+          </label>
+
+          <label>
+            Tenant email
+            <input type="email" value={form.tenant_email} onChange={set('tenant_email')} />
+          </label>
+
+          <label>
+            Tenant phone
+            <input value={form.tenant_phone} onChange={set('tenant_phone')} />
+          </label>
+
+          <label>
+            Lease type
+            <select value={form.lease_type} onChange={set('lease_type')}>
+              {leaseTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+
+          <label>
+            Lease status
+            <select value={form.lease_status} onChange={set('lease_status')}>
+              {leaseStatuses.filter(([value]) => value !== 'archived').map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+
+          <label>
+            Lease start
+            <input type="date" value={form.lease_start} onChange={set('lease_start')} required />
+          </label>
+
+          <label>
+            Lease end
+            <input type="date" value={form.lease_end} onChange={set('lease_end')} />
+          </label>
+
+          <label>
+            Rent amount
+            <input type="text" inputMode="decimal" value={form.rent_amount} onChange={set('rent_amount')} data-comma-format="true" />
+          </label>
+
+          <label>
+            Rent frequency
+            <select value={form.rent_frequency} onChange={set('rent_frequency')}>
+              {rentFrequencies.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+
+          <label>
+            Currency
+            <select value={form.currency} onChange={set('currency')} required>
+              {currencies.map((currency) => <option key={currency} value={currency}>{currency}</option>)}
+            </select>
+          </label>
+
+          <label>
+            Security deposit
+            <input type="text" inputMode="decimal" value={form.security_deposit_amount} onChange={set('security_deposit_amount')} data-comma-format="true" />
+          </label>
+
+          <label>
+            Deposit status
+            <select value={form.deposit_status} onChange={set('deposit_status')}>
+              {leasePaymentStatuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+
+          <label>
+            Manual payment status
+            <select value={form.payment_status} onChange={set('payment_status')}>
+              {leasePaymentStatuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+
+          <label>
+            Due day
+            <input type="number" min="1" max="31" value={form.due_day} onChange={set('due_day')} />
+          </label>
+
+          <label>
+            Grace period days
+            <input type="number" min="0" value={form.grace_period_days} onChange={set('grace_period_days')} />
+          </label>
+
+          <label>
+            Late fee amount
+            <input type="text" inputMode="decimal" value={form.late_fee_amount} onChange={set('late_fee_amount')} data-comma-format="true" />
+          </label>
+
+          <label className="full">
+            Move-in notes
+            <textarea rows={3} value={form.move_in_notes} onChange={set('move_in_notes')} />
+          </label>
+
+          <label className="full">
+            Internal notes
+            <textarea rows={3} value={form.internal_notes} onChange={set('internal_notes')} />
+          </label>
+        </div>
+      </div>
+
+      <footer className="modal-actions">
+        <button type="button" onClick={close} disabled={submitting} data-skip-create-action="true">Cancel</button>
+        <button className="primary" type="submit" disabled={submitting} data-skip-create-action="true">
+          {submitting ? 'Saving…' : 'Save lease'}
         </button>
       </footer>
     </form>
@@ -2292,6 +2586,7 @@ function CreateForm({ action, app, close, submitting, setSubmitting, setError, n
 
   if (action === 'property') return <PropertyForm {...sharedProps} />;
   if (action === 'booking') return <BookingForm {...sharedProps} />;
+  if (action === 'lease') return <LeaseForm {...sharedProps} />;
   if (action === 'cleaning') return <CleaningForm {...sharedProps} />;
   if (action === 'maintenance') return <MaintenanceForm {...sharedProps} />;
   if (action === 'owner') return <ContactForm {...sharedProps} type="owner" />;

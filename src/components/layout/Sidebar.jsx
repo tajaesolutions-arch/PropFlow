@@ -40,6 +40,7 @@ const operationalNav = [
       ['/dashboard', 'Dashboard', LayoutDashboard],
       ['/properties', 'Properties', Building2],
       ['/bookings', 'Bookings', CalendarDays],
+      ['/leases', 'Leases', FileText],
       ['/direct-bookings', 'Direct Bookings', Globe2],
       ['/calendar', 'Calendar', CalendarDays],
       ['/cleaning', 'Cleaning', ClipboardCheck],
@@ -129,6 +130,7 @@ const accountantNav = [
     items: [
       ['/accountant-dashboard', 'Accountant Dashboard', BarChart3],
       ['/properties', 'Properties', Building2],
+      ['/leases', 'Leases', FileText],
       ['/expenses', 'Expenses', Receipt],
       ['/reports', 'Reports', BarChart3],
       ['/files', 'Files / Documents', FileText],

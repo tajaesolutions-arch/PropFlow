@@ -40,6 +40,7 @@ const DashboardPage = lazyPage(() => import('../pages/DashboardPage.jsx'), 'Dash
 const PropertiesPage = lazyPage(() => import('../pages/PropertiesPage.jsx'), 'PropertiesPage');
 const PropertyDetailPage = lazyPage(() => import('../pages/PropertyDetailPage.jsx'), 'PropertyDetailPage');
 const BookingsPage = lazyPage(() => import('../pages/BookingsPage.jsx'), 'BookingsPage');
+const LeasesPage = lazyPage(() => import('../pages/LeasesPage.jsx'), 'LeasesPage');
 const DirectBookingsPage = lazyPage(() => import('../pages/DirectBookingsPage.jsx'), 'DirectBookingsPage');
 const CalendarPage = lazyPage(() => import('../pages/CalendarPage.jsx'), 'CalendarPage');
 const CleaningPage = lazyPage(() => import('../pages/CleaningPage.jsx'), 'CleaningPage');
@@ -109,6 +110,7 @@ const allWorkspaceRoles = [
 const ownerVisibleRoles = [...operationalRoles, roles.OWNER, roles.ACCOUNTANT];
 const propertyDetailRoles = ownerVisibleRoles;
 const bookingPageRoles = [...operationalRoles, roles.ACCOUNTANT];
+const leasePageRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
 const maintenancePageRoles = operationalRoles;
 const financeRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
 const filesPageRoles = [...operationalRoles, roles.ACCOUNTANT, roles.OWNER];
@@ -132,6 +134,7 @@ const protectedRoutes = {
     Page: BookingsPage,
     access: bookingPageRoles,
   },
+  '/leases': { Page: LeasesPage, access: leasePageRoles },
   '/direct-bookings': { Page: DirectBookingsPage, access: directBookingManagerRoles },
   '/calendar': { Page: CalendarPage, access: calendarManagerRoles },
   '/cleaning': { Page: CleaningPage, access: [...operationalRoles, roles.CLEANER] },

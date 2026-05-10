@@ -412,6 +412,7 @@ export function ReportsPage() {
   const ownerView = isOwnerRole(currentUser);
 
   const rawBookings = data.bookings || [];
+  const rawLeases = data.leases || [];
   const rawMaintenance = data.maintenanceWorkOrders || [];
   const rawCleaning = data.cleaningTasks || [];
   const rawExpenses = data.expenses || [];
@@ -460,6 +461,12 @@ export function ReportsPage() {
     .filter((expense) => expense.expense_status !== 'archived')
     .filter((expense) => !ownerView || assignedPropertyIds.has(getPropertyId(expense)))
     .filter((expense) => isInDateRange(expense.expense_date || expense.expenseDate, filters.start, filters.end));
+
+  const activeLeases = rawLeases
+    .filter((lease) => !(lease.archivedAt || lease.archived_at))
+    .filter((lease) => !ownerView || assignedPropertyIds.has(getPropertyId(lease)))
+    .filter((lease) => ['active', 'month_to_month', 'expiring_soon'].includes(lease.leaseStatus || lease.lease_status));
+  const leaseRentSummary = activeLeases.reduce((sum, lease) => sum + toNumber(lease.rentAmount ?? lease.rent_amount ?? lease.monthlyRent ?? lease.monthly_rent), 0);
 
   const grossRevenue = bookings.reduce((sum, booking) => sum + getBookingAmount(booking), 0);
   const ownerPayouts = bookings.reduce((sum, booking) => sum + getOwnerPayout(booking), 0);
@@ -572,6 +579,7 @@ export function ReportsPage() {
         <StatCard label="Gross revenue summary" value={formatCurrency(grossRevenue, currency)} icon={BarChart3} />
         <StatCard label="Net profit summary" value={formatCurrency(netProfit, currency)} icon={FileSpreadsheet} />
         <StatCard label="Owner payout summary" value={formatCurrency(ownerPayouts, currency)} icon={Receipt} />
+        <StatCard label="Lease rent summary" value={formatCurrency(leaseRentSummary, currency)} icon={Receipt} />
         <StatCard label="Occupancy rate" value={formatPercent(occupancyRate)} icon={CalendarDays} />
       </section>
 
@@ -898,7 +906,7 @@ export function ReportsPage() {
           <div className="card-header">
             <div>
               <h3>{ownerView ? 'Assigned-property monthly summary' : 'Monthly finance summary'}</h3>
-              <p>Derived revenue, expenses, and net profit grouped by month; not a finalized accounting or tax statement.</p>
+              <p>Derived revenue, expenses, long-term lease rent summaries, and net profit grouped by month; not a finalized accounting or tax statement.</p>
             </div>
           </div>
 

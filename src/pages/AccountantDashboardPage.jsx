@@ -89,6 +89,26 @@ function getPropertyName(record, properties) {
   return record.property || property?.name || 'Unassigned property';
 }
 
+
+function getLeaseRentAmount(lease) {
+  const value = Number(lease.rentAmount ?? lease.rent_amount ?? lease.monthlyRent ?? lease.monthly_rent ?? 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function getLeaseFrequency(lease) {
+  return lease.rentFrequency || lease.rent_frequency || 'monthly';
+}
+
+function getLeaseMonthlyEquivalent(lease) {
+  const amount = getLeaseRentAmount(lease);
+  const frequency = getLeaseFrequency(lease);
+  if (frequency === 'weekly') return amount * 52 / 12;
+  if (frequency === 'biweekly') return amount * 26 / 12;
+  if (frequency === 'quarterly') return amount / 3;
+  if (frequency === 'yearly') return amount / 12;
+  return amount;
+}
+
 function getWorkspaceCurrency(currentWorkspace) {
   return currentWorkspace?.defaultCurrency || currentWorkspace?.default_currency || 'USD';
 }
@@ -279,6 +299,8 @@ export function AccountantDashboardPage() {
     .filter((expense) => isInDateRange(expense.expense_date || expense.expenseDate, filters.start, filters.end));
 
   const reports = data.ownerReports || [];
+  const activeLeases = (data.leases || []).filter((lease) => !(lease.archivedAt || lease.archived_at) && ['active', 'month_to_month', 'expiring_soon'].includes(lease.leaseStatus || lease.lease_status));
+  const longTermRentPreview = activeLeases.reduce((sum, lease) => sum + getLeaseMonthlyEquivalent(lease), 0);
 
   const propertyRows = buildPropertyFinanceRows({
     properties,
@@ -365,7 +387,7 @@ export function AccountantDashboardPage() {
         </div>
 
         <div className="helper">
-          These values are operational finance previews, not finalized accounting ledgers, invoices, tax filings, or exported statements. Manual expenses and operational cost estimates are shown as operational finance previews and may need accountant review before final reporting. Dedicated accounting records and backend-generated exports should be connected in a later phase.
+          These values are operational finance previews, not finalized accounting ledgers, invoices, tax filings, or exported statements. Manual expenses, long-term rent previews, and operational cost estimates are shown as operational finance previews and may need accountant review before final reporting. Dedicated accounting records and backend-generated exports should be connected in a later phase.
         </div>
       </section>
 
@@ -392,6 +414,7 @@ export function AccountantDashboardPage() {
           tone={netProfit >= 0 ? 'accent' : 'warning'}
         />
         <StatCard label="Owner payouts" value={formatCurrency(ownerPayouts, currency)} icon={FileText} />
+        <StatCard label="Long-term rent preview" value={formatCurrency(longTermRentPreview, currency)} icon={FileText} />
       </section>
 
       <section className="stat-grid dense">
