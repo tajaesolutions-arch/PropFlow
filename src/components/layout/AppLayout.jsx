@@ -74,7 +74,7 @@ function shouldShowOwnerAssignmentSafetyNotice(currentUser) {
 export function AppLayout({ title = 'Dashboard', subtitle = 'Workspace-scoped operational command center', children }) {
   const [collapsed, setCollapsed] = React.useState(getInitialCollapsedState);
   const [mobileOpen, setMobileOpen] = React.useState(false);
-  const { error, currentUser } = useApp();
+  const { error, currentUser, data } = useApp();
   const showEnvironmentSetupNotice = shouldShowEnvironmentSetupNotice(currentUser);
   const showReportsExportNotice = shouldShowReportsExportNotice();
   const showBillingSafetyNotice = shouldShowBillingSafetyNotice();
@@ -86,6 +86,7 @@ export function AppLayout({ title = 'Dashboard', subtitle = 'Workspace-scoped op
   const showCalendarScheduleSafetyNotice = shouldShowCalendarScheduleSafetyNotice();
   const showInventorySafetyNotice = shouldShowInventorySafetyNotice();
   const showOwnerAssignmentSafetyNotice = shouldShowOwnerAssignmentSafetyNotice(currentUser);
+  const billingAccessState = data?.billingAccessState;
 
   React.useEffect(() => {
     window.localStorage.setItem(sidebarStorageKey, String(collapsed));
@@ -128,6 +129,7 @@ export function AppLayout({ title = 'Dashboard', subtitle = 'Workspace-scoped op
         <TopBar title={title} subtitle={subtitle} setMobileOpen={setMobileOpen} />
         <div className="page-content">
           {error && <section className="workspace-load-warning" role="alert"><strong>Workspace data warning</strong><span>{error}</span></section>}
+          {billingAccessState?.warning && <section className="workspace-load-warning" role="alert"><strong>{billingAccessState.restricted ? 'Billing recovery mode' : 'Billing grace period'}</strong><span>{billingAccessState.restricted ? 'Workspace access may be limited until billing is resolved. Billing recovery remains available to owners and accountants.' : 'Payment needs attention before the grace period ends.'}</span></section>}
           {showEnvironmentSetupNotice && <EnvironmentSetupNotice compact />}
           {showOnboardingSetupNotice && <OnboardingSetupNotice />}
           {showCalendarScheduleSafetyNotice && <CalendarScheduleSafetyNotice />}

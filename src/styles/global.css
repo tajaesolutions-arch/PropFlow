@@ -7341,3 +7341,37 @@ label {
     justify-content: stretch;
   }
 }
+
+.billing-event-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.billing-event-list article {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.85rem;
+  border: 1px solid var(--border, #E5E7EB);
+  border-radius: 0.85rem;
+  background: #fff;
+}
+
+.billing-event-list article > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.billing-event-list p {
+  margin: 0;
+  color: var(--muted, #64748B);
+  font-size: 0.9rem;
+}
+
+.form-actions.compact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}

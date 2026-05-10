@@ -484,3 +484,14 @@ In-app notifications are real `notifications` rows addressed to a recipient user
 Email, SMS, and WhatsApp sending is intentionally not active from the frontend. Resend and Twilio credentials must stay server-side only in secure backend/Supabase Edge Function environment variables before external delivery is connected. The `notification_provider_settings` table stores only non-secret status flags and labels such as enabled/configured, from name/email labels, sender phone label, and notes; it must never store API keys, auth tokens, webhook signing secrets, or service-role values.
 
 `notification_delivery_logs` is the delivery/outbox foundation for in-app and future provider channels. Logs track `queued`, `skipped`, `provider_not_configured`, `sent`, and `failed` statuses without storing provider secrets. Frontend code continues to use the public Supabase anon client only and does not use or expose a service-role key. Real notification records require Supabase environment variables and all migrations applied.
+
+## Billing / Subscription Foundation
+
+PropFlow billing is workspace-scoped and uses `workspace_subscriptions` for one subscription state record per workspace plus `billing_events` for audit/history records. Apply `supabase/migrations/202605100015_billing_subscription_foundation.sql` before runtime billing tests.
+
+- New workspaces can initialize a safe `trialing` subscription row with a 14-day default trial. This does **not** create a paid Stripe subscription or fake Stripe IDs.
+- Stripe checkout, billing portal, and webhook processing must run only through server-side endpoints with server environment variables such as `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, and `STRIPE_PRICE_BUSINESS`.
+- Frontend code must never contain Stripe secret keys, webhook secrets, Supabase service-role keys, or provider tokens.
+- The current Vercel `api/` Stripe endpoints intentionally return `provider_not_configured` until secure auth validation, Stripe SDK wiring, signature verification, and idempotent subscription persistence are completed server-side.
+- Failed payments should enter a grace-period model instead of causing instant lockout. After the grace period, workspace access becomes recovery-only for Workspace Owners/Accountants while operational staff may be limited until billing is resolved.
+- Do not insert fake active subscriptions, fake checkout success, fake portal links, generated invoices, tax automation, coupons, or usage-based billing records from the frontend.

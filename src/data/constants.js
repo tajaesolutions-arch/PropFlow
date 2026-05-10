@@ -74,6 +74,93 @@ export const dashboardRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.
 export const propertyEditorRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER];
 export const taskManagerRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
 
+
+export const billingPlans = [
+  ['starter', 'Starter'],
+  ['pro', 'Pro'],
+  ['business', 'Business'],
+  ['enterprise', 'Enterprise'],
+];
+
+export const billingPlanDetails = [
+  {
+    key: 'starter',
+    name: 'Starter',
+    title: 'Starter',
+    price: '$49/mo',
+    priceMonthly: 49,
+    audience: 'Solo hosts',
+    description: 'For small portfolios starting with role-safe operations.',
+    features: ['14-day trial', 'Up to 3 properties', 'Core operations', 'In-app notifications'],
+  },
+  {
+    key: 'pro',
+    name: 'Pro',
+    title: 'Pro',
+    price: '$129/mo',
+    priceMonthly: 129,
+    audience: 'Growing teams',
+    description: 'For operators managing multiple properties and team workflows.',
+    featured: true,
+    features: ['14-day trial', 'Up to 15 properties', 'Owner reports', 'Inventory tracking'],
+  },
+  {
+    key: 'business',
+    name: 'Business',
+    title: 'Business',
+    price: '$299/mo',
+    priceMonthly: 299,
+    audience: 'Management companies',
+    description: 'For larger teams that need finance visibility and direct booking readiness.',
+    features: ['14-day trial', 'Up to 50 properties', 'Accountant dashboard', 'Direct booking readiness'],
+  },
+  {
+    key: 'enterprise',
+    name: 'Enterprise',
+    title: 'Enterprise',
+    price: 'Custom',
+    priceMonthly: null,
+    audience: 'Scaled operations',
+    description: 'For multi-brand or high-volume operations that need custom onboarding.',
+    features: ['14-day trial available', 'Custom limits', 'Priority setup', 'Workspace recovery support'],
+  },
+];
+
+export const subscriptionStatuses = [
+  'trialing',
+  'active',
+  'past_due',
+  'unpaid',
+  'incomplete',
+  'canceled',
+  'cancelled',
+  'paused',
+  'restricted',
+  'grace_period',
+  'not_configured',
+];
+
+export const billingEventTypes = [
+  'trial_started',
+  'trial_ending',
+  'checkout_started',
+  'checkout_completed',
+  'subscription_created',
+  'subscription_updated',
+  'subscription_canceled',
+  'payment_succeeded',
+  'payment_failed',
+  'grace_period_started',
+  'grace_period_ended',
+  'access_restricted',
+  'access_restored',
+  'billing_portal_opened',
+  'provider_not_configured',
+];
+
+export const billingAccessRoles = [roles.ADMIN, roles.OWNER_ADMIN, roles.ACCOUNTANT];
+export const billingManageRoles = [roles.ADMIN, roles.OWNER_ADMIN];
+
 export const expenseCategories = [
   ['cleaning', 'Cleaning'],
   ['maintenance', 'Maintenance'],
@@ -148,7 +235,12 @@ export const notificationEventTypes = [
   ['member_suspended', 'Member suspended'],
   ['member_reactivated', 'Member reactivated'],
   ['billing_payment_failed', 'Billing payment failed'],
+  ['billing_trial_ending', 'Billing trial ending'],
+  ['billing_grace_period_started', 'Billing grace period started'],
   ['billing_grace_period_warning', 'Billing grace period warning'],
+  ['billing_access_restricted', 'Billing access restricted'],
+  ['billing_access_restored', 'Billing access restored'],
+  ['billing_provider_not_configured', 'Billing provider not configured'],
   ['workspace_activity', 'Workspace activity'],
 ];
 
