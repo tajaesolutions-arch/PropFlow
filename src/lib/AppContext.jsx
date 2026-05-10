@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
-import { currencies, expenseCategories, expensePaymentStatuses, expenseStatuses, inviteRoleOptions, propertyStatuses, propertyTypes, rentalTypes, roles } from '../data/constants.js';
+import { currencies, expenseCategories, expensePaymentStatuses, expenseStatuses, invitePermissionLevels, inviteRoleOptions, propertyAssignmentRoleOptions, propertyScopedInviteRoles, propertyStatuses, propertyTypes, rentalTypes, roles } from '../data/constants.js';
 import { resolvePrimaryRole } from './auth.js';
 import { isSupabaseConfigured, supabase } from './supabase.js';
 
@@ -104,6 +104,7 @@ const emptyData = {
   fileUploads: [],
   invites: [],
   members: [],
+  propertyAssignments: [],
   expenses: [],
 };
 
@@ -139,6 +140,22 @@ function cleanText(value) {
 function cleanEmail(value) {
   const text = String(value || '').trim().toLowerCase();
   return text || null;
+}
+
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+}
+
+function cleanRoleArray(value, allowedRoles = inviteRoleOptions) {
+  const rawRoles = Array.isArray(value) ? value : [value];
+  const normalized = Array.from(new Set(rawRoles.map((role) => String(role || '').trim()).filter(Boolean)));
+  const invalidRoles = normalized.filter((role) => !allowedRoles.includes(role));
+
+  if (invalidRoles.length) {
+    throw new Error('Select valid customer workspace roles only. PropFlow Admin cannot be assigned inside customer workspaces.');
+  }
+
+  return normalized;
 }
 
 function cleanPhone(value) {
@@ -457,7 +474,7 @@ function stripUnsupportedPayloadKeys(payload, allowedKeys) {
   );
 }
 
-const scopedInviteRoles = [roles.OWNER, roles.CLEANER, roles.MAINTENANCE];
+const scopedInviteRoles = propertyScopedInviteRoles;
 const supportedContactTypes = ['owner', 'guest', 'tenant', 'vendor', 'cleaner', 'maintenance', 'other'];
 
 const maintenancePriorities = ['low', 'medium', 'high', 'urgent'];
@@ -510,7 +527,9 @@ const workspaceActionRoles = {
   contact: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
   ownerContact: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
   guestContact: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
-  invite: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
+  invite: [roles.OWNER_ADMIN],
+  teamLifecycle: [roles.OWNER_ADMIN],
+  propertyAssignment: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
   report: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT],
   expense: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
   inventory: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
@@ -623,7 +642,7 @@ function assertFileTypeAndSize(file, fileCategory) {
 
 function getActiveWorkspaceRoles(currentUser, memberships, currentWorkspace) {
   const activeMembership = asArray(memberships).find(
-    (membership) => membership.workspace_id === currentWorkspace?.id && membership.status !== 'revoked',
+    (membership) => membership.workspace_id === currentWorkspace?.id && membership.status === 'active',
   );
 
   return asArray(activeMembership?.roles || currentUser?.membership?.roles);
@@ -899,6 +918,16 @@ export function AppProvider({ children }) {
         normalize: (rows) => rows,
       },
       {
+        label: 'property assignments',
+        key: 'propertyAssignments',
+        query: supabase
+          .from('property_assignments')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .order('created_at', { ascending: false }),
+        normalize: (rows) => rows,
+      },
+      {
         label: 'file uploads',
         key: 'fileUploads',
         query: supabase
@@ -1061,7 +1090,7 @@ export function AppProvider({ children }) {
         normalizedMemberships.find(
           (membership) =>
             membership.workspace_id === savedWorkspaceId &&
-            membership.status !== 'revoked' &&
+            membership.status === 'active' &&
             membership.workspace,
         ) ||
         normalizedMemberships.find(
@@ -1076,7 +1105,7 @@ export function AppProvider({ children }) {
       }
 
       const memberRoles = Array.from(
-        new Set(normalizedMemberships.flatMap((membership) => asArray(membership.roles))),
+        new Set(normalizedMemberships.filter((membership) => membership.status === 'active').flatMap((membership) => asArray(membership.roles))),
       );
 
       const userRoles = profile?.is_propflow_admin
@@ -1396,6 +1425,8 @@ export function AppProvider({ children }) {
 
     if (acceptError) {
       console.warn('[PropFlow] Workspace invite status update failed after membership creation', acceptError);
+    } else {
+      await writeActivityLog('workspace_invite.accepted', { invite_id: invite.id }, invite.workspace_id);
     }
 
     saveWorkspaceId(invite.workspace_id);
@@ -2328,42 +2359,93 @@ export function AppProvider({ children }) {
       archived_at: archived ? new Date().toISOString() : null,
     });
 
+  const writeActivityLog = async (action, metadata = {}, workspaceId = currentWorkspace?.id) => {
+    if (!supabase || !workspaceId || !session?.user?.id) return;
+
+    try {
+      await supabase.from('activity_logs').insert({
+        workspace_id: workspaceId,
+        actor_user_id: session.user.id,
+        action,
+        metadata,
+      });
+    } catch (logError) {
+      console.warn('[PropFlow] Activity log write skipped', logError);
+    }
+  };
+
   const createInvite = async (payload) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'invite');
 
-    const token = inviteToken();
-    const roleList = (payload.roles || [payload.role]).filter((role) => inviteRoleOptions.includes(role));
+    const email = cleanEmail(payload.email);
+    const roleList = cleanRoleArray(payload.roles || payload.role, inviteRoleOptions);
+    const permissionLevel = payload.permission_level || payload.permissionLevel || 'standard';
+    const expiresValue = payload.expires_at || payload.expiresAt || null;
 
-    if (!cleanEmail(payload.email)) throw new Error('Invitee email is required.');
-    if (!roleList.length) throw new Error('Select at least one valid role for this invite.');
+    if (!email || !isValidEmail(email)) throw new Error('Enter a valid invitee email address.');
+    if (!roleList.length) throw new Error('Select at least one valid customer workspace role for this invite.');
+    requireAllowedValue(permissionLevel, invitePermissionLevels, 'permission level');
+
+    let expiresAt = null;
+    if (expiresValue) {
+      const parsedDate = new Date(expiresValue);
+      if (Number.isNaN(parsedDate.getTime())) throw new Error('Select a valid invite expiration date.');
+      parsedDate.setHours(23, 59, 59, 999);
+      if (parsedDate.getTime() <= Date.now()) throw new Error('Invite expiration date must be in the future.');
+      expiresAt = parsedDate.toISOString();
+    }
 
     const requestedPropertyIds = [
       payload.assigned_property_id,
+      payload.assignedPropertyId,
       payload.property_id,
-      ...(payload.assigned_property_ids || []),
+      payload.propertyId,
+      ...asArray(payload.assigned_property_ids),
+      ...asArray(payload.assignedPropertyIds),
     ].filter(Boolean);
     const uniquePropertyIds = Array.from(new Set(requestedPropertyIds));
     const needsPropertyScope = roleList.some((role) => scopedInviteRoles.includes(role));
-    const assignedPropertyIds = needsPropertyScope
-      ? uniquePropertyIds.filter((propertyId) => asArray(data.properties).some((property) => property.id === propertyId))
-      : [];
+    const assignedPropertyIds = uniquePropertyIds.filter((propertyId) =>
+      asArray(data.properties).some((property) => property.id === propertyId && property.workspace_id === currentWorkspace.id),
+    );
 
-    if (needsPropertyScope && uniquePropertyIds.length !== assignedPropertyIds.length) {
+    if (uniquePropertyIds.length !== assignedPropertyIds.length) {
       throw new Error('Assigned properties must be existing properties in this workspace.');
+    }
+
+    if (needsPropertyScope && !assignedPropertyIds.length) {
+      throw new Error('Property Owner, Cleaner, and Maintenance invites require at least one assigned property.');
+    }
+
+    if (!needsPropertyScope && assignedPropertyIds.length) {
+      throw new Error('Assigned properties are only supported for Property Owner, Cleaner, and Maintenance invites.');
+    }
+
+    const { data: duplicateRows, error: duplicateError } = await client
+      .from('workspace_invites')
+      .select('id')
+      .eq('workspace_id', currentWorkspace.id)
+      .eq('email', email)
+      .eq('status', 'pending')
+      .limit(1);
+
+    if (duplicateError) throw new Error(formatSupabaseError(duplicateError, 'Could not check existing invites.'));
+    if (duplicateRows?.length) {
+      throw new Error('This email already has a pending invite for this workspace. Revoke it before sending a new one.');
     }
 
     const invitePayload = {
       workspace_id: currentWorkspace.id,
-      email: cleanEmail(payload.email),
+      email,
       roles: roleList,
       assigned_property_ids: assignedPropertyIds,
-      token,
+      token: inviteToken(),
       workspace_code: getWorkspaceCode(currentWorkspace),
-      message: cleanText(payload.message),
+      message: cleanText(payload.message)?.slice(0, 1000) || null,
       status: 'pending',
-      expires_at: payload.expires_at ? new Date(payload.expires_at).toISOString() : null,
+      expires_at: expiresAt,
       invited_by: session.user.id,
     };
 
@@ -2375,6 +2457,7 @@ export function AppProvider({ children }) {
 
     if (insertError) throw new Error(formatSupabaseError(insertError, 'Invite could not be created.'));
 
+    await writeActivityLog('workspace_invite.created', { invite_id: row.id, email, roles: roleList });
     await refreshWorkspaceData();
 
     return row;
@@ -2382,6 +2465,131 @@ export function AppProvider({ children }) {
 
   const createWorkspaceInvite = createInvite;
   const inviteTeamMember = createInvite;
+
+  const updateWorkspaceMemberStatus = async (memberId, nextStatus) => {
+    const client = requireSupabase();
+    requireWorkspaceSession(currentWorkspace, session);
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'teamLifecycle');
+    requireAllowedValue(nextStatus, ['active', 'suspended', 'revoked'], 'member status');
+
+    const member = asArray(data.members).find((item) => item.id === memberId && item.workspace_id === currentWorkspace.id);
+    if (!member) throw new Error('Workspace member was not found in the current workspace.');
+
+    const memberRoles = cleanRoleArray(member.roles, inviteRoleOptions);
+    const isOwnerAdmin = memberRoles.includes(roles.OWNER_ADMIN);
+    const activeOwners = asArray(data.members).filter(
+      (item) => item.workspace_id === currentWorkspace.id && item.status === 'active' && asArray(item.roles).includes(roles.OWNER_ADMIN),
+    );
+
+    if (isOwnerAdmin && nextStatus !== 'active' && activeOwners.length <= 1) {
+      throw new Error('You cannot suspend or revoke the last active Workspace Owner / Company Admin.');
+    }
+
+    if (member.user_id === session.user.id && nextStatus !== 'active') {
+      throw new Error('You cannot suspend or revoke your own workspace access from Settings.');
+    }
+
+    const { data: row, error: updateError } = await client
+      .from('workspace_members')
+      .update({ status: nextStatus })
+      .eq('id', memberId)
+      .eq('workspace_id', currentWorkspace.id)
+      .select('*')
+      .single();
+
+    if (updateError) throw new Error(formatSupabaseError(updateError, 'Member status could not be updated.'));
+
+    await writeActivityLog(`workspace_member.${nextStatus}`, { member_id: memberId, user_id: member.user_id });
+    await refreshWorkspaceData();
+
+    return normalizeMember(row);
+  };
+
+  const revokeWorkspaceInvite = async (inviteId) => {
+    const client = requireSupabase();
+    requireWorkspaceSession(currentWorkspace, session);
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'invite');
+
+    const invite = asArray(data.invites).find((item) => item.id === inviteId && item.workspace_id === currentWorkspace.id);
+    if (!invite) throw new Error('Invite was not found in the current workspace.');
+    if (invite.status !== 'pending') throw new Error('Only pending invites can be revoked.');
+
+    const { data: row, error: updateError } = await client
+      .from('workspace_invites')
+      .update({ status: 'revoked' })
+      .eq('id', inviteId)
+      .eq('workspace_id', currentWorkspace.id)
+      .eq('status', 'pending')
+      .select('*')
+      .single();
+
+    if (updateError) throw new Error(formatSupabaseError(updateError, 'Invite could not be revoked.'));
+
+    await writeActivityLog('workspace_invite.revoked', { invite_id: inviteId, email: invite.email });
+    await refreshWorkspaceData();
+
+    return row;
+  };
+
+  const createPropertyAssignment = async (payload) => {
+    const client = requireSupabase();
+    requireWorkspaceSession(currentWorkspace, session);
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'propertyAssignment');
+
+    const propertyId = payload.property_id || payload.propertyId;
+    const userId = payload.user_id || payload.userId;
+    const assignmentRole = payload.assignment_role || payload.assignmentRole;
+
+    requireAllowedValue(assignmentRole, propertyAssignmentRoleOptions, 'assignment role');
+    const property = requireWorkspaceProperty(data.properties, propertyId);
+    if (property.workspace_id !== currentWorkspace.id) throw new Error('Selected property must belong to the current workspace.');
+
+    const member = asArray(data.members).find((item) => item.workspace_id === currentWorkspace.id && memberUserId(item) === userId);
+    if (!member || member.status !== 'active') throw new Error('Assigned user must be an active member of this workspace.');
+    if (!asArray(member.roles).includes(assignmentRole)) {
+      throw new Error('Assignment role must match one of the active member roles. Update the member role in a future role-management release before assigning this access.');
+    }
+
+    const { data: row, error: upsertError } = await client.from('property_assignments').upsert(
+      {
+        workspace_id: currentWorkspace.id,
+        property_id: propertyId,
+        user_id: userId,
+        assignment_role: assignmentRole,
+        created_by: session.user.id,
+      },
+      { onConflict: 'property_id,user_id,assignment_role' },
+    ).select('*').maybeSingle();
+
+    if (upsertError) throw new Error(formatSupabaseError(upsertError, 'Property assignment could not be saved.'));
+
+    await writeActivityLog('property_assignment.created', { assignment_id: row?.id, property_id: propertyId, user_id: userId, assignment_role: assignmentRole });
+    await refreshWorkspaceData();
+
+    return row;
+  };
+
+  const removePropertyAssignment = async (assignmentId) => {
+    const client = requireSupabase();
+    requireWorkspaceSession(currentWorkspace, session);
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'propertyAssignment');
+
+    const assignment = asArray(data.propertyAssignments).find((item) => item.id === assignmentId && item.workspace_id === currentWorkspace.id);
+    if (!assignment) throw new Error('Property assignment was not found in the current workspace.');
+
+    const { error: deleteError } = await client
+      .from('property_assignments')
+      .delete()
+      .eq('id', assignmentId)
+      .eq('workspace_id', currentWorkspace.id);
+
+    if (deleteError) throw new Error(formatSupabaseError(deleteError, 'Property assignment could not be removed.'));
+
+    await writeActivityLog('property_assignment.removed', { assignment_id: assignmentId, property_id: assignment.property_id, user_id: assignment.user_id, assignment_role: assignment.assignment_role });
+    await refreshWorkspaceData();
+
+    return assignment;
+  };
 
   const createReport = async (payload) => {
     const client = requireSupabase();
@@ -2865,6 +3073,10 @@ export function AppProvider({ children }) {
       createInvite,
       createWorkspaceInvite,
       inviteTeamMember,
+      updateWorkspaceMemberStatus,
+      revokeWorkspaceInvite,
+      createPropertyAssignment,
+      removePropertyAssignment,
       createSupply,
       updateSupply,
       archiveSupply,

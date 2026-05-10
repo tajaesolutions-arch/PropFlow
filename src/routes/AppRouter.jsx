@@ -452,7 +452,7 @@ export function AppRouter() {
       return <RedirectTo to={getPostLoginPath(currentUser)} />;
     }
 
-    if (currentUser && currentWorkspace && path === '/join') {
+    if (currentUser && currentWorkspace && path === '/join' && !window.location.search) {
       return <RedirectTo to={getPostLoginPath(currentUser)} />;
     }
 

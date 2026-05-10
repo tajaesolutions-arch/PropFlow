@@ -21,9 +21,8 @@ import { EmptyState } from '../components/EmptyState.jsx';
 import { StatCard } from '../components/StatCard.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
 import { useApp } from '../lib/AppContext.jsx';
-import { currencies, inviteRoleOptions, roleLabels, roles } from '../data/constants.js';
+import { currencies, inviteRoleOptions, invitePermissionLevels, propertyAssignmentRoleOptions, propertyScopedInviteRoles, roleLabels, roles } from '../data/constants.js';
 import { hasAnyRole } from '../lib/auth.js';
-import { supabase } from '../lib/supabase.js';
 import { navigate } from '../routes/AppRouter.jsx';
 
 const defaultInvite = {
@@ -35,13 +34,7 @@ const defaultInvite = {
   permissionLevel: 'standard',
 };
 
-const assignmentRoleOptions = [
-  roles.OWNER,
-  roles.CLEANER,
-  roles.MAINTENANCE,
-  roles.HOST,
-  roles.ACCOUNTANT,
-];
+const assignmentRoleOptions = propertyAssignmentRoleOptions;
 
 const billingAccessRoles = [roles.ADMIN, roles.OWNER_ADMIN, roles.ACCOUNTANT];
 const teamVisibilityRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER];
@@ -93,6 +86,56 @@ function getMemberId(member) {
 }
 
 function getMemberName(member) {
+  const updateMemberStatus = async (memberId, status) => {
+    if (!canManageMembers) {
+      setMessage('Only Workspace Owners / Company Admins can manage member lifecycle controls.');
+      return;
+    }
+
+    setMemberBusyId(memberId);
+    setMessage('');
+
+    try {
+      await updateWorkspaceMemberStatus(memberId, status);
+      setMessage(status === 'active' ? 'Member reactivated.' : `Member ${status}.`);
+      clearMessageSoon();
+    } catch (error) {
+      setMessage(error?.message || 'Member status could not be updated.');
+    } finally {
+      setMemberBusyId('');
+    }
+  };
+
+  const revokeInvite = async (inviteId) => {
+    if (!canInvite) {
+      setMessage('Only Workspace Owners / Company Admins can revoke invites.');
+      return;
+    }
+
+    setInviteBusyId(inviteId);
+    setMessage('');
+
+    try {
+      await revokeWorkspaceInvite(inviteId);
+      setMessage('Pending invite revoked.');
+      clearMessageSoon();
+    } catch (error) {
+      setMessage(error?.message || 'Invite could not be revoked.');
+    } finally {
+      setInviteBusyId('');
+    }
+  };
+
+  const copyInviteHistoryLink = async (inviteRow) => {
+    const link = buildInviteLink(inviteRow?.token);
+    const copied = await copyToClipboard(link);
+
+    if (copied) {
+      setMessage('Invite link copied. Email sending is not wired yet, so send the link manually.');
+      clearMessageSoon();
+    }
+  };
+
   return (
     member.profile?.full_name ||
     member.profiles?.full_name ||
@@ -135,6 +178,56 @@ async function copyToClipboard(value) {
 }
 
 function SettingCard({ icon: Icon, title, description, children }) {
+  const updateMemberStatus = async (memberId, status) => {
+    if (!canManageMembers) {
+      setMessage('Only Workspace Owners / Company Admins can manage member lifecycle controls.');
+      return;
+    }
+
+    setMemberBusyId(memberId);
+    setMessage('');
+
+    try {
+      await updateWorkspaceMemberStatus(memberId, status);
+      setMessage(status === 'active' ? 'Member reactivated.' : `Member ${status}.`);
+      clearMessageSoon();
+    } catch (error) {
+      setMessage(error?.message || 'Member status could not be updated.');
+    } finally {
+      setMemberBusyId('');
+    }
+  };
+
+  const revokeInvite = async (inviteId) => {
+    if (!canInvite) {
+      setMessage('Only Workspace Owners / Company Admins can revoke invites.');
+      return;
+    }
+
+    setInviteBusyId(inviteId);
+    setMessage('');
+
+    try {
+      await revokeWorkspaceInvite(inviteId);
+      setMessage('Pending invite revoked.');
+      clearMessageSoon();
+    } catch (error) {
+      setMessage(error?.message || 'Invite could not be revoked.');
+    } finally {
+      setInviteBusyId('');
+    }
+  };
+
+  const copyInviteHistoryLink = async (inviteRow) => {
+    const link = buildInviteLink(inviteRow?.token);
+    const copied = await copyToClipboard(link);
+
+    if (copied) {
+      setMessage('Invite link copied. Email sending is not wired yet, so send the link manually.');
+      clearMessageSoon();
+    }
+  };
+
   return (
     <section className="card settings-card">
       <div className="card-header">
@@ -155,6 +248,10 @@ export function SettingsPage() {
     currentWorkspace,
     data,
     createInvite,
+    updateWorkspaceMemberStatus,
+    revokeWorkspaceInvite,
+    createPropertyAssignment,
+    removePropertyAssignment,
     currentUser,
     isSupabaseConfigured,
   } = useApp();
@@ -165,12 +262,13 @@ export function SettingsPage() {
   const [busy, setBusy] = React.useState(false);
 
   const [assignment, setAssignment] = React.useState(defaultAssignment);
-  const [propertyAssignments, setPropertyAssignments] = React.useState([]);
   const [assignmentMessage, setAssignmentMessage] = React.useState('');
   const [assignmentBusy, setAssignmentBusy] = React.useState(false);
-  const [assignmentsLoading, setAssignmentsLoading] = React.useState(false);
+  const [memberBusyId, setMemberBusyId] = React.useState('');
+  const [inviteBusyId, setInviteBusyId] = React.useState('');
 
   const canInvite = hasAnyRole(currentUser, [roles.OWNER_ADMIN]);
+  const canManageMembers = hasAnyRole(currentUser, [roles.OWNER_ADMIN]);
   const canManageAssignments = hasAnyRole(currentUser, [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER]);
   const canOpenBilling = hasAnyRole(currentUser, billingAccessRoles);
   const canViewTeamAccess = hasAnyRole(currentUser, teamVisibilityRoles);
@@ -179,42 +277,12 @@ export function SettingsPage() {
   const activeProperties = (data.properties || []).filter((property) => property.status !== 'archived');
   const members = data.members || [];
   const invites = data.invites || [];
-  const assignableMembers = members.filter((member) => member.status !== 'revoked');
+  const propertyAssignments = data.propertyAssignments || [];
+  const assignableMembers = members.filter((member) => member.status === 'active');
 
   const workspaceName = getWorkspaceName(currentWorkspace);
   const workspaceCode = getWorkspaceCode(currentWorkspace);
   const workspaceCurrency = getWorkspaceCurrency(currentWorkspace);
-
-  const loadPropertyAssignments = React.useCallback(async () => {
-    if (!canViewTeamAccess || !isSupabaseConfigured || !supabase || !currentWorkspace?.id) {
-      setPropertyAssignments([]);
-      return;
-    }
-
-    setAssignmentsLoading(true);
-    setAssignmentMessage('');
-
-    try {
-      const { data: rows, error } = await supabase
-        .from('property_assignments')
-        .select('*')
-        .eq('workspace_id', currentWorkspace.id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      setPropertyAssignments(rows || []);
-    } catch (error) {
-      setPropertyAssignments([]);
-      setAssignmentMessage(error?.message || 'Property assignments could not be loaded.');
-    } finally {
-      setAssignmentsLoading(false);
-    }
-  }, [canViewTeamAccess, currentWorkspace?.id, isSupabaseConfigured]);
-
-  React.useEffect(() => {
-    loadPropertyAssignments();
-  }, [loadPropertyAssignments]);
 
   const clearMessageSoon = () => {
     window.setTimeout(() => {
@@ -261,8 +329,36 @@ export function SettingsPage() {
       return;
     }
 
-    if (!invite.email.trim()) {
-      setMessage('Enter the invitee email address.');
+    if (!currentWorkspace?.id) {
+      setMessage('Select a workspace before creating invites.');
+      return;
+    }
+
+    const normalizedEmail = invite.email.trim().toLowerCase();
+    if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      setMessage('Enter a valid invitee email address.');
+      return;
+    }
+
+    const invalidRoles = invite.roles.filter((role) => !inviteRoleOptions.includes(role));
+    if (invalidRoles.length) {
+      setMessage('Select valid customer workspace roles only. PropFlow Admin cannot be invited.');
+      return;
+    }
+
+    const needsScopedProperties = invite.roles.some((role) => propertyScopedInviteRoles.includes(role));
+    if (needsScopedProperties && !invite.assignedPropertyIds.length) {
+      setMessage('Property Owner, Cleaner, and Maintenance invites require at least one assigned property.');
+      return;
+    }
+
+    if (!needsScopedProperties && invite.assignedPropertyIds.length) {
+      setMessage('Assigned properties only apply to Property Owner, Cleaner, and Maintenance invites.');
+      return;
+    }
+
+    if (!invitePermissionLevels.includes(invite.permissionLevel)) {
+      setMessage('Choose a valid permission level.');
       return;
     }
 
@@ -277,7 +373,7 @@ export function SettingsPage() {
 
     try {
       const created = await createInvite({
-        email: invite.email.trim(),
+        email: normalizedEmail,
         roles: invite.roles,
         assignedPropertyIds: invite.assignedPropertyIds,
         expiresAt: invite.expiresAt || null,
@@ -330,7 +426,7 @@ export function SettingsPage() {
       return;
     }
 
-    if (!isSupabaseConfigured || !supabase) {
+    if (!isSupabaseConfigured) {
       setAssignmentMessage('Supabase is not configured. Add Supabase environment variables before saving assignments.');
       return;
     }
@@ -349,23 +445,15 @@ export function SettingsPage() {
     setAssignmentMessage('');
 
     try {
-      const { error } = await supabase.from('property_assignments').upsert(
-        {
-          workspace_id: currentWorkspace.id,
-          property_id: assignment.propertyId,
-          user_id: assignment.userId,
-          assignment_role: assignment.assignmentRole,
-          created_by: currentUser?.id || null,
-        },
-        { onConflict: 'property_id,user_id,assignment_role', ignoreDuplicates: true },
-      );
-
-      if (error) throw error;
+      await createPropertyAssignment({
+        propertyId: assignment.propertyId,
+        userId: assignment.userId,
+        assignmentRole: assignment.assignmentRole,
+      });
 
       setAssignment(defaultAssignment);
       setAssignmentMessage('Property assignment saved.');
       clearMessageSoon();
-      await loadPropertyAssignments();
     } catch (error) {
       setAssignmentMessage(error?.message || 'Property assignment could not be saved.');
     } finally {
@@ -379,7 +467,7 @@ export function SettingsPage() {
       return;
     }
 
-    if (!isSupabaseConfigured || !supabase || !currentWorkspace?.id) {
+    if (!isSupabaseConfigured || !currentWorkspace?.id) {
       setAssignmentMessage('Supabase is not configured or no workspace is selected.');
       return;
     }
@@ -388,21 +476,64 @@ export function SettingsPage() {
     setAssignmentMessage('');
 
     try {
-      const { error } = await supabase
-        .from('property_assignments')
-        .delete()
-        .eq('id', assignmentId)
-        .eq('workspace_id', currentWorkspace.id);
-
-      if (error) throw error;
+      await removePropertyAssignment(assignmentId);
 
       setAssignmentMessage('Property assignment removed.');
       clearMessageSoon();
-      await loadPropertyAssignments();
     } catch (error) {
       setAssignmentMessage(error?.message || 'Property assignment could not be removed.');
     } finally {
       setAssignmentBusy(false);
+    }
+  };
+
+  const updateMemberStatus = async (memberId, status) => {
+    if (!canManageMembers) {
+      setMessage('Only Workspace Owners / Company Admins can manage member lifecycle controls.');
+      return;
+    }
+
+    setMemberBusyId(memberId);
+    setMessage('');
+
+    try {
+      await updateWorkspaceMemberStatus(memberId, status);
+      setMessage(status === 'active' ? 'Member reactivated.' : `Member ${status}.`);
+      clearMessageSoon();
+    } catch (error) {
+      setMessage(error?.message || 'Member status could not be updated.');
+    } finally {
+      setMemberBusyId('');
+    }
+  };
+
+  const revokeInvite = async (inviteId) => {
+    if (!canInvite) {
+      setMessage('Only Workspace Owners / Company Admins can revoke invites.');
+      return;
+    }
+
+    setInviteBusyId(inviteId);
+    setMessage('');
+
+    try {
+      await revokeWorkspaceInvite(inviteId);
+      setMessage('Pending invite revoked.');
+      clearMessageSoon();
+    } catch (error) {
+      setMessage(error?.message || 'Invite could not be revoked.');
+    } finally {
+      setInviteBusyId('');
+    }
+  };
+
+  const copyInviteHistoryLink = async (inviteRow) => {
+    const link = buildInviteLink(inviteRow?.token);
+    const copied = await copyToClipboard(link);
+
+    if (copied) {
+      setMessage('Invite link copied. Email sending is not wired yet, so send the link manually.');
+      clearMessageSoon();
     }
   };
 
@@ -637,6 +768,7 @@ export function SettingsPage() {
                     </option>
                   ))}
                 </select>
+                <small>Customer workspace roles only. PropFlow Admin is platform-level and cannot be invited.</small>
               </label>
 
               <label>
@@ -648,6 +780,7 @@ export function SettingsPage() {
                     </option>
                   ))}
                 </select>
+                <small>Required only for Property Owner, Cleaner, and Maintenance invites.</small>
               </label>
 
               <label>
@@ -742,6 +875,46 @@ export function SettingsPage() {
                     label: 'Joined',
                     render: (row) => formatDate(row.created_at),
                   },
+                  {
+                    key: 'actions',
+                    label: 'Actions',
+                    render: (row) =>
+                      canManageMembers ? (
+                        <div className="table-actions">
+                          {row.status === 'active' ? (
+                            <button
+                              type="button"
+                              onClick={() => updateMemberStatus(row.id, 'suspended')}
+                              disabled={memberBusyId === row.id}
+                              data-skip-create-action="true"
+                            >
+                              Suspend
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => updateMemberStatus(row.id, 'active')}
+                              disabled={memberBusyId === row.id}
+                              data-skip-create-action="true"
+                            >
+                              Reactivate
+                            </button>
+                          )}
+                          {row.status !== 'revoked' && (
+                            <button
+                              type="button"
+                              onClick={() => updateMemberStatus(row.id, 'revoked')}
+                              disabled={memberBusyId === row.id}
+                              data-skip-create-action="true"
+                            >
+                              Revoke
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        'Role editing will be added after team lifecycle controls are fully tested.'
+                      ),
+                  },
                 ]}
               />
             ) : (
@@ -787,6 +960,30 @@ export function SettingsPage() {
                       label: 'Expires',
                       render: (row) => formatDate(row.expires_at),
                     },
+                    {
+                      key: 'actions',
+                      label: 'Actions',
+                      render: (row) => (
+                        <div className="table-actions">
+                          {row.status === 'pending' && (
+                            <button type="button" onClick={() => copyInviteHistoryLink(row)} data-skip-create-action="true">
+                              <Copy size={16} />
+                              Link
+                            </button>
+                          )}
+                          {row.status === 'pending' && (
+                            <button
+                              type="button"
+                              onClick={() => revokeInvite(row.id)}
+                              disabled={inviteBusyId === row.id}
+                              data-skip-create-action="true"
+                            >
+                              Revoke
+                            </button>
+                          )}
+                        </div>
+                      ),
+                    },
                   ]}
                 />
               ) : (
@@ -823,7 +1020,7 @@ export function SettingsPage() {
           <div className="card-header">
             <div>
               <h3>Property assignments</h3>
-              <p>Assign owners, cleaners, maintenance crew, hosts, or accountants to specific properties.</p>
+              <p>Assign active workspace members to property-specific access. Assignment roles must match the member’s current role.</p>
             </div>
 
             <Building2 size={20} className="muted" />
@@ -881,9 +1078,7 @@ export function SettingsPage() {
           )}
 
           <div className="settings-assignment-table">
-            {assignmentsLoading ? (
-              <div className="helper">Loading property assignments…</div>
-            ) : propertyAssignments.length ? (
+            {propertyAssignments.length ? (
               <DataTable
                 rows={propertyAssignments}
                 columns={[

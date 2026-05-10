@@ -139,6 +139,7 @@ export function JoinWorkspacePage() {
   const [message, setMessage] = React.useState('');
   const [errors, setErrors] = React.useState([]);
   const [busyAction, setBusyAction] = React.useState('');
+  const autoJoinAttempted = React.useRef(false);
 
   React.useEffect(() => {
     if (!currentUser?.email) return;
@@ -228,9 +229,7 @@ export function JoinWorkspacePage() {
     }
   };
 
-  const submitJoin = async (event) => {
-    event.preventDefault();
-
+  const runJoin = async (rawCode) => {
     if (!isSupabaseConfigured) {
       setMessage('Supabase is not configured. Invite validation requires Supabase.');
       return;
@@ -242,7 +241,7 @@ export function JoinWorkspacePage() {
       return;
     }
 
-    const cleanedCode = normalizeJoinInput(joinCode);
+    const cleanedCode = normalizeJoinInput(rawCode);
 
     if (!cleanedCode) {
       setMessage('Enter an invite token, invite link, or company code.');
@@ -263,6 +262,19 @@ export function JoinWorkspacePage() {
       setBusyAction('');
     }
   };
+
+  React.useEffect(() => {
+    if (autoJoinAttempted.current || !initialJoinCode || !currentUser) return;
+
+    autoJoinAttempted.current = true;
+    runJoin(initialJoinCode);
+  }, [currentUser, initialJoinCode]);
+
+  const submitJoin = async (event) => {
+    event.preventDefault();
+    runJoin(joinCode);
+  };
+
 
   const createBusy = busyAction === 'create';
   const joinBusy = busyAction === 'join';
