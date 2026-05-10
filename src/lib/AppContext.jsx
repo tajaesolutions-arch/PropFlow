@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
-import { billingAccessRoles, billingEventTypes, billingManageRoles, billingPlans, currencies, deliveryStatuses, directBookingConfirmationModes, directBookingPageStatuses, directBookingPaymentModes, expenseCategories, expensePaymentStatuses, expenseStatuses, invitePermissionLevels, inviteRoleOptions, notificationChannels, notificationEventTypes, notificationPreferenceGroups, notificationStatuses, propertyAssignmentRoleOptions, propertyScopedInviteRoles, propertyStatuses, propertyTypes, rentalTypes, roles } from '../data/constants.js';
+import { billingAccessRoles, billingEventTypes, billingManageRoles, billingPlans, currencies, deliveryStatuses, directBookingConfirmationModes, directBookingPageStatuses, directBookingPaymentModes, expenseCategories, expensePaymentStatuses, expenseStatuses, invitePermissionLevels, inviteRoleOptions, leasePaymentStatuses, leaseStatuses, leaseTypes, notificationChannels, notificationEventTypes, notificationPreferenceGroups, notificationStatuses, propertyAssignmentRoleOptions, propertyScopedInviteRoles, propertyStatuses, propertyTypes, rentalTypes, rentFrequencies, roles } from '../data/constants.js';
 import { resolvePrimaryRole } from './auth.js';
 import { isSupabaseConfigured, supabase } from './supabase.js';
 
@@ -273,19 +273,36 @@ function normalizeLease(row, properties = []) {
 
   return {
     ...row,
+    workspaceId: row.workspace_id,
     property: property?.name || row.property || 'Unassigned property',
     propertyId: row.property_id,
-    contactId: row.contact_id,
+    tenantContactId: row.tenant_contact_id || row.contact_id,
+    contactId: row.tenant_contact_id || row.contact_id,
+    leaseType: row.lease_type || 'fixed_term',
+    leaseStatus: row.lease_status || 'draft',
     tenantName: row.tenant_name,
     tenantEmail: row.tenant_email,
     tenantPhone: row.tenant_phone,
     leaseStart: row.lease_start,
     leaseEnd: row.lease_end,
-    monthlyRent: row.monthly_rent,
-    securityDeposit: row.security_deposit,
-    rentPaymentStatus: row.rent_payment_status,
-    leaseStatus: row.lease_status,
+    rentAmount: row.rent_amount ?? row.monthly_rent ?? 0,
+    monthlyRent: row.rent_amount ?? row.monthly_rent ?? 0,
+    rentFrequency: row.rent_frequency || 'monthly',
+    securityDepositAmount: row.security_deposit_amount ?? row.security_deposit,
+    securityDeposit: row.security_deposit_amount ?? row.security_deposit,
+    depositStatus: row.deposit_status || 'not_tracked',
+    paymentStatus: row.payment_status || row.rent_payment_status || 'not_tracked',
+    rentPaymentStatus: row.payment_status || row.rent_payment_status || 'not_tracked',
+    dueDay: row.due_day,
+    gracePeriodDays: row.grace_period_days,
+    lateFeeAmount: row.late_fee_amount,
     leaseDocumentFileId: row.lease_document_file_id,
+    moveInNotes: row.move_in_notes,
+    moveOutNotes: row.move_out_notes,
+    internalNotes: row.internal_notes || row.notes,
+    createdBy: row.created_by,
+    updatedBy: row.updated_by,
+    archivedAt: row.archived_at,
     terminatedAt: row.terminated_at,
   };
 }
@@ -787,6 +804,7 @@ const workspaceActionRoles = {
   expense: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
   inventory: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
   directBooking: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
+  lease: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
 };
 
 
@@ -811,6 +829,7 @@ function getNotificationEventGroup(eventType) {
   if (eventType === 'file_uploaded') return 'files';
   if (['team_invite_created', 'team_invite_accepted', 'member_suspended', 'member_reactivated'].includes(eventType)) return 'team';
   if (String(eventType || '').startsWith('billing_')) return 'billing';
+  if (String(eventType || '').startsWith('lease_')) return 'leases';
   return 'workspace_activity';
 }
 
@@ -1073,6 +1092,10 @@ const expenseStatusValues = expenseStatuses.map(([value]) => value);
 const directBookingPageStatusValues = directBookingPageStatuses.map(([value]) => value);
 const directBookingPaymentModeValues = directBookingPaymentModes.map(([value]) => value);
 const directBookingConfirmationModeValues = directBookingConfirmationModes.map(([value]) => value);
+const leaseStatusValues = leaseStatuses.map(([value]) => value);
+const leasePaymentStatusValues = leasePaymentStatuses.map(([value]) => value);
+const leaseTypeValues = leaseTypes.map(([value]) => value);
+const rentFrequencyValues = rentFrequencies.map(([value]) => value);
 const sensitiveHostExpenseCategories = ['owner_payout', 'property_tax', 'insurance'];
 
 function getRecordPropertyId(record) {
@@ -1164,7 +1187,8 @@ export function AppProvider({ children }) {
           .from('leases')
           .select('*')
           .eq('workspace_id', workspaceId)
-          .order('lease_start', { ascending: true }),
+          .order('lease_start', { ascending: false })
+          .order('created_at', { ascending: false }),
         normalize: (rows) => rows.map((row) => normalizeLease(row, properties)),
       },
       {
@@ -2490,48 +2514,157 @@ export function AppProvider({ children }) {
     return { request: reviewed, booking };
   };
 
+  const validateLeasePropertyContactAndFile = (payload, propertyId) => {
+    const property = requireWorkspaceProperty(data.properties, propertyId);
+
+    const tenantContactId = payload.tenant_contact_id || payload.tenantContactId || payload.contact_id || payload.contactId;
+    if (tenantContactId) {
+      const contact = requireWorkspaceScopedRecord(data.contacts, tenantContactId, 'tenant contact');
+      const contactType = contact.contact_type || contact.contactType;
+      if (!['tenant', 'guest', 'other'].includes(contactType)) {
+        throw new Error('Selected contact must be a tenant, guest, or general contact in this workspace.');
+      }
+    }
+
+    const leaseDocumentFileId = payload.lease_document_file_id || payload.leaseDocumentFileId;
+    if (leaseDocumentFileId) {
+      const file = requireWorkspaceScopedRecord(data.fileUploads, leaseDocumentFileId, 'lease document', propertyId);
+      const category = file.fileCategory || file.file_category || file.category;
+      if (!['lease', 'contract', 'property_document'].includes(category)) {
+        throw new Error('Lease document must be a private lease, contract, or property document file.');
+      }
+      if ((file.visibility || 'private') !== 'private') {
+        throw new Error('Lease documents must stay private.');
+      }
+    }
+
+    return property;
+  };
+
+  const cleanLeasePayload = (payload = {}, existingLease = null) => {
+    const source = payload || {};
+    const propertyId = source.property_id || source.propertyId || existingLease?.propertyId || existingLease?.property_id;
+    if (!propertyId) throw new Error('Select a property before saving the lease.');
+
+    const property = validateLeasePropertyContactAndFile(source, propertyId);
+    const tenantName = cleanText(source.tenant_name || source.tenantName || existingLease?.tenantName || existingLease?.tenant_name);
+    if (!tenantName) throw new Error('Tenant name is required.');
+
+    const leaseStart = source.lease_start || source.leaseStart || existingLease?.leaseStart || existingLease?.lease_start;
+    const cleanStart = cleanDateOnly(leaseStart, 'Lease start');
+    const cleanEnd = cleanOptionalDateOnly(source.lease_end || source.leaseEnd || null, 'Lease end');
+    if (cleanEnd && cleanEnd <= cleanStart) throw new Error('Lease end must be after lease start.');
+
+    const rentAmount = cleanNonNegativeNumber(source.rent_amount ?? source.rentAmount ?? source.monthly_rent ?? source.monthlyRent ?? 0, 'Rent amount') ?? 0;
+    const securityDepositAmount = cleanNonNegativeNumber(source.security_deposit_amount ?? source.securityDepositAmount ?? source.security_deposit ?? source.securityDeposit, 'Security deposit');
+    const lateFeeAmount = cleanNonNegativeNumber(source.late_fee_amount ?? source.lateFeeAmount, 'Late fee amount');
+
+    const dueDay = source.due_day ?? source.dueDay;
+    const cleanDueDay = dueDay === '' || dueDay === null || dueDay === undefined ? null : Number(dueDay);
+    if (cleanDueDay !== null && (!Number.isInteger(cleanDueDay) || cleanDueDay < 1 || cleanDueDay > 31)) {
+      throw new Error('Due day must be between 1 and 31.');
+    }
+
+    const gracePeriodDays = source.grace_period_days ?? source.gracePeriodDays ?? 0;
+    const cleanGracePeriodDays = gracePeriodDays === '' || gracePeriodDays === null || gracePeriodDays === undefined ? 0 : Number(gracePeriodDays);
+    if (!Number.isInteger(cleanGracePeriodDays) || cleanGracePeriodDays < 0) {
+      throw new Error('Grace period days must be 0 or more.');
+    }
+
+    const leaseType = source.lease_type || source.leaseType || 'fixed_term';
+    const rawLeaseStatus = source.lease_status || source.leaseStatus || 'draft';
+    const leaseStatus = { ending_soon: 'expiring_soon', expired: 'ended', cancelled: 'terminated' }[rawLeaseStatus] || rawLeaseStatus;
+    const rentFrequency = source.rent_frequency || source.rentFrequency || 'monthly';
+    const rawPaymentStatus = source.payment_status || source.paymentStatus || source.rent_payment_status || source.rentPaymentStatus || 'not_tracked';
+    const paymentStatus = { unknown: 'not_tracked', paid_ahead: 'paid' }[rawPaymentStatus] || rawPaymentStatus;
+    const depositStatus = source.deposit_status || source.depositStatus || 'not_tracked';
+    const currency = normalizeWorkspaceCurrency(source.currency || property.currency || currentWorkspace.defaultCurrency || currentWorkspace.default_currency || 'USD');
+
+    requireAllowedValue(leaseType, leaseTypeValues, 'lease type');
+    requireAllowedValue(leaseStatus, leaseStatusValues, 'lease status');
+    requireAllowedValue(rentFrequency, rentFrequencyValues, 'rent frequency');
+    requireAllowedValue(paymentStatus, leasePaymentStatusValues, 'payment status');
+    requireAllowedValue(depositStatus, leasePaymentStatusValues, 'deposit status');
+    requireAllowedValue(currency, workspaceCreationCurrencies, 'currency');
+
+    return {
+      property_id: propertyId,
+      tenant_contact_id: source.tenant_contact_id || source.tenantContactId || source.contact_id || source.contactId || null,
+      lease_type: leaseType,
+      lease_status: leaseStatus,
+      tenant_name: tenantName,
+      tenant_email: cleanEmail(source.tenant_email || source.tenantEmail),
+      tenant_phone: cleanPhone(source.tenant_phone || source.tenantPhone),
+      lease_start: cleanStart,
+      lease_end: cleanEnd,
+      rent_amount: rentAmount,
+      rent_frequency: rentFrequency,
+      security_deposit_amount: securityDepositAmount,
+      deposit_status: depositStatus,
+      payment_status: paymentStatus,
+      currency,
+      due_day: cleanDueDay,
+      grace_period_days: cleanGracePeriodDays,
+      late_fee_amount: lateFeeAmount,
+      lease_document_file_id: source.lease_document_file_id || source.leaseDocumentFileId || null,
+      move_in_notes: cleanText(source.move_in_notes || source.moveInNotes),
+      move_out_notes: cleanText(source.move_out_notes || source.moveOutNotes),
+      internal_notes: cleanText(source.internal_notes || source.internalNotes || source.notes),
+    };
+  };
+
+  const notifyLeaseManagers = async (notificationPayload) => {
+    const managers = getWorkspaceManagers(data.members, currentWorkspace.id);
+    const recipients = managers.length ? managers : [{ user_id: session.user.id }];
+    await Promise.allSettled(
+      recipients.map((member) =>
+        createNotification({
+          recipient_user_id: memberUserId(member),
+          ...notificationPayload,
+        }),
+      ),
+    );
+  };
+
   const createLease = async (payload) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'lease');
 
-    let contact = null;
+    let leasePayload = cleanLeasePayload(payload);
 
-    if (payload.tenant_name || payload.tenant_email || payload.tenant_phone) {
-      contact = await createOrUpdateContact({
-        full_name: payload.tenant_name,
-        email: payload.tenant_email,
-        phone: payload.tenant_phone,
+    if (!leasePayload.tenant_contact_id && (leasePayload.tenant_name || leasePayload.tenant_email)) {
+      const contact = await createOrUpdateContact({
+        full_name: leasePayload.tenant_name,
+        email: leasePayload.tenant_email,
+        phone: leasePayload.tenant_phone,
         contact_type: 'tenant',
-        notes: payload.notes,
+        notes: 'Tenant contact created from a manual long-term lease record.',
       });
+      leasePayload = { ...leasePayload, tenant_contact_id: contact?.id || null };
     }
-
-    const leasePayload = {
-      workspace_id: currentWorkspace.id,
-      property_id: payload.property_id,
-      contact_id: contact?.id || payload.contact_id || null,
-      tenant_name: cleanText(payload.tenant_name),
-      tenant_email: cleanEmail(payload.tenant_email),
-      tenant_phone: cleanText(payload.tenant_phone),
-      lease_start: payload.lease_start,
-      lease_end: payload.lease_end || null,
-      monthly_rent: cleanNumber(payload.monthly_rent),
-      security_deposit: cleanNumber(payload.security_deposit),
-      rent_payment_status: payload.rent_payment_status || 'unknown',
-      lease_status: payload.lease_status || 'active',
-      currency: payload.currency || currentWorkspace.defaultCurrency || 'USD',
-      lease_document_file_id: payload.lease_document_file_id || null,
-      notes: cleanText(payload.notes),
-      created_by: session.user.id,
-    };
 
     const { data: row, error: insertError } = await client
       .from('leases')
-      .insert(leasePayload)
+      .insert({
+        ...leasePayload,
+        workspace_id: currentWorkspace.id,
+        created_by: session.user.id,
+        updated_by: session.user.id,
+      })
       .select('*')
       .single();
 
     if (insertError) throw new Error(formatSupabaseError(insertError, 'Lease could not be saved.'));
+
+    await notifyLeaseManagers({
+      event_type: 'lease_created',
+      title: 'Lease created',
+      body: `${leasePayload.tenant_name} was added as a manual long-term lease.`,
+      priority: 'normal',
+      related_property_id: leasePayload.property_id,
+      action_url: '/leases',
+    });
 
     await refreshWorkspaceData();
 
@@ -2541,34 +2674,47 @@ export function AppProvider({ children }) {
   const updateLease = async (leaseId, payload) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'lease');
 
-    const allowed = [
-      'property_id',
-      'contact_id',
-      'tenant_name',
-      'tenant_email',
-      'tenant_phone',
-      'lease_start',
-      'lease_end',
-      'monthly_rent',
-      'security_deposit',
-      'rent_payment_status',
-      'lease_status',
-      'currency',
-      'lease_document_file_id',
-      'notes',
-      'terminated_at',
-    ];
-
-    const updatePayload = stripUnsupportedPayloadKeys(payload, allowed);
-
-    ['monthly_rent', 'security_deposit'].forEach((key) => {
-      if (key in updatePayload) updatePayload[key] = cleanNumber(updatePayload[key]);
-    });
-
-    if (['terminated', 'cancelled'].includes(updatePayload.lease_status) && !updatePayload.terminated_at) {
-      updatePayload.terminated_at = new Date().toISOString();
+    const existingLease = asArray(data.leases).find((lease) => lease.id === leaseId);
+    if (!existingLease) throw new Error('Select an existing lease in this workspace.');
+    if (existingLease.archivedAt || existingLease.archived_at || existingLease.leaseStatus === 'archived' || existingLease.lease_status === 'archived') {
+      throw new Error('Archived leases cannot be edited. Restore the lease before making changes.');
     }
+
+    const merged = { ...existingLease, ...payload };
+    const updatePayload = cleanLeasePayload(merged, existingLease);
+    delete updatePayload.workspace_id;
+    delete updatePayload.workspaceId;
+
+    const { data: row, error: updateError } = await client
+      .from('leases')
+      .update({ ...updatePayload, updated_by: session.user.id })
+      .eq('id', leaseId)
+      .eq('workspace_id', currentWorkspace.id)
+      .select('*')
+      .single();
+
+    if (updateError) throw new Error(formatSupabaseError(updateError, 'Lease could not be updated.'));
+
+    await refreshWorkspaceData();
+
+    return normalizeLease(row, data.properties);
+  };
+
+  const archiveLease = async (leaseId, archived = true) => {
+    const client = requireSupabase();
+    requireWorkspaceSession(currentWorkspace, session);
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'lease');
+
+    const existingLease = asArray(data.leases).find((lease) => lease.id === leaseId);
+    if (!existingLease) throw new Error('Select an existing lease in this workspace.');
+
+    const todayValue = new Date().toISOString().slice(0, 10);
+    const restoredStatus = existingLease.leaseStart && existingLease.leaseStart <= todayValue && (!existingLease.leaseEnd || existingLease.leaseEnd >= todayValue) ? 'active' : 'draft';
+    const updatePayload = archived
+      ? { archived_at: new Date().toISOString(), lease_status: 'archived', updated_by: session.user.id }
+      : { archived_at: null, lease_status: restoredStatus, updated_by: session.user.id };
 
     const { data: row, error: updateError } = await client
       .from('leases')
@@ -2578,7 +2724,58 @@ export function AppProvider({ children }) {
       .select('*')
       .single();
 
-    if (updateError) throw new Error(formatSupabaseError(updateError, 'Lease could not be updated.'));
+    if (updateError) throw new Error(formatSupabaseError(updateError, 'Lease archive status could not be updated.'));
+
+    if (archived) {
+      await notifyLeaseManagers({
+        event_type: 'lease_archived',
+        title: 'Lease archived',
+        body: `${existingLease.tenantName || existingLease.tenant_name || 'A lease'} was archived manually.`,
+        priority: 'normal',
+        related_property_id: existingLease.propertyId || existingLease.property_id,
+        action_url: '/leases',
+      });
+    }
+
+    await refreshWorkspaceData();
+
+    return normalizeLease(row, data.properties);
+  };
+
+  const linkLeaseDocument = async (leaseId, fileUploadId) => {
+    const client = requireSupabase();
+    requireWorkspaceSession(currentWorkspace, session);
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'lease');
+
+    const lease = asArray(data.leases).find((item) => item.id === leaseId);
+    if (!lease) throw new Error('Select an existing lease in this workspace.');
+    const propertyId = lease.propertyId || lease.property_id;
+    const file = requireWorkspaceScopedRecord(data.fileUploads, fileUploadId, 'lease document', propertyId);
+    const category = file.fileCategory || file.file_category || file.category;
+    if (!['lease', 'contract', 'property_document'].includes(category)) {
+      throw new Error('Lease document must be uploaded as a private lease, contract, or property document file.');
+    }
+    if ((file.visibility || 'private') !== 'private') throw new Error('Lease documents must stay private.');
+
+    const { data: row, error: updateError } = await client
+      .from('leases')
+      .update({ lease_document_file_id: fileUploadId, updated_by: session.user.id })
+      .eq('id', leaseId)
+      .eq('workspace_id', currentWorkspace.id)
+      .select('*')
+      .single();
+
+    if (updateError) throw new Error(formatSupabaseError(updateError, 'Lease document could not be linked.'));
+
+    await notifyLeaseManagers({
+      event_type: 'lease_document_linked',
+      title: 'Lease document linked',
+      body: `A private lease document was linked for ${lease.tenantName || lease.tenant_name || 'a tenant'}.`,
+      priority: 'normal',
+      related_property_id: propertyId,
+      related_file_upload_id: fileUploadId,
+      action_url: '/leases',
+    });
 
     await refreshWorkspaceData();
 
@@ -4296,6 +4493,8 @@ export function AppProvider({ children }) {
       convertDirectBookingRequestToBooking,
       createLease,
       updateLease,
+      archiveLease,
+      linkLeaseDocument,
       createCleaningTask,
       updateCleaningTask,
       createMaintenanceWorkOrder,

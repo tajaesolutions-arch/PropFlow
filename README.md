@@ -509,3 +509,16 @@ PropFlow billing is workspace-scoped and uses `workspace_subscriptions` for one 
 - The current Vercel `api/` Stripe endpoints intentionally return `provider_not_configured` until secure auth validation, Stripe SDK wiring, signature verification, and idempotent subscription persistence are completed server-side.
 - Failed payments should enter a grace-period model instead of causing instant lockout. After the grace period, workspace access becomes recovery-only for Workspace Owners/Accountants while operational staff may be limited until billing is resolved.
 - Do not insert fake active subscriptions, fake checkout success, fake portal links, generated invoices, tax automation, coupons, or usage-based billing records from the frontend.
+
+## Long-Term Rentals / Leases Foundation
+
+PropFlow includes an MVP foundation for manual long-term rental and lease tracking:
+
+- Leases are stored in the real `public.leases` Supabase table and scoped to both `workspace_id` and `property_id`.
+- Tenants can be represented by a workspace CRM contact (`tenant_contact_id`) or by lease-level tenant name/email/phone fields for manual setup.
+- Rent fields are operational summaries only: amount, frequency, due day, deposit status, and manual payment status. PropFlow does **not** automate rent collection, late fees, tenant payment portals, Stripe rent payments, or accounting ledger entries.
+- Lease documents must remain private. Upload lease/contract files through the private Files module, then link the private file to a lease; no public lease document URLs are created.
+- The app does **not** provide e-signature, legal lease generation, or contract drafting.
+- Calendar views can display real lease start, lease period, and lease end events from workspace lease records. No fake/demo leases are added.
+- Lease route/sidebar visibility is role-restricted. Workspace Owners and Property Managers manage leases; Hosts and Accountants may view when allowed by RLS; Cleaners and Maintenance Crew do not access lease records.
+- Apply the Supabase migrations before using the module so the leases table, tenant contact alignment, constraints, indexes, triggers, and RLS policies are available.

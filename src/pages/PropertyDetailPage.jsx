@@ -16,6 +16,7 @@ import {
   Image,
   Lock,
   MapPin,
+  Plus,
   RotateCcw,
   ShieldCheck,
   Wrench,
@@ -42,6 +43,7 @@ import { navigate } from '../routes/AppRouter.jsx';
 
 const closedStatuses = new Set(['completed', 'cancelled', 'guest_ready']);
 const cancelledStatuses = new Set(['cancelled', 'void', 'refunded']);
+const inactiveLeaseStatuses = new Set(['ended', 'terminated', 'archived']);
 const financePropertyRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT, roles.OWNER];
 const broadPropertyAccessRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
 
@@ -175,6 +177,27 @@ function getBookingCheckIn(booking) {
 
 function getBookingCheckOut(booking) {
   return booking.checkOut || booking.check_out || '';
+}
+
+function getLeaseStart(lease) {
+  return lease.leaseStart || lease.lease_start || '';
+}
+
+function getLeaseEnd(lease) {
+  return lease.leaseEnd || lease.lease_end || '';
+}
+
+function getLeaseStatus(lease) {
+  return lease.leaseStatus || lease.lease_status || 'draft';
+}
+
+function getLeasePaymentStatus(lease) {
+  return lease.paymentStatus || lease.payment_status || lease.rentPaymentStatus || lease.rent_payment_status || 'not_tracked';
+}
+
+function getLeaseRent(lease) {
+  const value = Number(lease.rentAmount ?? lease.rent_amount ?? lease.monthlyRent ?? lease.monthly_rent ?? 0);
+  return Number.isFinite(value) ? value : 0;
 }
 
 function getCleaningDate(task) {
@@ -601,6 +624,8 @@ export function PropertyDetailPage({ propertyId }) {
   const propertyCurrency = property.currency || 'USD';
 
   const bookings = (data.bookings || []).filter((booking) => getPropertyId(booking) === property.id);
+  const leases = (data.leases || []).filter((lease) => getPropertyId(lease) === property.id);
+  const activeLease = leases.find((lease) => !inactiveLeaseStatuses.has(getLeaseStatus(lease)) && !(lease.archivedAt || lease.archived_at));
   const cleaning = allCleaning.filter((task) => getPropertyId(task) === property.id);
   const maintenance = allMaintenance.filter((workOrder) => getPropertyId(workOrder) === property.id);
   const files = (data.fileUploads || data.files || []).filter(
@@ -1010,6 +1035,45 @@ export function PropertyDetailPage({ propertyId }) {
               },
             ]}
           />
+        </section>
+
+
+        <section className="card">
+          <div className="card-header">
+            <div>
+              <h3>Long-term rental / leases</h3>
+              <p>{getRentalType(property) === 'long_term' ? 'Long-term setup is recommended for this property.' : 'Manual lease tracking connected to this property.'}</p>
+            </div>
+            <FileText size={20} className="muted" />
+          </div>
+
+          {activeLease ? (
+            <div className="list-row">
+              <span>
+                <strong>{activeLease.tenantName || activeLease.tenant_name || 'Tenant'}</strong>
+                <small>{formatDate(getLeaseStart(activeLease))} → {formatDate(getLeaseEnd(activeLease), 'Open-ended')}</small>
+              </span>
+              <span className="table-actions">
+                {canSeeFinance && <strong>{formatCurrency(getLeaseRent(activeLease), activeLease.currency || propertyCurrency)} / {(activeLease.rentFrequency || activeLease.rent_frequency || 'monthly').replaceAll('_', ' ')}</strong>}
+                {canSeeFinance && <StatusBadge tone={statusTone(getLeasePaymentStatus(activeLease))}>{getLeasePaymentStatus(activeLease)}</StatusBadge>}
+                <StatusBadge tone={statusTone(getLeaseStatus(activeLease))}>{getLeaseStatus(activeLease)}</StatusBadge>
+              </span>
+            </div>
+          ) : (
+            <EmptyState
+              eyebrow="Leases"
+              icon={FileText}
+              title={leases.length ? 'No active lease' : 'No lease linked yet'}
+              description="Lease records are manual, workspace-scoped, and do not trigger rent collection, e-signature, or legal document generation."
+              action={canEdit ? <button type="button" className="primary" data-create-action="lease"><Plus size={16} /> Add Lease</button> : null}
+            />
+          )}
+
+          {leases.length > 0 && (
+            <div className="helper">
+              {leases.length} lease record{leases.length === 1 ? '' : 's'} linked to this property. <button type="button" onClick={() => navigate('/leases')} data-skip-create-action="true">Manage leases</button>
+            </div>
+          )}
         </section>
 
         <section className="card">

@@ -263,7 +263,9 @@ function buildBookingEvents(bookings = [], properties = []) {
 }
 
 function buildLeaseEvents(leases = [], properties = []) {
-  return leases.flatMap((lease) => {
+  return leases
+    .filter((lease) => !(lease.archivedAt || lease.archived_at || ['archived'].includes(lease.leaseStatus || lease.lease_status)))
+    .flatMap((lease) => {
     const leaseStart = getLeaseStart(lease);
     const leaseEnd = getLeaseEnd(lease);
 
@@ -287,7 +289,7 @@ function buildLeaseEvents(leases = [], properties = []) {
         end: leaseStart,
         status,
         currency,
-        sourcePath: '/bookings',
+        sourcePath: '/leases',
         row: lease,
       },
     ];
@@ -305,7 +307,7 @@ function buildLeaseEvents(leases = [], properties = []) {
           end: leaseEnd,
           status,
           currency,
-          sourcePath: '/bookings',
+          sourcePath: '/leases',
           row: lease,
         });
       }
@@ -321,7 +323,7 @@ function buildLeaseEvents(leases = [], properties = []) {
         end: leaseEnd,
         status,
         currency,
-        sourcePath: '/bookings',
+        sourcePath: '/leases',
         row: lease,
       });
     }
