@@ -145,13 +145,12 @@ const priorityOptions = [
 ];
 
 const maintenanceStatusOptions = [
-  ['open', 'Open'],
   ['reported', 'Reported'],
   ['assigned', 'Assigned'],
   ['in_progress', 'In progress'],
   ['waiting_parts', 'Waiting for parts'],
-  ['waiting_for_parts', 'Waiting for parts'],
   ['completed', 'Completed'],
+  ['cancelled', 'Cancelled'],
 ];
 
 function normalizeText(value) {
@@ -341,6 +340,21 @@ function ownerMembers(members) {
 
 function cleanerMembers(members) {
   return members.filter((member) => member.status === 'active' && memberHasRole(member, roles.CLEANER));
+}
+
+function maintenanceMembers(members) {
+  return members.filter((member) => member.status === 'active' && memberHasRole(member, roles.MAINTENANCE));
+}
+
+function cleanDateOrNull(value, label) {
+  if (!value) return null;
+
+  const dateValue = String(value).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateValue) || Number.isNaN(new Date(`${dateValue}T00:00:00`).getTime())) {
+    throw new Error(`${label} must be a valid date.`);
+  }
+
+  return dateValue;
 }
 
 function BookingOptions({ bookings, properties, emptyLabel = 'No related booking' }) {
@@ -1250,6 +1264,8 @@ function CleaningForm({ app, close, submitting, setSubmitting, setError, notifyS
 function MaintenanceForm({ app, close, submitting, setSubmitting, setError, notifySuccess }) {
   const properties = app.data.properties || [];
   const members = app.data.members || [];
+  const maintenancePeople = maintenanceMembers(members);
+  const maintenanceMemberIds = new Set(maintenancePeople.map((member) => member.user_id || member.userId || member.id).filter(Boolean));
   const initialPropertyId = firstPropertyId(properties);
   const currency = propertyCurrency(properties, app.currentWorkspace, initialPropertyId);
 
@@ -1259,7 +1275,7 @@ function MaintenanceForm({ app, close, submitting, setSubmitting, setError, noti
     title: '',
     issue_description: '',
     priority: 'medium',
-    status: 'open',
+    status: 'reported',
     estimated_cost: '',
     actual_cost: '',
     parts_needed: '',
@@ -1282,6 +1298,9 @@ function MaintenanceForm({ app, close, submitting, setSubmitting, setError, noti
 
   const submit = async (event) => {
     event.preventDefault();
+
+    if (submitting) return;
+
     setError('');
 
     if (!app.currentWorkspace?.id) {
@@ -1319,6 +1338,32 @@ function MaintenanceForm({ app, close, submitting, setSubmitting, setError, noti
       return;
     }
 
+    if (form.assigned_maintenance_id && !maintenanceMemberIds.has(form.assigned_maintenance_id)) {
+      setError('Assigned maintenance person must be an active Maintenance Crew member in this workspace.');
+      return;
+    }
+
+    const estimatedCost = cleanNumber(form.estimated_cost);
+    const actualCost = cleanNumber(form.actual_cost);
+
+    if ((form.estimated_cost !== '' && estimatedCost === null) || estimatedCost < 0) {
+      setError('Estimated cost must be 0 or more.');
+      return;
+    }
+
+    if ((form.actual_cost !== '' && actualCost === null) || actualCost < 0) {
+      setError('Actual cost must be 0 or more.');
+      return;
+    }
+
+    let dueDate = null;
+    try {
+      dueDate = cleanDateOrNull(form.due_date, 'Due date');
+    } catch (error) {
+      setError(error.message);
+      return;
+    }
+
     try {
       setSubmitting(true);
 
@@ -1329,10 +1374,10 @@ function MaintenanceForm({ app, close, submitting, setSubmitting, setError, noti
         title: form.title.trim(),
         issue_description: form.issue_description.trim() || null,
         assigned_maintenance_id: form.assigned_maintenance_id || null,
-        estimated_cost: cleanNumber(form.estimated_cost),
-        actual_cost: cleanNumber(form.actual_cost),
-        parts_needed: form.parts_needed.trim() || null,
-        due_date: form.due_date || null,
+        estimated_cost: estimatedCost,
+        actual_cost: actualCost,
+        parts_needed: toLines(form.parts_needed).join('\n') || null,
+        due_date: dueDate,
         notes: form.notes.trim() || null,
       });
 
@@ -1366,7 +1411,7 @@ function MaintenanceForm({ app, close, submitting, setSubmitting, setError, noti
           <label>
             Assigned maintenance person
             <select value={form.assigned_maintenance_id} onChange={set('assigned_maintenance_id')}>
-              <MemberOptions members={members} fallbackLabel="Unassigned maintenance" />
+              <MemberOptions members={maintenancePeople} fallbackLabel="Unassigned maintenance" />
             </select>
           </label>
 

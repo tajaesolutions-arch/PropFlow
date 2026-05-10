@@ -46,7 +46,7 @@ function isClosedWorkOrder(workOrder) {
 function cleanNumber(value) {
   if (value === '' || value === null || value === undefined) return null;
 
-  const numericValue = Number(value);
+  const numericValue = Number(String(value).replace(/,/g, '').trim());
   return Number.isFinite(numericValue) ? numericValue : null;
 }
 
@@ -115,6 +115,15 @@ function canUpdateSpecificWorkOrder(currentUser, workOrder, allWorkOrders = []) 
   return isAssignedToCurrentMaintenance(workOrder, currentUser);
 }
 
+function getMemberName(members = [], userId) {
+  if (!userId) return 'Unassigned';
+
+  const member = members.find((item) => [item.user_id, item.userId, item.id].includes(userId));
+  const profile = member?.profile || member?.profiles || {};
+
+  return profile.full_name || profile.name || profile.email || member?.email || member?.user_email || 'Assigned maintenance';
+}
+
 function getWorkOrderPropertyName(workOrder, properties = []) {
   const propertyId = getWorkOrderPropertyId(workOrder);
   const property = properties.find((item) => item.id === propertyId);
@@ -169,7 +178,7 @@ function statusTone(value) {
   return 'info';
 }
 
-function matchesSearch(workOrder, properties, query) {
+function matchesSearch(workOrder, properties, members, query) {
   const normalizedQuery = String(query || '').trim().toLowerCase();
 
   if (!normalizedQuery) return true;
@@ -178,6 +187,7 @@ function matchesSearch(workOrder, properties, query) {
     workOrder.title,
     getWorkOrderDescription(workOrder),
     getWorkOrderPropertyName(workOrder, properties),
+    getMemberName(members, getAssignedMaintenanceId(workOrder)),
     workOrder.priority,
     workOrder.status,
     getPartsNeeded(workOrder),
@@ -194,6 +204,7 @@ function WorkOrderCard({
   workOrder,
   properties,
   currency,
+  members,
   canUpdate,
   updating,
   uploading,
@@ -202,6 +213,7 @@ function WorkOrderCard({
   onUpload,
 }) {
   const propertyName = getWorkOrderPropertyName(workOrder, properties);
+  const assignedName = getMemberName(members, getAssignedMaintenanceId(workOrder));
   const description = getWorkOrderDescription(workOrder);
   const partsNeeded = getPartsNeeded(workOrder);
   const estimatedCost = getEstimatedCost(workOrder);
@@ -245,6 +257,12 @@ function WorkOrderCard({
           <Clock size={16} />
           <strong>{formatDate(getWorkOrderDueDate(workOrder), 'No due date')}</strong>
           <small>Due date</small>
+        </span>
+
+        <span>
+          <Edit3 size={16} />
+          <strong>{assignedName}</strong>
+          <small>Assigned maintenance</small>
         </span>
 
         <span>
@@ -389,11 +407,14 @@ export function MaintenancePage() {
   const [filters, setFilters] = React.useState({
     query: '',
     property: 'all',
+    assigned: 'all',
     priority: 'all',
     status: 'open',
+    due: 'all',
   });
 
   const properties = data.properties || [];
+  const members = data.members || [];
   const allWorkOrders = data.maintenanceWorkOrders || [];
   const workOrders = getVisibleWorkOrders(allWorkOrders, currentUser);
   const maintenanceView = isMaintenanceRole(currentUser);
@@ -401,6 +422,8 @@ export function MaintenancePage() {
   const activeProperties = properties.filter(
     (property) => property.status !== 'archived' && (!maintenanceView || visiblePropertyIds.has(property.id)),
   );
+  const assignedMaintenanceIds = new Set(workOrders.map((workOrder) => getAssignedMaintenanceId(workOrder)).filter(Boolean));
+  const assignedMaintenanceMembers = members.filter((member) => assignedMaintenanceIds.has(member.user_id || member.userId || member.id));
   const currency = currentWorkspace?.defaultCurrency || currentWorkspace?.default_currency || 'USD';
 
   const canCreate = canManageWorkOrders(currentUser);
@@ -473,6 +496,12 @@ export function MaintenancePage() {
     if (!canUpdateSpecificWorkOrder(currentUser, workOrder, allWorkOrders)) return;
 
     const nextActualCost = cleanNumber(value);
+
+    if (nextActualCost !== null && nextActualCost < 0) {
+      setMessage('Actual repair cost must be 0 or more.');
+      return;
+    }
+
     const currentActualCost = cleanNumber(workOrder.actualCost ?? workOrder.actual_cost);
 
     if (nextActualCost === currentActualCost) return;
@@ -513,8 +542,7 @@ export function MaintenancePage() {
       await uploadWorkspaceFile({
         file,
         category: 'maintenance_photo',
-        relatedTable: 'maintenance_work_orders',
-        relatedId: workOrder.id,
+        maintenanceWorkOrderId: workOrder.id,
         propertyId: getWorkOrderPropertyId(workOrder),
       });
 
@@ -529,6 +557,7 @@ export function MaintenancePage() {
 
   const filteredWorkOrders = workOrders
     .filter((workOrder) => filters.property === 'all' || getWorkOrderPropertyId(workOrder) === filters.property)
+    .filter((workOrder) => filters.assigned === 'all' || getAssignedMaintenanceId(workOrder) === filters.assigned)
     .filter((workOrder) => filters.priority === 'all' || workOrder.priority === filters.priority)
     .filter((workOrder) => {
       if (filters.status === 'open') return !isClosedWorkOrder(workOrder);
@@ -538,14 +567,27 @@ export function MaintenancePage() {
 
       return workOrder.status === filters.status;
     })
-    .filter((workOrder) => matchesSearch(workOrder, properties, filters.query));
+    .filter((workOrder) => {
+      if (filters.due === 'overdue') return isOverdue(workOrder);
+      if (filters.due === 'no_due') return !getWorkOrderDueDate(workOrder);
+      if (filters.due === 'due_soon') {
+        const dueDate = dateOnly(getWorkOrderDueDate(workOrder));
+        const limit = new Date();
+        limit.setDate(limit.getDate() + 7);
+        return Boolean(dueDate && dueDate >= today() && dueDate <= limit.toISOString().slice(0, 10));
+      }
+      return true;
+    })
+    .filter((workOrder) => matchesSearch(workOrder, properties, members, filters.query));
 
   const clearFilters = () => {
     setFilters({
       query: '',
       property: 'all',
+      assigned: 'all',
       priority: 'all',
       status: 'open',
+      due: 'all',
     });
   };
 
@@ -691,6 +733,21 @@ export function MaintenancePage() {
           </label>
 
           <label>
+            Assigned
+            <select value={filters.assigned} onChange={setFilter('assigned')}>
+              <option value="all">All assigned maintenance</option>
+              {assignedMaintenanceMembers.map((member) => {
+                const memberId = member.user_id || member.userId || member.id;
+                return (
+                  <option key={memberId} value={memberId}>
+                    {getMemberName(members, memberId)}
+                  </option>
+                );
+              })}
+            </select>
+          </label>
+
+          <label>
             Priority
             <select value={filters.priority} onChange={setFilter('priority')}>
               <option value="all">All priorities</option>
@@ -699,6 +756,16 @@ export function MaintenancePage() {
                   {formatLabel(priority)}
                 </option>
               ))}
+            </select>
+          </label>
+
+          <label>
+            Due
+            <select value={filters.due} onChange={setFilter('due')}>
+              <option value="all">All due dates</option>
+              <option value="overdue">Overdue</option>
+              <option value="due_soon">Due next 7 days</option>
+              <option value="no_due">No due date</option>
             </select>
           </label>
 
@@ -744,6 +811,7 @@ export function MaintenancePage() {
               workOrder={workOrder}
               properties={properties}
               currency={currency}
+              members={members}
               canUpdate={canUpdateSpecificWorkOrder(currentUser, workOrder, allWorkOrders)}
               updating={updatingWorkOrderId === workOrder.id}
               uploading={uploadingWorkOrderId === workOrder.id}

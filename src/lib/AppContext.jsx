@@ -189,6 +189,7 @@ function normalizeMaintenance(row, properties = []) {
 
   return {
     ...row,
+    status: normalizeMaintenanceStatus(row.status),
     property: property?.name || row.property || 'Unassigned property',
     propertyId: row.property_id,
     description: row.description || row.issue_description || '',
@@ -410,6 +411,37 @@ function stripUnsupportedPayloadKeys(payload, allowedKeys) {
 }
 
 const scopedInviteRoles = [roles.OWNER, roles.CLEANER, roles.MAINTENANCE];
+
+
+const maintenancePriorities = ['low', 'medium', 'high', 'urgent'];
+const maintenanceStatuses = ['reported', 'assigned', 'in_progress', 'waiting_parts', 'completed', 'cancelled'];
+const maintenanceClosedStatuses = ['completed', 'cancelled'];
+
+function normalizeMaintenanceStatus(value) {
+  if (value === 'open') return 'reported';
+  if (value === 'waiting_for_parts') return 'waiting_parts';
+  return value || 'reported';
+}
+
+function cleanNonNegativeMoney(value, label) {
+  const numericValue = cleanNumber(value);
+
+  if (numericValue === null) return null;
+  if (numericValue < 0) throw new Error(`${label} must be 0 or more.`);
+
+  return numericValue;
+}
+
+function cleanOptionalDateOnly(value, label) {
+  if (!value) return null;
+
+  const dateValue = String(value).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateValue) || Number.isNaN(new Date(`${dateValue}T00:00:00`).getTime())) {
+    throw new Error(`${label} must be a valid date.`);
+  }
+
+  return dateValue;
+}
 
 const workspaceActionRoles = {
   property: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
@@ -1759,28 +1791,50 @@ export function AppProvider({ children }) {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'maintenance');
-    requireWorkspaceProperty(data.properties, payload.property_id);
 
-    if (!cleanText(payload.title)) throw new Error('Issue title is required.');
-    requireAllowedValue(payload.priority || 'medium', ['low', 'medium', 'high', 'urgent'], 'priority');
-    requireAllowedValue(payload.status || 'reported', ['open', 'reported', 'assigned', 'in_progress', 'waiting_parts', 'waiting_for_parts', 'completed'], 'maintenance status');
+    const allowed = [
+      'property_id',
+      'assigned_maintenance_id',
+      'title',
+      'description',
+      'issue_description',
+      'priority',
+      'status',
+      'estimated_cost',
+      'actual_cost',
+      'parts_needed',
+      'due_date',
+      'notes',
+    ];
+    const cleanPayload = stripUnsupportedPayloadKeys(payload, allowed);
+    requireWorkspaceProperty(data.properties, cleanPayload.property_id);
 
-    const description = cleanText(payload.description || payload.issue_description) || 'No description provided.';
+    if (cleanPayload.assigned_maintenance_id) {
+      requireActiveWorkspaceMemberWithRole(data.members, cleanPayload.assigned_maintenance_id, roles.MAINTENANCE, 'Assigned maintenance person');
+    }
+
+    if (!cleanText(cleanPayload.title)) throw new Error('Issue title is required.');
+    const priority = cleanPayload.priority || 'medium';
+    const status = normalizeMaintenanceStatus(cleanPayload.status);
+    requireAllowedValue(priority, maintenancePriorities, 'priority');
+    requireAllowedValue(status, maintenanceStatuses, 'maintenance status');
+
+    const description = cleanText(cleanPayload.description || cleanPayload.issue_description) || 'No description provided.';
 
     const workOrderPayload = {
       workspace_id: currentWorkspace.id,
-      property_id: payload.property_id,
+      property_id: cleanPayload.property_id,
       reported_by_user_id: session.user.id,
-      assigned_maintenance_id: payload.assigned_maintenance_id || null,
-      title: cleanText(payload.title),
+      assigned_maintenance_id: cleanPayload.assigned_maintenance_id || null,
+      title: cleanText(cleanPayload.title),
       description,
-      priority: payload.priority || 'medium',
-      status: payload.status === 'open' ? 'reported' : payload.status || 'reported',
-      estimated_cost: cleanNumber(payload.estimated_cost),
-      actual_cost: cleanNumber(payload.actual_cost),
-      parts_needed: cleanText(payload.parts_needed),
-      due_date: payload.due_date || null,
-      notes: cleanText(payload.notes),
+      priority,
+      status,
+      estimated_cost: cleanNonNegativeMoney(cleanPayload.estimated_cost, 'Estimated cost'),
+      actual_cost: cleanNonNegativeMoney(cleanPayload.actual_cost, 'Actual cost'),
+      parts_needed: cleanText(cleanPayload.parts_needed),
+      due_date: cleanOptionalDateOnly(cleanPayload.due_date, 'Due date'),
+      notes: cleanText(cleanPayload.notes),
       created_by: session.user.id,
     };
 
@@ -1803,9 +1857,23 @@ export function AppProvider({ children }) {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
-    const allowed = [
+    const currentWorkOrder = asArray(data.maintenanceWorkOrders).find((workOrder) => workOrder.id === workOrderId);
+    if (!currentWorkOrder) throw new Error('Maintenance work order was not found in the current workspace.');
+
+    const activeRoles = getActiveWorkspaceRoles(currentUser, memberships, currentWorkspace);
+    const isManager = activeRoles.some((role) => workspaceActionRoles.maintenance.includes(role));
+    const isAssignedMaintenance = currentWorkOrder.assigned_maintenance_id === session.user.id;
+
+    if (!isManager && !isAssignedMaintenance) {
+      throw new Error('You can only update assigned maintenance work orders.');
+    }
+
+    if (maintenanceClosedStatuses.includes(currentWorkOrder.status)) {
+      throw new Error('Completed and cancelled maintenance work orders are read-only.');
+    }
+
+    const managerAllowed = [
       'property_id',
-      'reported_by_user_id',
       'assigned_maintenance_id',
       'title',
       'description',
@@ -1817,21 +1885,38 @@ export function AppProvider({ children }) {
       'parts_needed',
       'due_date',
       'notes',
-      'completed_at',
     ];
+    const maintenanceAllowed = ['status', 'actual_cost', 'parts_needed', 'notes'];
 
-    const updatePayload = stripUnsupportedPayloadKeys(payload, allowed);
+    const updatePayload = stripUnsupportedPayloadKeys(payload, isManager ? managerAllowed : maintenanceAllowed);
 
     if ('issue_description' in updatePayload) {
-      updatePayload.description = updatePayload.issue_description;
+      updatePayload.description = cleanText(updatePayload.issue_description);
       delete updatePayload.issue_description;
     }
 
-    if (updatePayload.status === 'open') updatePayload.status = 'reported';
+    if ('description' in updatePayload) updatePayload.description = cleanText(updatePayload.description) || 'No description provided.';
+    if ('title' in updatePayload) {
+      updatePayload.title = cleanText(updatePayload.title);
+      if (!updatePayload.title) throw new Error('Issue title is required.');
+    }
 
-    ['estimated_cost', 'actual_cost'].forEach((key) => {
-      if (key in updatePayload) updatePayload[key] = cleanNumber(updatePayload[key]);
-    });
+    if ('property_id' in updatePayload) requireWorkspaceProperty(data.properties, updatePayload.property_id);
+    if ('assigned_maintenance_id' in updatePayload && updatePayload.assigned_maintenance_id) {
+      requireActiveWorkspaceMemberWithRole(data.members, updatePayload.assigned_maintenance_id, roles.MAINTENANCE, 'Assigned maintenance person');
+    }
+
+    if ('status' in updatePayload) {
+      updatePayload.status = normalizeMaintenanceStatus(updatePayload.status);
+      requireAllowedValue(updatePayload.status, maintenanceStatuses, 'maintenance status');
+    }
+
+    if ('priority' in updatePayload) requireAllowedValue(updatePayload.priority, maintenancePriorities, 'priority');
+    if ('estimated_cost' in updatePayload) updatePayload.estimated_cost = cleanNonNegativeMoney(updatePayload.estimated_cost, 'Estimated cost');
+    if ('actual_cost' in updatePayload) updatePayload.actual_cost = cleanNonNegativeMoney(updatePayload.actual_cost, 'Actual cost');
+    if ('parts_needed' in updatePayload) updatePayload.parts_needed = cleanText(updatePayload.parts_needed);
+    if ('notes' in updatePayload) updatePayload.notes = cleanText(updatePayload.notes);
+    if ('due_date' in updatePayload) updatePayload.due_date = cleanOptionalDateOnly(updatePayload.due_date, 'Due date');
 
     if (updatePayload.status === 'completed' && !updatePayload.completed_at) {
       updatePayload.completed_at = new Date().toISOString();
@@ -2065,6 +2150,23 @@ export function AppProvider({ children }) {
       const isAssignedCleaner = cleaningTask.assigned_cleaner_id === session.user.id;
       if (!isManager && !isAssignedCleaner) {
         throw new Error('You can only upload cleaning photos for assigned cleaning tasks.');
+      }
+    }
+
+    if (['maintenance_photo', 'repair_completion_photo'].includes(category)) {
+      const workOrder = asArray(data.maintenanceWorkOrders).find((item) => item.id === resolvedMaintenanceWorkOrderId);
+      if (!workOrder) throw new Error('Maintenance upload must be linked to a visible maintenance work order.');
+      if (maintenanceClosedStatuses.includes(workOrder.status)) {
+        throw new Error('Completed and cancelled maintenance work orders cannot receive new files.');
+      }
+      if (workOrder.property_id !== resolvedPropertyId) {
+        throw new Error('Maintenance upload must be linked to the work order property.');
+      }
+
+      const isManager = getActiveWorkspaceRoles(currentUser, memberships, currentWorkspace).some((role) => workspaceActionRoles.maintenance.includes(role));
+      const isAssignedMaintenance = workOrder.assigned_maintenance_id === session.user.id;
+      if (!isManager && !isAssignedMaintenance) {
+        throw new Error('You can only upload maintenance files for assigned work orders.');
       }
     }
 

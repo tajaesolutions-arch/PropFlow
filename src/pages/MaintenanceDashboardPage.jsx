@@ -90,7 +90,7 @@ function isOverdue(workOrder) {
 function cleanNumber(value) {
   if (value === '' || value === null || value === undefined) return null;
 
-  const numericValue = Number(value);
+  const numericValue = Number(String(value).replace(/,/g, '').trim());
   return Number.isFinite(numericValue) ? numericValue : null;
 }
 
@@ -435,6 +435,11 @@ export function MaintenanceDashboardPage() {
   };
 
   const updateStatus = async (workOrder, status) => {
+    if (!statuses.includes(status)) {
+      setMessage('Select a valid maintenance status.');
+      return;
+    }
+
     if (!canUpdateMaintenanceJob(workOrder, currentUser)) {
       setMessage('You do not have permission to update this maintenance work order, or this repair is already closed.');
       return;
@@ -468,6 +473,11 @@ export function MaintenanceDashboardPage() {
     setMessage('');
 
     try {
+      if ('actual_cost' in payload && payload.actual_cost !== null && payload.actual_cost < 0) {
+        setMessage('Actual repair cost must be 0 or more.');
+        return;
+      }
+
       await updateMaintenanceWorkOrder(workOrder.id, payload);
       setMessage('Repair update saved.');
       clearMessageSoon();
@@ -493,8 +503,7 @@ export function MaintenanceDashboardPage() {
       await uploadWorkspaceFile({
         file,
         category: 'maintenance_photo',
-        relatedTable: 'maintenance_work_orders',
-        relatedId: workOrder.id,
+        maintenanceWorkOrderId: workOrder.id,
         propertyId: getWorkOrderPropertyId(workOrder),
       });
 
