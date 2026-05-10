@@ -111,16 +111,17 @@ Expected behavior without Vercel env vars:
 
 ## Required Supabase migration
 
-The current Phase 1 schema migrations are:
+Apply the current Phase 1 hosted-project migrations in this timestamp order:
 
 ```text
-supabase/migrations/202605050001_propflow_schema.sql
-supabase/migrations/202605060001_create_workspace_with_owner_rpc.sql
-supabase/migrations/202605100001_rls_create_action_alignment.sql
-supabase/migrations/202605100002_create_workspace_with_owner_rpc.sql
+1. supabase/migrations/202605050001_propflow_schema.sql
+2. supabase/migrations/202605100001_rls_create_action_alignment.sql
+3. supabase/migrations/202605100002_create_workspace_with_owner_rpc.sql
 ```
 
-Apply the migrations in timestamp order before running the app against a Supabase project. The `202605100002_create_workspace_with_owner_rpc.sql` RPC migration must be applied after `202605100001_rls_create_action_alignment.sql`. If you see `Could not find the table 'public.workspaces' in the schema cache`, the base migration has not been applied to that project, was applied to a different project, or Supabase needs its API schema cache refreshed after the SQL runs.
+Apply the migrations in timestamp order before running the app against a Supabase project. The `202605100002_create_workspace_with_owner_rpc.sql` RPC migration must be applied after `202605100001_rls_create_action_alignment.sql`. If your checkout also contains older development migrations, keep timestamp ordering and ensure the final `202605100002_create_workspace_with_owner_rpc.sql` function definition is applied last for workspace creation. If you see `Could not find the table 'public.workspaces' in the schema cache`, the base migration has not been applied to that project, was applied to a different project, or Supabase needs its API schema cache refreshed after the SQL runs.
+
+After applying DDL migrations, Supabase PostgREST may need a short schema-cache refresh before new RPC calls are visible. If workspace creation reports that `create_workspace_with_owner` cannot be found immediately after deployment, wait briefly, reload the app, and retry before changing policies or adding direct inserts.
 
 The migration creates or repairs these app-required objects without dropping customer data:
 
@@ -168,6 +169,15 @@ supabase db reset
 ```
 
 `supabase/seed/seed_demo.sql` is now only a placeholder. Create real test accounts through Supabase Auth and create workspace data through the UI.
+
+### Developer runtime diagnostics checklist
+
+Use this quick checklist before debugging onboarding as an application bug:
+
+- [ ] `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are set for the deployed frontend environment.
+- [ ] A real Supabase Auth session exists for the browser/user being tested.
+- [ ] The user has either no workspace yet (expected route: `/workspace-setup`) or a valid selected workspace in `workspace_members`.
+- [ ] `supabase/migrations/202605100002_create_workspace_with_owner_rpc.sql` has been applied and Supabase has had a short moment to refresh the API schema cache.
 
 ## Auth and workspace behavior
 
