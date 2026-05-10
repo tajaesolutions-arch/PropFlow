@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
-import { billingAccessRoles, billingEventTypes, billingManageRoles, billingPlans, currencies, deliveryStatuses, expenseCategories, expensePaymentStatuses, expenseStatuses, invitePermissionLevels, inviteRoleOptions, notificationChannels, notificationEventTypes, notificationPreferenceGroups, notificationStatuses, propertyAssignmentRoleOptions, propertyScopedInviteRoles, propertyStatuses, propertyTypes, rentalTypes, roles } from '../data/constants.js';
+import { billingAccessRoles, billingEventTypes, billingManageRoles, billingPlans, currencies, deliveryStatuses, directBookingConfirmationModes, directBookingPageStatuses, directBookingPaymentModes, expenseCategories, expensePaymentStatuses, expenseStatuses, invitePermissionLevels, inviteRoleOptions, notificationChannels, notificationEventTypes, notificationPreferenceGroups, notificationStatuses, propertyAssignmentRoleOptions, propertyScopedInviteRoles, propertyStatuses, propertyTypes, rentalTypes, roles } from '../data/constants.js';
 import { resolvePrimaryRole } from './auth.js';
 import { isSupabaseConfigured, supabase } from './supabase.js';
 
@@ -115,6 +115,8 @@ const emptyData = {
   billingPlanLimits: [],
   billingAccessState: { allowed: true, warning: false, restricted: false, recoveryOnly: false, reason: 'not_configured', gracePeriodEndsAt: null },
   billingTablesReady: false,
+  directBookingPages: [],
+  directBookingRequests: [],
 };
 
 function firstResult(data) {
@@ -394,6 +396,71 @@ function normalizeExpense(row, properties = []) {
   };
 }
 
+
+
+function normalizeDirectBookingPage(row, properties = []) {
+  if (!row) return row;
+
+  const property = properties.find((item) => item.id === row.property_id);
+
+  return {
+    ...row,
+    workspaceId: row.workspace_id,
+    propertyId: row.property_id,
+    property: property?.name || row.property || 'Unassigned property',
+    pageTitle: row.page_title,
+    bookingMode: row.booking_mode,
+    paymentMode: row.payment_mode,
+    allowInquiries: row.allow_inquiries,
+    allowBookingRequests: row.allow_booking_requests,
+    requireGuestPhone: row.require_guest_phone,
+    requireGuestMessage: row.require_guest_message,
+    minNights: row.min_nights,
+    maxNights: row.max_nights,
+    baseRate: row.base_rate,
+    cleaningFee: row.cleaning_fee,
+    contactEmail: row.contact_email,
+    contactPhone: row.contact_phone,
+    checkInInstructions: row.check_in_instructions,
+    cancellationPolicy: row.cancellation_policy,
+    publishedAt: row.published_at,
+    archivedAt: row.archived_at,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function normalizeDirectBookingRequest(row, properties = []) {
+  if (!row) return row;
+
+  const property = properties.find((item) => item.id === row.property_id);
+
+  return {
+    ...row,
+    workspaceId: row.workspace_id,
+    propertyId: row.property_id,
+    property: property?.name || row.property || 'Unassigned property',
+    directBookingPageId: row.direct_booking_page_id,
+    inquiryType: row.inquiry_type,
+    guestName: row.guest_name,
+    guestEmail: row.guest_email,
+    guestPhone: row.guest_phone,
+    checkIn: row.check_in,
+    checkOut: row.check_out,
+    guestCount: row.guest_count,
+    quotedRate: row.quoted_rate,
+    quotedCleaningFee: row.quoted_cleaning_fee,
+    quotedTotal: row.quoted_total,
+    convertedBookingId: row.converted_booking_id,
+    reviewedBy: row.reviewed_by,
+    reviewedAt: row.reviewed_at,
+    declineReason: row.decline_reason,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    archivedAt: row.archived_at,
+  };
+}
 
 function normalizeNotification(row) {
   if (!row) return row;
@@ -719,6 +786,7 @@ const workspaceActionRoles = {
   report: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT],
   expense: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
   inventory: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
+  directBooking: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
 };
 
 
@@ -1002,6 +1070,9 @@ function cleanNonNegativeNumber(value, label) {
 const expenseCategoryValues = expenseCategories.map(([value]) => value);
 const expensePaymentStatusValues = expensePaymentStatuses.map(([value]) => value);
 const expenseStatusValues = expenseStatuses.map(([value]) => value);
+const directBookingPageStatusValues = directBookingPageStatuses.map(([value]) => value);
+const directBookingPaymentModeValues = directBookingPaymentModes.map(([value]) => value);
+const directBookingConfirmationModeValues = directBookingConfirmationModes.map(([value]) => value);
 const sensitiveHostExpenseCategories = ['owner_payout', 'property_tax', 'insurance'];
 
 function getRecordPropertyId(record) {
@@ -1165,6 +1236,26 @@ export function AppProvider({ children }) {
           .eq('workspace_id', workspaceId)
           .order('created_at', { ascending: false }),
         normalize: (rows) => rows.map(normalizeFileUpload),
+      },
+      {
+        label: 'direct booking pages',
+        key: 'directBookingPages',
+        query: supabase
+          .from('direct_booking_pages')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .order('created_at', { ascending: false }),
+        normalize: (rows) => rows.map((row) => normalizeDirectBookingPage(row, properties)),
+      },
+      {
+        label: 'direct booking requests',
+        key: 'directBookingRequests',
+        query: supabase
+          .from('direct_booking_requests')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .order('created_at', { ascending: false }),
+        normalize: (rows) => rows.map((row) => normalizeDirectBookingRequest(row, properties)),
       },
       {
         label: 'notifications',
@@ -2169,6 +2260,234 @@ export function AppProvider({ children }) {
     await refreshWorkspaceData();
 
     return normalizeBooking(row, data.properties);
+  };
+
+
+  const createOrUpdateDirectBookingPage = async (payload) => {
+    const client = requireSupabase();
+    requireWorkspaceSession(currentWorkspace, session);
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'directBooking');
+
+    const propertyId = payload.property_id || payload.propertyId;
+    const property = requireWorkspaceProperty(data.properties, propertyId);
+    const rawSlug = payload.slug || property.name || propertyId;
+    const slug = String(rawSlug)
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+
+    if (!slug) throw new Error('A public booking slug is required.');
+
+    const status = payload.status || 'draft';
+    const bookingMode = payload.booking_mode || payload.bookingMode || 'manual_approval';
+    const paymentMode = payload.payment_mode || payload.paymentMode || 'none';
+    const currency = payload.currency || property.currency || currentWorkspace.defaultCurrency || currentWorkspace.default_currency || 'USD';
+
+    requireAllowedValue(status, directBookingPageStatusValues, 'direct booking page status');
+    requireAllowedValue(bookingMode, directBookingConfirmationModeValues, 'booking mode');
+    requireAllowedValue(paymentMode, directBookingPaymentModeValues, 'payment mode');
+    requireAllowedValue(currency, currencies, 'currency');
+
+    const minNights = payload.min_nights ?? payload.minNights ?? 1;
+    const maxNights = payload.max_nights ?? payload.maxNights ?? null;
+    const cleanMinNights = cleanPositiveInteger(minNights, 'Minimum nights');
+    const cleanMaxNights = maxNights === '' || maxNights === null || maxNights === undefined ? null : cleanPositiveInteger(maxNights, 'Maximum nights');
+
+    if (cleanMaxNights && cleanMaxNights < cleanMinNights) {
+      throw new Error('Maximum nights must be greater than or equal to minimum nights.');
+    }
+
+    const pagePayload = {
+      workspace_id: currentWorkspace.id,
+      property_id: propertyId,
+      slug,
+      status,
+      page_title: cleanText(payload.page_title || payload.pageTitle),
+      headline: cleanText(payload.headline),
+      description: cleanText(payload.description),
+      house_rules: cleanText(payload.house_rules || payload.houseRules),
+      check_in_instructions: cleanText(payload.check_in_instructions || payload.checkInInstructions),
+      cancellation_policy: cleanText(payload.cancellation_policy || payload.cancellationPolicy),
+      contact_email: cleanEmail(payload.contact_email || payload.contactEmail),
+      contact_phone: cleanPhone(payload.contact_phone || payload.contactPhone),
+      booking_mode: bookingMode,
+      payment_mode: paymentMode,
+      allow_inquiries: payload.allow_inquiries ?? payload.allowInquiries ?? true,
+      allow_booking_requests: payload.allow_booking_requests ?? payload.allowBookingRequests ?? true,
+      require_guest_phone: payload.require_guest_phone ?? payload.requireGuestPhone ?? true,
+      require_guest_message: payload.require_guest_message ?? payload.requireGuestMessage ?? false,
+      min_nights: cleanMinNights,
+      max_nights: cleanMaxNights,
+      base_rate: cleanNonNegativeNumber(payload.base_rate ?? payload.baseRate, 'Base rate'),
+      cleaning_fee: cleanNonNegativeNumber(payload.cleaning_fee ?? payload.cleaningFee, 'Cleaning fee'),
+      currency,
+      published_at: status === 'published' ? (payload.published_at || payload.publishedAt || new Date().toISOString()) : null,
+      archived_at: status === 'archived' ? (payload.archived_at || payload.archivedAt || new Date().toISOString()) : null,
+      created_by: session.user.id,
+    };
+
+    const existingId = payload.id || asArray(data.directBookingPages).find((page) => page.propertyId === propertyId || page.property_id === propertyId)?.id;
+    const { created_by: _createdBy, ...updatePagePayload } = pagePayload;
+    const query = existingId
+      ? client.from('direct_booking_pages').update(updatePagePayload).eq('id', existingId).eq('workspace_id', currentWorkspace.id)
+      : client.from('direct_booking_pages').insert(pagePayload);
+
+    const { data: row, error: saveError } = await query.select('*').single();
+
+    if (saveError) throw new Error(formatSupabaseError(saveError, 'Direct booking page could not be saved.'));
+
+    await refreshWorkspaceData();
+    return normalizeDirectBookingPage(row, data.properties);
+  };
+
+  const archiveDirectBookingPage = async (pageId, archived = true) => {
+    const client = requireSupabase();
+    requireWorkspaceSession(currentWorkspace, session);
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'directBooking');
+
+    const existingPage = asArray(data.directBookingPages).find((page) => page.id === pageId);
+    if (!existingPage) throw new Error('Select an existing direct booking page in this workspace.');
+
+    const { data: row, error: updateError } = await client
+      .from('direct_booking_pages')
+      .update({
+        status: archived ? 'archived' : 'draft',
+        archived_at: archived ? new Date().toISOString() : null,
+        published_at: archived ? null : existingPage.published_at || existingPage.publishedAt || null,
+      })
+      .eq('id', pageId)
+      .eq('workspace_id', currentWorkspace.id)
+      .select('*')
+      .single();
+
+    if (updateError) throw new Error(formatSupabaseError(updateError, 'Direct booking page archive status could not be updated.'));
+
+    await refreshWorkspaceData();
+    return normalizeDirectBookingPage(row, data.properties);
+  };
+
+  const reviewDirectBookingRequest = async (requestId, status, options = {}) => {
+    const client = requireSupabase();
+    requireWorkspaceSession(currentWorkspace, session);
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'directBooking');
+    requireAllowedValue(status, ['under_review', 'approved', 'declined', 'converted_to_booking'], 'direct booking request review status');
+
+    const request = asArray(data.directBookingRequests).find((item) => item.id === requestId);
+    if (!request) throw new Error('Select an existing direct booking request in this workspace.');
+
+    const declineReason = cleanText(options.decline_reason || options.declineReason);
+    if (status === 'declined' && !declineReason) throw new Error('Decline reason is required.');
+
+    const updatePayload = {
+      status,
+      reviewed_by: session.user.id,
+      reviewed_at: new Date().toISOString(),
+      decline_reason: status === 'declined' ? declineReason : null,
+    };
+
+    if (options.converted_booking_id || options.convertedBookingId) {
+      updatePayload.converted_booking_id = options.converted_booking_id || options.convertedBookingId;
+    }
+
+    const { data: row, error: updateError } = await client
+      .from('direct_booking_requests')
+      .update(updatePayload)
+      .eq('id', requestId)
+      .eq('workspace_id', currentWorkspace.id)
+      .select('*')
+      .single();
+
+    if (updateError) throw new Error(formatSupabaseError(updateError, 'Direct booking request could not be reviewed.'));
+
+    try {
+      await createNotification({
+        recipient_user_id: session.user.id,
+        event_type: 'workspace_activity',
+        title: `Direct booking request ${status.replaceAll('_', ' ')}`,
+        body: `${request.guestName || request.guest_name} for ${request.property || 'a property'} was marked ${status.replaceAll('_', ' ')}.`,
+        priority: status === 'declined' ? 'normal' : 'high',
+        related_property_id: request.propertyId || request.property_id,
+        action_url: '/direct-bookings',
+      });
+    } catch (notificationError) {
+      console.warn('[PropFlow] Direct booking review notification skipped', notificationError);
+    }
+
+    await refreshWorkspaceData();
+    return normalizeDirectBookingRequest(row, data.properties);
+  };
+
+  const convertDirectBookingRequestToBooking = async (requestId) => {
+    requireWorkspaceSession(currentWorkspace, session);
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'directBooking');
+
+    const request = asArray(data.directBookingRequests).find((item) => item.id === requestId);
+    if (!request) throw new Error('Select an existing direct booking request in this workspace.');
+    if (!['approved', 'under_review'].includes(request.status)) {
+      throw new Error('Only approved or under-review direct booking requests can be converted.');
+    }
+
+    const propertyId = request.propertyId || request.property_id;
+    const property = requireWorkspaceProperty(data.properties, propertyId);
+    const checkIn = cleanDateOnly(request.checkIn || request.check_in, 'Check-in date');
+    const checkOut = cleanDateOnly(request.checkOut || request.check_out, 'Check-out date');
+
+    if (checkOut <= checkIn) throw new Error('Check-out must be after check-in.');
+
+    const overlaps = asArray(data.bookings).some((booking) => {
+      if ((booking.propertyId || booking.property_id) !== propertyId) return false;
+      if (String(booking.status || '').toLowerCase() === 'cancelled') return false;
+      const existingStart = booking.checkIn || booking.check_in;
+      const existingEnd = booking.checkOut || booking.check_out;
+      return existingStart && existingEnd && checkIn < existingEnd && checkOut > existingStart;
+    });
+
+    if (overlaps) throw new Error('This request overlaps an existing active booking.');
+
+    const booking = await createBooking({
+      property_id: propertyId,
+      guest_name: request.guestName || request.guest_name,
+      guest_email: request.guestEmail || request.guest_email,
+      guest_phone: request.guestPhone || request.guest_phone,
+      check_in: checkIn,
+      check_out: checkOut,
+      guest_count: request.guestCount || request.guest_count || 1,
+      source: 'direct',
+      status: 'pending',
+      payment_status: 'unpaid',
+      currency: request.currency || property.currency || currentWorkspace.defaultCurrency || currentWorkspace.default_currency || 'USD',
+      total_amount: request.quotedTotal ?? request.quoted_total ?? null,
+      cleaning_fee: request.quotedCleaningFee ?? request.quoted_cleaning_fee ?? null,
+      taxes_fees: null,
+      owner_payout: null,
+      notes: `Converted from direct booking request ${request.id}. ${request.message || ''}`.trim(),
+      auto_create_cleaning: false,
+    });
+
+    const reviewed = await reviewDirectBookingRequest(requestId, 'converted_to_booking', {
+      converted_booking_id: booking.id,
+    });
+
+    try {
+      await createNotification({
+        recipient_user_id: session.user.id,
+        event_type: 'workspace_activity',
+        title: 'Direct booking converted',
+        body: `${request.guestName || request.guest_name} was converted into an internal pending booking. Payment status remains unpaid.`,
+        priority: 'high',
+        related_property_id: propertyId,
+        related_booking_id: booking.id,
+        action_url: '/bookings',
+      });
+    } catch (notificationError) {
+      console.warn('[PropFlow] Direct booking conversion notification skipped', notificationError);
+    }
+
+    await refreshWorkspaceData();
+    return { request: reviewed, booking };
   };
 
   const createLease = async (payload) => {
@@ -3971,6 +4290,10 @@ export function AppProvider({ children }) {
       archiveProperty,
       createBooking,
       updateBooking,
+      createOrUpdateDirectBookingPage,
+      archiveDirectBookingPage,
+      reviewDirectBookingRequest,
+      convertDirectBookingRequestToBooking,
       createLease,
       updateLease,
       createCleaningTask,
