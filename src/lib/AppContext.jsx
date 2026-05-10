@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
-import { roles } from '../data/constants.js';
+import { inviteRoleOptions, roles } from '../data/constants.js';
 import { resolvePrimaryRole } from './auth.js';
 import { isSupabaseConfigured, supabase } from './supabase.js';
 
@@ -321,6 +321,46 @@ function stripUnsupportedPayloadKeys(payload, allowedKeys) {
   return Object.fromEntries(
     Object.entries(payload).filter(([key, value]) => allowedKeys.includes(key) && value !== undefined),
   );
+}
+
+const scopedInviteRoles = [roles.OWNER, roles.CLEANER, roles.MAINTENANCE];
+
+const workspaceActionRoles = {
+  property: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
+  booking: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
+  cleaning: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
+  maintenance: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
+  contact: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
+  invite: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
+  report: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT],
+};
+
+function assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, action) {
+  const allowedRoles = workspaceActionRoles[action] || [];
+  const activeMembership = asArray(memberships).find(
+    (membership) => membership.workspace_id === currentWorkspace?.id && membership.status !== 'revoked',
+  );
+  const activeRoles = asArray(activeMembership?.roles || currentUser?.membership?.roles);
+
+  if (!allowedRoles.some((role) => activeRoles.includes(role))) {
+    throw new Error('Your current workspace role cannot create this type of record.');
+  }
+}
+
+function requireWorkspaceProperty(properties, propertyId, label = 'property') {
+  const property = asArray(properties).find((item) => item.id === propertyId);
+
+  if (!property) {
+    throw new Error(`Select an existing ${label} in this workspace.`);
+  }
+
+  return property;
+}
+
+function requireAllowedValue(value, allowedValues, label) {
+  if (!allowedValues.includes(value)) {
+    throw new Error(`Select a valid ${label}.`);
+  }
 }
 
 export function AppProvider({ children }) {
@@ -899,6 +939,7 @@ export function AppProvider({ children }) {
   const createProperty = async (payload) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'property');
 
     const allowed = [
       'name',
@@ -925,6 +966,9 @@ export function AppProvider({ children }) {
     propertyPayload.created_by = session.user.id;
     propertyPayload.name = cleanText(propertyPayload.name);
     propertyPayload.address = cleanText(propertyPayload.address);
+
+    if (!propertyPayload.name) throw new Error('Property name is required.');
+    if (!propertyPayload.address) throw new Error('Address or location is required.');
     propertyPayload.country = cleanText(propertyPayload.country) || currentWorkspace.country || 'United States';
     propertyPayload.property_type = propertyPayload.property_type || 'short_term_rental';
     propertyPayload.rental_type = propertyPayload.rental_type || 'short_term';
@@ -1010,6 +1054,7 @@ export function AppProvider({ children }) {
   }) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'contact');
 
     const fullName = cleanText(full_name || name);
 
@@ -1022,7 +1067,7 @@ export function AppProvider({ children }) {
       p_full_name: fullName,
       p_email: cleanEmail(email),
       p_phone: cleanText(phone),
-      p_contact_type: contact_type || 'other',
+      p_contact_type: ['owner', 'guest', 'tenant', 'other'].includes(contact_type) ? contact_type : 'other',
       p_notes: cleanText(notes),
     };
 
@@ -1038,7 +1083,7 @@ export function AppProvider({ children }) {
       full_name: fullName,
       email: cleanEmail(email),
       phone: cleanText(phone),
-      contact_type: contact_type || 'other',
+      contact_type: ['owner', 'guest', 'tenant', 'other'].includes(contact_type) ? contact_type : 'other',
       notes: cleanText(notes),
       created_by: session.user.id,
     };
@@ -1065,6 +1110,14 @@ export function AppProvider({ children }) {
   const createBooking = async (payload) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'booking');
+    requireWorkspaceProperty(data.properties, payload.property_id);
+
+    if (!cleanText(payload.guest_name)) throw new Error('Guest name is required.');
+    if (!payload.check_in || !payload.check_out) throw new Error('Check-in and check-out dates are required.');
+    if (payload.check_out <= payload.check_in) throw new Error('Check-out must be after check-in.');
+    requireAllowedValue(payload.status || 'confirmed', ['pending', 'confirmed', 'checked_in', 'checked_out', 'completed'], 'booking status');
+    requireAllowedValue(payload.payment_status || 'unpaid', ['unpaid', 'partially_paid', 'paid'], 'payment status');
 
     let contact = null;
 
@@ -1263,6 +1316,18 @@ export function AppProvider({ children }) {
   const createCleaningTask = async (payload) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'cleaning');
+    requireWorkspaceProperty(data.properties, payload.property_id);
+
+    if (!payload.scheduled_for) throw new Error('Cleaning date is required.');
+    requireAllowedValue(payload.status || 'scheduled', ['scheduled', 'in_progress', 'needs_inspection', 'completed'], 'cleaning status');
+
+    if (payload.booking_id) {
+      const linkedBooking = asArray(data.bookings).find((booking) => booking.id === payload.booking_id);
+      if (!linkedBooking || linkedBooking.property_id !== payload.property_id) {
+        throw new Error('Related booking must belong to the selected property in this workspace.');
+      }
+    }
 
     const cleaningPayload = {
       workspace_id: currentWorkspace.id,
@@ -1341,6 +1406,12 @@ export function AppProvider({ children }) {
   const createMaintenanceWorkOrder = async (payload) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'maintenance');
+    requireWorkspaceProperty(data.properties, payload.property_id);
+
+    if (!cleanText(payload.title)) throw new Error('Issue title is required.');
+    requireAllowedValue(payload.priority || 'medium', ['low', 'medium', 'high', 'urgent'], 'priority');
+    requireAllowedValue(payload.status || 'reported', ['open', 'reported', 'assigned', 'in_progress', 'waiting_parts', 'waiting_for_parts', 'completed'], 'maintenance status');
 
     const description = cleanText(payload.description || payload.issue_description) || 'No description provided.';
 
@@ -1513,14 +1584,28 @@ export function AppProvider({ children }) {
   const createInvite = async (payload) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'invite');
 
     const token = inviteToken();
-    const roleList = payload.roles || [payload.role].filter(Boolean);
-    const assignedPropertyIds = [
+    const roleList = (payload.roles || [payload.role]).filter((role) => inviteRoleOptions.includes(role));
+
+    if (!cleanEmail(payload.email)) throw new Error('Invitee email is required.');
+    if (!roleList.length) throw new Error('Select at least one valid role for this invite.');
+
+    const requestedPropertyIds = [
       payload.assigned_property_id,
       payload.property_id,
       ...(payload.assigned_property_ids || []),
     ].filter(Boolean);
+    const uniquePropertyIds = Array.from(new Set(requestedPropertyIds));
+    const needsPropertyScope = roleList.some((role) => scopedInviteRoles.includes(role));
+    const assignedPropertyIds = needsPropertyScope
+      ? uniquePropertyIds.filter((propertyId) => asArray(data.properties).some((property) => property.id === propertyId))
+      : [];
+
+    if (needsPropertyScope && uniquePropertyIds.length !== assignedPropertyIds.length) {
+      throw new Error('Assigned properties must be existing properties in this workspace.');
+    }
 
     const invitePayload = {
       workspace_id: currentWorkspace.id,
@@ -1554,6 +1639,7 @@ export function AppProvider({ children }) {
   const createReport = async (payload) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'report');
 
     const reportPayload = {
       workspace_id: currentWorkspace.id,

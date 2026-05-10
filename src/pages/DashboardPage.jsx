@@ -521,17 +521,17 @@ export function DashboardPage() {
             ))}
           </select>
 
-          <button type="button" onClick={() => navigate('/properties')}>
+          <button type="button" data-create-action="property">
             <Building2 size={16} />
             Add property
           </button>
 
-          <button type="button" onClick={() => navigate('/bookings')}>
+          <button type="button" data-create-action="booking">
             <CalendarCheck size={16} />
             Add booking
           </button>
 
-          <button type="button" onClick={() => navigate('/maintenance')}>
+          <button type="button" data-create-action="maintenance">
             <Wrench size={16} />
             Add work order
           </button>
