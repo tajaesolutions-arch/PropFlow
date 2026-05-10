@@ -26,6 +26,7 @@ import { formatCurrency, formatDate, formatPercent } from '../lib/formatters.js'
 import { navigate } from '../routes/AppRouter.jsx';
 
 const reportManagerRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
+const ownerVisibleReportStatuses = new Set(['released', 'published', 'sent', 'delivered', 'completed']);
 
 const reportTypes = [
   {
@@ -303,14 +304,54 @@ function buildPropertyRows({ properties, bookings, cleaning, maintenance, curren
     .sort((a, b) => b.revenue - a.revenue);
 }
 
-function buildExportHistory(ownerReports) {
-  return ownerReports.map((report) => ({
-    id: report.id,
-    report_type: report.title || report.report_type || 'Owner report',
-    format: report.format || 'PDF',
-    status: report.status || 'ready',
-    created_at: report.created_at || report.period || '—',
-  }));
+function getReportDate(report) {
+  return report.startDate || report.start_date || report.created_at;
+}
+
+function getReportPropertyName(report, properties) {
+  const propertyId = getPropertyId(report);
+  const property = properties.find((item) => item.id === propertyId);
+
+  return property?.name || report.property || 'Workspace report';
+}
+
+function getReportOwnerName(report, ownerContacts, members) {
+  const contactId = report.contactId || report.contact_id;
+  const ownerId = report.ownerId || report.owner_id;
+  const contact = ownerContacts.find((item) => item.id === contactId);
+
+  if (contact) return contact.fullName || contact.full_name || contact.name || contact.email || 'Owner contact';
+
+  const member = members.find((item) => (item.user_id || item.userId || item.id) === ownerId);
+  const profile = member?.profile || member?.profiles || {};
+
+  return profile.full_name || profile.name || profile.email || member?.email || member?.user_email || (ownerId ? 'Owner member' : 'Not assigned');
+}
+
+function isOwnerVisibleReport(report) {
+  return ownerVisibleReportStatuses.has(String(report.status || '').toLowerCase());
+}
+
+function matchesReportSearch(report, query, properties, ownerContacts, members) {
+  const q = String(query || '').trim().toLowerCase();
+
+  if (!q) return true;
+
+  return [
+    report.title,
+    report.name,
+    getReportPropertyName(report, properties),
+    getReportOwnerName(report, ownerContacts, members),
+    report.reportType,
+    report.report_type,
+    report.status,
+    report.summary,
+    report.notes,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+    .includes(q);
 }
 
 function matchesPropertySearch(row, query) {
@@ -350,6 +391,9 @@ export function ReportsPage() {
     start: '',
     end: '',
     reportCategory: 'all',
+    propertyId: 'all',
+    ownerId: 'all',
+    status: 'all',
   });
 
   const currency = currentWorkspace?.defaultCurrency || currentWorkspace?.default_currency || 'USD';
@@ -360,6 +404,22 @@ export function ReportsPage() {
   const rawMaintenance = data.maintenanceWorkOrders || [];
   const rawCleaning = data.cleaningTasks || [];
   const allProperties = data.properties || [];
+  const ownerContacts = (data.contacts || []).filter((contact) => contact.contact_type === 'owner');
+  const members = data.members || [];
+  const ownerMembers = members.filter((member) => member.status === 'active' && (member.roles || []).includes(roles.OWNER));
+  const ownerFilterOptions = [
+    ...ownerContacts.map((contact) => ({
+      id: contact.id,
+      label: contact.fullName || contact.full_name || contact.name || contact.email || 'Owner contact',
+    })),
+    ...ownerMembers.map((member) => {
+      const profile = member.profile || member.profiles || {};
+      return {
+        id: member.user_id || member.userId || member.id,
+        label: profile.full_name || profile.name || profile.email || member.email || member.user_email || 'Owner member',
+      };
+    }),
+  ].filter((option, index, list) => option.id && list.findIndex((item) => item.id === option.id) === index);
 
   const properties = allProperties
     .filter((property) => property.status !== 'archived')
@@ -367,9 +427,9 @@ export function ReportsPage() {
 
   const assignedPropertyIds = new Set(properties.map((property) => property.id));
 
-  const ownerReports = (data.ownerReports || []).filter((report) =>
-    canOwnerSeeReport(report, assignedPropertyIds, currentUser),
-  );
+  const ownerReports = (data.ownerReports || [])
+    .filter((report) => canOwnerSeeReport(report, assignedPropertyIds, currentUser))
+    .filter((report) => !ownerView || isOwnerVisibleReport(report));
 
   const bookings = rawBookings
     .filter((booking) => !cancelledStatuses.has(booking.status))
@@ -404,7 +464,9 @@ export function ReportsPage() {
     cleaning,
     maintenance,
     currency,
-  }).filter((row) => matchesPropertySearch(row, filters.query));
+  })
+    .filter((row) => filters.propertyId === 'all' || row.id === filters.propertyId)
+    .filter((row) => matchesPropertySearch(row, filters.query));
 
   const monthlyRows = buildMonthlyRows({
     bookings,
@@ -413,7 +475,18 @@ export function ReportsPage() {
     currency,
   });
 
-  const exportHistory = buildExportHistory(ownerReports);
+  const reportRows = ownerReports
+    .filter((report) => filters.propertyId === 'all' || getPropertyId(report) === filters.propertyId)
+    .filter((report) => {
+      const ownerId = report.ownerId || report.owner_id || report.contactId || report.contact_id || '';
+      return filters.ownerId === 'all' || ownerId === filters.ownerId;
+    })
+    .filter((report) => filters.status === 'all' || String(report.status || '').toLowerCase() === filters.status)
+    .filter((report) => isInDateRange(getReportDate(report), filters.start, filters.end))
+    .filter((report) => matchesReportSearch(report, filters.query, properties, ownerContacts, members));
+
+  const exportHistory = [];
+  const reportStatuses = [...new Set(ownerReports.map((report) => String(report.status || '').toLowerCase()).filter(Boolean))];
 
   const roleSafeReportTypes = reportTypes.filter((report) => !ownerView || report.ownerVisible);
   const categories = [...new Set(roleSafeReportTypes.map((report) => report.category))];
@@ -434,6 +507,9 @@ export function ReportsPage() {
       start: '',
       end: '',
       reportCategory: 'all',
+      propertyId: 'all',
+      ownerId: 'all',
+      status: 'all',
     });
   };
 
@@ -473,15 +549,15 @@ export function ReportsPage() {
       </section>
 
       <section className="stat-grid dense">
-        <StatCard label="Gross revenue" value={formatCurrency(grossRevenue, currency)} icon={BarChart3} />
-        <StatCard label="Net profit" value={formatCurrency(netProfit, currency)} icon={FileSpreadsheet} />
-        <StatCard label="Owner payouts" value={formatCurrency(ownerPayouts, currency)} icon={Receipt} />
+        <StatCard label="Gross revenue summary" value={formatCurrency(grossRevenue, currency)} icon={BarChart3} />
+        <StatCard label="Net profit summary" value={formatCurrency(netProfit, currency)} icon={FileSpreadsheet} />
+        <StatCard label="Owner payout summary" value={formatCurrency(ownerPayouts, currency)} icon={Receipt} />
         <StatCard label="Occupancy rate" value={formatPercent(occupancyRate)} icon={CalendarDays} />
       </section>
 
       <section className="stat-grid dense">
-        <StatCard label="Maintenance costs" value={formatCurrency(maintenanceCosts, currency)} icon={Wrench} />
-        <StatCard label="Cleaning costs" value={formatCurrency(cleaningCosts, currency)} icon={Home} />
+        <StatCard label="Maintenance cost summary" value={formatCurrency(maintenanceCosts, currency)} icon={Wrench} />
+        <StatCard label="Cleaning cost summary" value={formatCurrency(cleaningCosts, currency)} icon={Home} />
         <StatCard label="Completed cleanings" value={completedCleaning} icon={Download} />
         <StatCard label="Open maintenance" value={openMaintenance} icon={Wrench} tone={openMaintenance ? 'warning' : 'accent'} />
       </section>
@@ -490,15 +566,15 @@ export function ReportsPage() {
         <div>
           <h3>Report center</h3>
           <p>
-            Manual report creation, scheduled reports, CSV export, and PDF export remain disabled until backend report jobs and finance storage are connected.
+            Manual report metadata can be saved from real workspace records. Scheduled reports, CSV export, and PDF export remain disabled until backend report jobs and finance storage are connected.
           </p>
         </div>
 
         <div className="reports-toolbar-actions">
           {canManageReports && (
-            <button type="button" className="primary" disabled data-skip-create-action="true">
+            <button type="button" className="primary" disabled={!currentWorkspace?.id || !properties.length}>
               <Plus size={16} />
-              Add Report disabled
+              Add Report
             </button>
           )}
 
@@ -516,8 +592,8 @@ export function ReportsPage() {
               value={filters.query}
               onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value }))}
               placeholder={ownerView
-                ? 'Search assigned property reports by name, location, status, or currency...'
-                : 'Search property performance by name, location, status, or currency...'}
+                ? 'Search assigned reports by title, property, type, status, notes, or currency...'
+                : 'Search reports and property summaries by title, property, owner, type, status, notes, or currency...'}
               aria-label="Search report data"
             />
 
@@ -569,6 +645,53 @@ export function ReportsPage() {
             </select>
           </label>
 
+          <label>
+            Property
+            <select
+              value={filters.propertyId}
+              onChange={(event) => setFilters((current) => ({ ...current, propertyId: event.target.value }))}
+            >
+              <option value="all">All current properties</option>
+              {properties.map((property) => (
+                <option key={property.id} value={property.id}>
+                  {property.name || property.address || 'Unnamed property'}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {!ownerView && (
+            <label>
+              Owner
+              <select
+                value={filters.ownerId}
+                onChange={(event) => setFilters((current) => ({ ...current, ownerId: event.target.value }))}
+              >
+                <option value="all">All owners</option>
+                {ownerFilterOptions.map((owner) => (
+                  <option key={owner.id} value={owner.id}>
+                    {owner.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          <label>
+            Status
+            <select
+              value={filters.status}
+              onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}
+            >
+              <option value="all">All statuses</option>
+              {reportStatuses.map((status) => (
+                <option key={status} value={status}>
+                  {status.replaceAll('_', ' ')}
+                </option>
+              ))}
+            </select>
+          </label>
+
           <button type="button" onClick={clearFilters} data-skip-create-action="true">
             Clear filters
           </button>
@@ -600,6 +723,73 @@ export function ReportsPage() {
         ))}
       </section>
 
+      <section className="card">
+        <div className="card-header">
+          <div>
+            <h3>{ownerView ? 'Released owner reports' : 'Saved report records'}</h3>
+            <p>Workspace-scoped report records from Supabase. These are not PDF or CSV export files.</p>
+          </div>
+          <StatusBadge tone="info">metadata only</StatusBadge>
+        </div>
+
+        {reportRows.length ? (
+          <DataTable
+            rows={reportRows}
+            columns={[
+              {
+                key: 'title',
+                label: 'Report',
+                render: (row) => row.title || row.name || 'Owner report',
+              },
+              {
+                key: 'report_type',
+                label: 'Type',
+                render: (row) => String(row.reportType || row.report_type || 'owner_statement').replaceAll('_', ' '),
+              },
+              {
+                key: 'property_id',
+                label: 'Property',
+                render: (row) => getReportPropertyName(row, properties),
+              },
+              {
+                key: 'owner_id',
+                label: 'Owner',
+                render: (row) => getReportOwnerName(row, ownerContacts, members),
+              },
+              {
+                key: 'period',
+                label: 'Date range',
+                render: (row) => `${formatDate(row.startDate || row.start_date, 'Not set')} – ${formatDate(row.endDate || row.end_date, 'Not set')}`,
+              },
+              {
+                key: 'status',
+                label: 'Status',
+                render: (row) => <StatusBadge>{row.status || 'draft'}</StatusBadge>,
+              },
+              {
+                key: 'created_at',
+                label: 'Created',
+                render: (row) => formatDate(row.created_at, 'Not available'),
+              },
+              {
+                key: 'notes',
+                label: 'Summary',
+                render: (row) => row.summary || row.notes || 'Not available',
+              },
+            ]}
+          />
+        ) : (
+          <EmptyState
+            compact
+            icon={FileText}
+            title={ownerView ? 'No released reports yet' : 'No saved report records'}
+            description={ownerView
+              ? 'Reports will appear here after the property manager releases an assigned-property report.'
+              : 'Create a property, owner, and booking first, then save a report metadata record. No fake reports or export files are generated.'}
+          />
+        )}
+      </section>
+
       {propertyRows.length ? (
         <section className="card">
           <div className="card-header">
@@ -608,7 +798,7 @@ export function ReportsPage() {
               <p>
                 {ownerView
                   ? 'Preview of report data limited to properties assigned to this owner.'
-                  : 'Preview of the report data used for owner statements and property performance exports.'}
+                  : 'Derived summary preview from current bookings, cleaning tasks, and maintenance work orders; not a finalized accounting or tax statement.'}
               </p>
             </div>
           </div>
@@ -645,7 +835,7 @@ export function ReportsPage() {
               },
               {
                 key: 'netProfit',
-                label: 'Net profit',
+                label: 'Net profit summary',
                 render: (row) => formatCurrency(row.netProfit, row.currency),
               },
               {
@@ -688,7 +878,7 @@ export function ReportsPage() {
           <div className="card-header">
             <div>
               <h3>{ownerView ? 'Assigned-property monthly summary' : 'Monthly finance summary'}</h3>
-              <p>Revenue, expenses, and net profit grouped by month.</p>
+              <p>Derived revenue, expenses, and net profit grouped by month; not a finalized accounting or tax statement.</p>
             </div>
           </div>
 
@@ -712,7 +902,7 @@ export function ReportsPage() {
                 },
                 {
                   key: 'netProfit',
-                  label: 'Net profit',
+                  label: 'Net profit summary',
                   render: (row) => formatCurrency(row.netProfit, row.currency),
                 },
               ]}

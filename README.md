@@ -422,3 +422,11 @@ Use a migrated Supabase project with at least one real workspace and property:
 - [ ] Confirm booking and lease search/filter controls work.
 - [ ] Confirm `/calendar` displays bookings, leases, cleaning tasks, and maintenance work orders.
 - [ ] Confirm cancelled bookings/leases are hidden by default and appear when **Show cancelled** is enabled.
+
+### Reports / Owner Reports scope
+
+Reports are workspace-scoped Supabase records. Owner reports should include a workspace-owned property and, when applicable, an owner member or owner contact reference so owner-facing views remain property/owner scoped.
+
+The owner dashboard only displays released owner-report statuses (`released`, `published`, `sent`, `delivered`, or `completed`) for assigned properties. Draft/internal reports stay hidden from Property Owner users.
+
+PDF export, CSV export, scheduled report automation, and generated owner statements remain placeholder-safe in the frontend. PropFlow does not generate fake report files or sample report records; real records require Supabase environment variables and all migrations applied. Frontend code uses the public Supabase client only and must not include a service-role key.

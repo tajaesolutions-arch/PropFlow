@@ -309,9 +309,12 @@ function normalizeReport(row) {
   return {
     ...row,
     propertyId: row.property_id,
+    ownerId: row.owner_id,
+    contactId: row.contact_id,
     reportType: row.report_type || row.type,
     startDate: row.start_date,
     endDate: row.end_date,
+    summary: row.summary || row.notes,
   };
 }
 
@@ -425,6 +428,18 @@ const supportedContactTypes = ['owner', 'guest', 'tenant', 'vendor', 'cleaner', 
 const maintenancePriorities = ['low', 'medium', 'high', 'urgent'];
 const maintenanceStatuses = ['reported', 'assigned', 'in_progress', 'waiting_parts', 'completed', 'cancelled'];
 const maintenanceClosedStatuses = ['completed', 'cancelled'];
+
+const reportTypes = [
+  'owner_statement',
+  'revenue_report',
+  'expense_report',
+  'occupancy_report',
+  'maintenance_cost_report',
+  'cleaning_cost_report',
+  'property_performance',
+  'booking_summary',
+];
+const reportStatuses = ['draft', 'released', 'published', 'sent', 'delivered', 'completed', 'archived'];
 
 function normalizeMaintenanceStatus(value) {
   if (value === 'open') return 'reported';
@@ -566,6 +581,16 @@ function assertAssignedOwnerIsWorkspaceMember(members, workspaceId, assignedOwne
 
   if (!member || !asArray(member.roles).includes(roles.OWNER)) {
     throw new Error('Assigned owner must be an active Property Owner member in this workspace.');
+  }
+}
+
+function assertOwnerContactIsWorkspaceOwner(contacts, contactId) {
+  if (!contactId) return;
+
+  const contact = asArray(contacts).find((item) => item.id === contactId);
+
+  if (!contact || contact.contact_type !== 'owner') {
+    throw new Error('Selected owner contact must be an owner contact in this workspace.');
   }
 }
 
@@ -2129,17 +2154,57 @@ export function AppProvider({ children }) {
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'report');
 
-    const reportPayload = {
-      workspace_id: currentWorkspace.id,
-      property_id: payload.property_id || null,
-      title: cleanText(payload.title) || 'Owner report',
-      report_type: payload.report_type || 'owner_report',
-      start_date: payload.start_date || null,
-      end_date: payload.end_date || null,
-      notes: cleanText(payload.notes),
-      status: payload.status || 'draft',
-      created_by: session.user.id,
-    };
+    const reportType = payload.report_type || 'owner_statement';
+    const status = payload.status || 'draft';
+    requireAllowedValue(reportType, reportTypes, 'report type');
+    requireAllowedValue(status, reportStatuses, 'report status');
+
+    const startDate = cleanDateOnly(payload.start_date, 'Start date');
+    const endDate = cleanDateOnly(payload.end_date, 'End date');
+
+    if (new Date(`${endDate}T00:00:00`) < new Date(`${startDate}T00:00:00`)) {
+      throw new Error('End date must be on or after start date.');
+    }
+
+    const propertyId = payload.property_id || null;
+    if (propertyId) requireWorkspaceProperty(data.properties, propertyId);
+
+    const ownerId = payload.owner_id || null;
+    assertAssignedOwnerIsWorkspaceMember(data.members, currentWorkspace.id, ownerId);
+
+    const contactId = payload.contact_id || null;
+    assertOwnerContactIsWorkspaceOwner(data.contacts, contactId);
+
+    const reportPayload = stripUnsupportedPayloadKeys(
+      {
+        workspace_id: currentWorkspace.id,
+        property_id: propertyId,
+        owner_id: ownerId,
+        contact_id: contactId,
+        title: cleanText(payload.title) || 'Owner report',
+        report_type: reportType,
+        start_date: startDate,
+        end_date: endDate,
+        summary: cleanText(payload.summary),
+        notes: cleanText(payload.notes),
+        status,
+        created_by: session.user.id,
+      },
+      [
+        'workspace_id',
+        'property_id',
+        'owner_id',
+        'contact_id',
+        'title',
+        'report_type',
+        'start_date',
+        'end_date',
+        'summary',
+        'notes',
+        'status',
+        'created_by',
+      ],
+    );
 
     const { data: row, error: insertError } = await client
       .from('owner_reports')

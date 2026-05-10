@@ -14,6 +14,7 @@ const maintenancePageRoles = operationalRoles;
 const financeRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
 const inventoryPageRoles = financeRoles;
 const calendarManagerRoles = operationalRoles;
+const ownerVisibleReportStatuses = new Set(['released', 'published', 'sent', 'delivered', 'completed']);
 
 const routeAccess = {
   '/dashboard': operationalRoles,
@@ -232,7 +233,9 @@ function getVisibleReports(data, user) {
   return reports.filter((report) => {
     const propertyId = getPropertyId(report);
     const ownerId = report.ownerId || report.owner_id || report.contactId || report.contact_id || '';
+    const status = String(report.status || '').toLowerCase();
 
+    if (!ownerVisibleReportStatuses.has(status)) return false;
     if (propertyId) return visiblePropertyIds.has(propertyId);
     if (ownerId) return ownerId === user?.id;
 
