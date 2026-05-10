@@ -116,3 +116,65 @@ export const propertyTypes = [
 
 export const rentalTypes = ['short_term', 'long_term', 'both'];
 export const propertyStatuses = ['active', 'vacant', 'occupied', 'maintenance_issue', 'archived'];
+
+
+export const notificationChannels = [
+  ['in_app', 'In-app'],
+  ['email', 'Email'],
+  ['sms', 'SMS'],
+  ['whatsapp', 'WhatsApp'],
+];
+
+export const notificationEventTypes = [
+  ['booking_created', 'Booking created'],
+  ['booking_updated', 'Booking updated'],
+  ['booking_checkin_due', 'Booking check-in due'],
+  ['booking_checkout_due', 'Booking check-out due'],
+  ['cleaning_task_assigned', 'Cleaning task assigned'],
+  ['cleaning_task_due_soon', 'Cleaning task due soon'],
+  ['cleaning_task_completed', 'Cleaning task completed'],
+  ['cleaning_task_issue_reported', 'Cleaning task issue reported'],
+  ['maintenance_work_order_created', 'Maintenance work order created'],
+  ['maintenance_work_order_assigned', 'Maintenance work order assigned'],
+  ['maintenance_work_order_urgent', 'Urgent maintenance work order'],
+  ['maintenance_work_order_completed', 'Maintenance work order completed'],
+  ['owner_report_ready', 'Owner report ready'],
+  ['owner_report_released', 'Owner report released'],
+  ['expense_created', 'Expense created'],
+  ['low_stock_alert', 'Low-stock alert'],
+  ['file_uploaded', 'File uploaded'],
+  ['team_invite_created', 'Team invite created'],
+  ['team_invite_accepted', 'Team invite accepted'],
+  ['member_suspended', 'Member suspended'],
+  ['member_reactivated', 'Member reactivated'],
+  ['billing_payment_failed', 'Billing payment failed'],
+  ['billing_grace_period_warning', 'Billing grace period warning'],
+  ['workspace_activity', 'Workspace activity'],
+];
+
+export const notificationPreferenceGroups = [
+  ['bookings', 'Bookings'],
+  ['cleaning', 'Cleaning'],
+  ['maintenance', 'Maintenance'],
+  ['owner_reports', 'Owner reports'],
+  ['finance', 'Finance'],
+  ['inventory', 'Inventory'],
+  ['files', 'Files'],
+  ['team', 'Team'],
+  ['billing', 'Billing'],
+  ['workspace_activity', 'Workspace activity'],
+];
+
+export const notificationStatuses = [
+  ['unread', 'Unread'],
+  ['read', 'Read'],
+  ['archived', 'Archived'],
+];
+
+export const deliveryStatuses = [
+  ['queued', 'Queued'],
+  ['skipped', 'Skipped'],
+  ['sent', 'Sent'],
+  ['failed', 'Failed'],
+  ['provider_not_configured', 'Provider not configured'],
+];

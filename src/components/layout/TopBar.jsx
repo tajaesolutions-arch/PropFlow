@@ -1,22 +1,13 @@
 import React from 'react';
-import { Bell, CalendarDays, Menu } from 'lucide-react';
+import { Archive, Bell, CalendarDays, Check, Menu } from 'lucide-react';
 
 import { SearchBox } from '../SearchBox.jsx';
 import { WorkspaceSwitcher } from '../WorkspaceSwitcher.jsx';
 import { AccountMenu } from '../AccountMenu.jsx';
 import { useApp } from '../../lib/AppContext.jsx';
 import { navigate } from '../../routes/AppRouter.jsx';
-import { hasAnyRole } from '../../lib/auth.js';
-import { roles } from '../../data/constants.js';
 
 const dateRangeStorageKey = 'propflow.dashboardDateRange';
-const notificationCountRoles = [
-  roles.ADMIN,
-  roles.OWNER_ADMIN,
-  roles.PROPERTY_MANAGER,
-  roles.HOST,
-  roles.ACCOUNTANT,
-];
 
 function getInitialDateRange() {
   if (typeof window === 'undefined') return 'last_30_days';
@@ -33,18 +24,15 @@ export function TopBar({
   subtitle = 'Workspace-scoped operational command center',
   setMobileOpen,
 }) {
-  const { data, currentUser } = useApp();
+  const { data, markNotificationRead, archiveNotification } = useApp();
   const [dateRange, setDateRange] = React.useState(getInitialDateRange);
   const notifications = Array.isArray(data?.notifications) ? data.notifications : [];
-  const canSeeWorkspaceNotificationCount = hasAnyRole(currentUser, notificationCountRoles);
-  const unreadNotifications = canSeeWorkspaceNotificationCount
-    ? notifications.filter(isUnreadNotification).length
-    : 0;
-  const notificationLabel = canSeeWorkspaceNotificationCount
-    ? unreadNotifications
-      ? `Open notifications. ${unreadNotifications} unread alert${unreadNotifications === 1 ? '' : 's'}.`
-      : 'Open notifications. No unread alerts.'
-    : 'Open notifications. Notification counts are hidden for this role.';
+  const recentNotifications = notifications.slice(0, 5);
+  const [notificationOpen, setNotificationOpen] = React.useState(false);
+  const unreadNotifications = notifications.filter(isUnreadNotification).length;
+  const notificationLabel = unreadNotifications
+    ? `Open notifications. ${unreadNotifications} unread alert${unreadNotifications === 1 ? '' : 's'}.`
+    : 'Open notifications. No unread alerts.';
 
   React.useEffect(() => {
     window.localStorage.setItem(dateRangeStorageKey, dateRange);
@@ -58,6 +46,30 @@ export function TopBar({
 
   const handleDateRangeChange = (event) => {
     setDateRange(event.target.value);
+  };
+
+  const handleMarkRead = async (notification, read = true) => {
+    try {
+      await markNotificationRead(notification.id, read);
+    } catch (notificationError) {
+      console.warn('[PropFlow] Could not update notification read state', notificationError);
+    }
+  };
+
+  const handleArchive = async (notification) => {
+    try {
+      await archiveNotification(notification.id, true);
+    } catch (notificationError) {
+      console.warn('[PropFlow] Could not archive notification', notificationError);
+    }
+  };
+
+  const openNotificationAction = (notification) => {
+    const url = notification.actionUrl || notification.action_url;
+    if (url && String(url).startsWith('/')) {
+      setNotificationOpen(false);
+      navigate(url);
+    }
   };
 
   return (
@@ -100,20 +112,63 @@ export function TopBar({
 
       <WorkspaceSwitcher />
 
-      <button
-        type="button"
-        className={`icon-btn topbar-notification-btn ${unreadNotifications ? 'has-alerts' : ''}`}
-        onClick={() => navigate('/notifications')}
-        aria-label={notificationLabel}
-        data-skip-create-action="true"
-      >
-        <Bell size={18} />
-        {unreadNotifications ? (
-          <span className="notification-count" aria-hidden="true">
-            {unreadNotifications > 9 ? '9+' : unreadNotifications}
-          </span>
-        ) : null}
-      </button>
+      <div className="topbar-notification-wrap">
+        <button
+          type="button"
+          className={`icon-btn topbar-notification-btn ${unreadNotifications ? 'has-alerts' : ''}`}
+          onClick={() => setNotificationOpen((value) => !value)}
+          aria-label={notificationLabel}
+          aria-expanded={notificationOpen}
+          data-skip-create-action="true"
+        >
+          <Bell size={18} />
+          {unreadNotifications ? (
+            <span className="notification-count" aria-hidden="true">
+              {unreadNotifications > 9 ? '9+' : unreadNotifications}
+            </span>
+          ) : null}
+        </button>
+
+        {notificationOpen && (
+          <div className="notification-dropdown" role="dialog" aria-label="Recent notifications">
+            <div className="notification-dropdown-header">
+              <span>
+                <strong>Notifications</strong>
+                <small>{unreadNotifications} unread</small>
+              </span>
+              <button type="button" onClick={() => navigate('/notifications')} data-skip-create-action="true">View all</button>
+            </div>
+
+            {recentNotifications.length ? (
+              <div className="notification-dropdown-list">
+                {recentNotifications.map((notification) => {
+                  const unread = isUnreadNotification(notification);
+                  const eventType = notification.eventType || notification.event_type || notification.type || 'workspace_activity';
+                  return (
+                    <article className={`notification-dropdown-item ${unread ? 'unread' : ''}`} key={notification.id}>
+                      <button type="button" className="notification-dropdown-copy" onClick={() => openNotificationAction(notification)} data-skip-create-action="true">
+                        <strong>{notification.title || 'Workspace notification'}</strong>
+                        <span>{notification.body || notification.message || 'Open notification details.'}</span>
+                        <small>{eventType.replaceAll('_', ' ')} · {new Date(notification.createdAt || notification.created_at || Date.now()).toLocaleString()}</small>
+                      </button>
+                      <div className="notification-dropdown-actions">
+                        <button type="button" onClick={() => handleMarkRead(notification, unread)} title={unread ? 'Mark read' : 'Mark unread'} data-skip-create-action="true">
+                          <Check size={14} />
+                        </button>
+                        <button type="button" onClick={() => handleArchive(notification)} title="Archive" data-skip-create-action="true">
+                          <Archive size={14} />
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="notification-dropdown-empty">No in-app notifications yet.</div>
+            )}
+          </div>
+        )}
+      </div>
 
       <AccountMenu />
     </header>

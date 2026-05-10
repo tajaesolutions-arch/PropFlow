@@ -5,9 +5,12 @@ import {
   CalendarCheck,
   CheckCircle2,
   CreditCard,
+  FileText,
   Mail,
   MessageSquare,
   Package,
+  Receipt,
+  Save,
   ShieldCheck,
   Smartphone,
   Users,
@@ -19,437 +22,316 @@ import { EmptyState } from '../components/EmptyState.jsx';
 import { StatCard } from '../components/StatCard.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
 import { useApp } from '../lib/AppContext.jsx';
+import { hasAnyRole } from '../lib/auth.js';
+import { notificationPreferenceGroups, roles } from '../data/constants.js';
 
-const preferenceGroups = [
-  {
-    key: 'booking_reminders',
-    title: 'Booking reminders',
-    description: 'Upcoming check-ins, check-outs, booking confirmations, and direct booking requests.',
-    icon: CalendarCheck,
-  },
-  {
-    key: 'cleaning_assignments',
-    title: 'Cleaning assignments',
-    description: 'Cleaner assignments, due-soon cleanings, missed cleanings, and guest-ready updates.',
-    icon: CheckCircle2,
-  },
-  {
-    key: 'maintenance_assignments',
-    title: 'Maintenance assignments',
-    description: 'New work orders, urgent repairs, waiting-for-parts updates, and completed repairs.',
-    icon: Wrench,
-  },
-  {
-    key: 'payment_alerts',
-    title: 'Payment alerts',
-    description: 'Payment failures, subscription renewals, trial ending, and billing grace-period warnings.',
-    icon: CreditCard,
-  },
-  {
-    key: 'owner_reports',
-    title: 'Owner reports',
-    description: 'Owner report ready, monthly statement generated, and report delivery updates.',
-    icon: Bell,
-  },
-  {
-    key: 'team_invites',
-    title: 'Team invites',
-    description: 'Invite created, invite accepted, new team member joined, and role changes.',
-    icon: Users,
-  },
-  {
-    key: 'inventory_alerts',
-    title: 'Inventory alerts',
-    description: 'Low-stock supplies, out-of-stock items, and reorder reminders.',
-    icon: Package,
-  },
-  {
-    key: 'workspace_activity',
-    title: 'Workspace activity',
-    description: 'Important account, workspace, property, and audit-log activity.',
-    icon: ShieldCheck,
-  },
+const groupMeta = {
+  bookings: { title: 'Bookings', description: 'Booking created, updated, check-in due, and check-out due alerts.', icon: CalendarCheck },
+  cleaning: { title: 'Cleaning', description: 'Cleaner assignment, due-soon, completed, and issue alerts.', icon: CheckCircle2 },
+  maintenance: { title: 'Maintenance', description: 'Work order created, assigned, urgent, and completed alerts.', icon: Wrench },
+  owner_reports: { title: 'Owner reports', description: 'Owner report ready and released notifications.', icon: Bell },
+  finance: { title: 'Finance', description: 'Manual expense creation and finance review alerts.', icon: Receipt },
+  inventory: { title: 'Inventory', description: 'Low-stock supply notifications.', icon: Package },
+  files: { title: 'Files', description: 'Workspace file upload alerts.', icon: FileText },
+  team: { title: 'Team', description: 'Invite, accepted invite, suspension, and reactivation alerts.', icon: Users },
+  billing: { title: 'Billing', description: 'Payment failed and grace-period warning alerts.', icon: CreditCard },
+  workspace_activity: { title: 'Workspace activity', description: 'Important workspace activity notifications.', icon: ShieldCheck },
+};
+
+const providerDefinitions = [
+  { key: 'email', channel: 'email', provider: 'resend', title: 'Resend email', icon: Mail, description: 'Transactional email will require secure backend Resend functions.' },
+  { key: 'sms', channel: 'sms', provider: 'twilio', title: 'Twilio SMS', icon: Smartphone, description: 'SMS delivery will require secure backend Twilio functions.' },
+  { key: 'whatsapp', channel: 'whatsapp', provider: 'twilio', title: 'Twilio WhatsApp', icon: MessageSquare, description: 'WhatsApp delivery will require secure backend Twilio functions.' },
 ];
 
-const channelDefinitions = [
-  {
-    key: 'inApp',
-    title: 'In-app notifications',
-    description: 'Show notifications inside PropFlow.',
-    icon: Bell,
-    provider: 'PropFlow app',
-    configured: true,
-  },
-  {
-    key: 'email',
-    title: 'Email notifications',
-    description: 'Send transactional emails through Resend.',
-    icon: Mail,
-    provider: 'Resend',
-    configured: false,
-  },
-  {
-    key: 'sms',
-    title: 'SMS notifications',
-    description: 'Send SMS alerts through Twilio.',
-    icon: Smartphone,
-    provider: 'Twilio SMS',
-    configured: false,
-  },
-  {
-    key: 'whatsapp',
-    title: 'WhatsApp notifications',
-    description: 'Send WhatsApp messages through Twilio WhatsApp.',
-    icon: MessageSquare,
-    provider: 'Twilio WhatsApp',
-    configured: false,
-  },
-];
-
-const launchEvents = [
-  {
-    title: 'Booking reminders',
-    description: 'Check-in, check-out, confirmation, and payment reminder notifications.',
-    icon: CalendarCheck,
-  },
-  {
-    title: 'Cleaning assignments',
-    description: 'Cleaner assigned, cleaning due soon, missed cleaning, and guest-ready status.',
-    icon: CheckCircle2,
-  },
-  {
-    title: 'Maintenance assignments',
-    description: 'Work order assigned, urgent repair, waiting for parts, and repair completed.',
-    icon: Wrench,
-  },
-  {
-    title: 'Payment alerts',
-    description: 'Subscription payment failed, trial ending, renewal, and billing grace period.',
-    icon: CreditCard,
-  },
-  {
-    title: 'Owner reports',
-    description: 'Owner report generated, ready for review, sent, or failed delivery.',
-    icon: Bell,
-  },
-  {
-    title: 'Team invites',
-    description: 'Invite sent, invite accepted, new member joined, and role updated.',
-    icon: Users,
-  },
+const channelLabels = [
+  ['inAppEnabled', 'In-app'],
+  ['emailEnabled', 'Email'],
+  ['smsEnabled', 'SMS'],
+  ['whatsappEnabled', 'WhatsApp'],
 ];
 
 function getWorkspaceName(workspace) {
   return workspace?.name || workspace?.business_name || workspace?.businessName || 'Current workspace';
 }
 
-function getUserName(user) {
-  return user?.name || user?.full_name || user?.email || 'current user';
+function getPreference(preferences, group) {
+  return preferences.find((item) => (item.eventGroup || item.event_group) === group) || {
+    eventGroup: group,
+    inAppEnabled: true,
+    emailEnabled: false,
+    smsEnabled: false,
+    whatsappEnabled: false,
+  };
 }
 
-function providerTone(configured) {
-  return configured ? 'success' : 'warning';
+function getProviderSetting(settings, provider, channel) {
+  return settings.find((item) => item.provider === provider && item.channel === channel) || {
+    provider,
+    channel,
+    enabled: false,
+    configured: false,
+  };
 }
 
-function providerStatus(configured) {
-  return configured ? 'preview only' : 'not configured';
+function providerTone(setting) {
+  return setting?.enabled && setting?.configured ? 'success' : 'warning';
 }
 
-function countEnabledPreferences(preferences) {
-  return Object.values(preferences).filter(Boolean).length;
+function providerStatus(setting) {
+  if (setting?.enabled && setting?.configured) return 'configured';
+  if (setting?.enabled) return 'enabled, setup required';
+  return 'not configured';
 }
 
-function countConfiguredEnabledChannels(channels) {
-  return channelDefinitions.filter((channel) => channel.configured && channels[channel.key]).length;
+function formatDate(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
-function ChannelCard({ channel, enabled, onToggle }) {
-  const Icon = channel.icon;
-  const disabled = !channel.configured;
+function PreferenceRow({ group, preference, savingKey, onToggle }) {
+  const meta = groupMeta[group] || { title: group, description: '', icon: Bell };
+  const Icon = meta.icon;
 
   return (
-    <article className="card notification-channel-card">
-      <div className="notification-channel-top">
-        <div className="notification-channel-icon">
-          <Icon size={20} />
-        </div>
-
-        <StatusBadge tone={providerTone(channel.configured)}>
-          {providerStatus(channel.configured)}
-        </StatusBadge>
-      </div>
-
-      <div>
-        <h3>{channel.title}</h3>
-        <p>{channel.description}</p>
-      </div>
-
-      <div className="notification-channel-meta">
-        <span>
-          <strong>{channel.provider}</strong>
-          <small>Provider</small>
-        </span>
-
-        <span>
-          <strong>{enabled ? 'Enabled' : 'Disabled'}</strong>
-          <small>{disabled ? 'Locked until backend setup' : 'UI preview only'}</small>
-        </span>
-      </div>
-
-      <label className={disabled ? 'notification-toggle-row disabled' : 'notification-toggle-row'}>
-        <input type="checkbox" checked={enabled} onChange={onToggle} disabled={disabled} />
-        <span>
-          <strong>{enabled ? 'Enabled' : 'Disabled'}</strong>
-          <small>
-            {channel.configured
-              ? 'This is a local UI preview only. Saved preferences and delivery behavior will be connected in a later backend phase.'
-              : 'Disabled until backend provider credentials and secure delivery functions are connected.'}
-          </small>
-        </span>
-      </label>
-    </article>
-  );
-}
-
-function PreferenceCard({ preference, enabled }) {
-  const Icon = preference.icon;
-
-  return (
-    <article className="notification-preference-row">
-      <div className="notification-preference-icon">
-        <Icon size={18} />
-      </div>
-
+    <article className="notification-preference-row real">
+      <div className="notification-preference-icon"><Icon size={18} /></div>
       <span>
-        <strong>{preference.title}</strong>
-        <small>{preference.description}</small>
+        <strong>{meta.title}</strong>
+        <small>{meta.description}</small>
       </span>
-
-      <label className="switch-control disabled" title="Preference saving is not active yet.">
-        <input type="checkbox" checked={enabled} disabled readOnly />
-        <span>Preview only</span>
-      </label>
+      <div className="notification-preference-channels">
+        {channelLabels.map(([key, label]) => (
+          <label className="switch-control" key={key}>
+            <input
+              type="checkbox"
+              checked={Boolean(preference[key])}
+              disabled={savingKey === `${group}:${key}`}
+              onChange={() => onToggle(group, key, !preference[key])}
+            />
+            <span>{label}</span>
+          </label>
+        ))}
+      </div>
     </article>
   );
 }
 
 export function NotificationSettingsPage() {
-  const { currentWorkspace, currentUser } = useApp();
+  const {
+    currentWorkspace,
+    currentUser,
+    data,
+    updateNotificationPreference,
+    updateNotificationProviderSetting,
+  } = useApp();
+  const [savingKey, setSavingKey] = React.useState('');
+  const [statusMessage, setStatusMessage] = React.useState('');
+  const [errorMessage, setErrorMessage] = React.useState('');
+  const [providerDrafts, setProviderDrafts] = React.useState({});
 
-  const [channels, setChannels] = React.useState({
-    inApp: true,
-    email: false,
-    sms: false,
-    whatsapp: false,
-  });
+  const preferences = data.notificationPreferences || [];
+  const providerSettings = data.notificationProviderSettings || [];
+  const deliveryLogs = data.notificationDeliveryLogs || [];
+  const canManageProviders = hasAnyRole(currentUser, [roles.OWNER_ADMIN]);
 
-  const preferences = React.useMemo(
-    () => preferenceGroups.reduce((acc, item) => ({ ...acc, [item.key]: true }), {}),
-    [],
-  );
+  React.useEffect(() => {
+    const nextDrafts = {};
+    providerDefinitions.forEach((definition) => {
+      const setting = getProviderSetting(providerSettings, definition.provider, definition.channel);
+      nextDrafts[definition.key] = {
+        enabled: Boolean(setting.enabled),
+        configured: Boolean(setting.configured),
+        fromName: setting.fromName || setting.from_name || '',
+        fromEmail: setting.fromEmail || setting.from_email || '',
+        replyTo: setting.replyTo || setting.reply_to || '',
+        senderPhoneLabel: setting.senderPhoneLabel || setting.sender_phone_label || '',
+        notes: setting.notes || '',
+      };
+    });
+    setProviderDrafts(nextDrafts);
+  }, [providerSettings]);
 
   if (!currentWorkspace) {
     return (
-      <AppLayout title="Notification Settings" subtitle="Workspace notification settings preview.">
-        <EmptyState
-          eyebrow="Workspace required"
-          icon={Bell}
-          title="Workspace required"
-          description="Create or join a workspace before previewing notification preferences."
-        />
+      <AppLayout title="Notification Settings" subtitle="Workspace notification preferences.">
+        <EmptyState eyebrow="Workspace required" icon={Bell} title="Workspace required" description="Create or join a workspace before managing notification preferences." />
       </AppLayout>
     );
   }
 
-  const enabledChannels = countConfiguredEnabledChannels(channels);
-  const enabledPreferences = countEnabledPreferences(preferences);
+  const preferenceRows = notificationPreferenceGroups.map(([group]) => ({ group, preference: getPreference(preferences, group) }));
+  const enabledInApp = preferenceRows.filter(({ preference }) => preference.inAppEnabled !== false).length;
+  const configuredExternal = providerDefinitions.filter((definition) => {
+    const setting = getProviderSetting(providerSettings, definition.provider, definition.channel);
+    return setting.enabled && setting.configured;
+  }).length;
 
-  const toggleChannel = (key) => {
-    const channel = channelDefinitions.find((item) => item.key === key);
+  const handlePreferenceToggle = async (group, key, checked) => {
+    const currentPreference = getPreference(preferences, group);
+    const nextPreference = { ...currentPreference, [key]: checked };
+    setSavingKey(`${group}:${key}`);
+    setErrorMessage('');
+    setStatusMessage('');
+    try {
+      await updateNotificationPreference(group, nextPreference);
+      setStatusMessage('Notification preference saved. External channel delivery remains provider-safe and will not send until backend providers are configured.');
+    } catch (error) {
+      setErrorMessage(error.message || 'Notification preference could not be saved.');
+    } finally {
+      setSavingKey('');
+    }
+  };
 
-    if (!channel?.configured) return;
-
-    setChannels((value) => ({
-      ...value,
-      [key]: !value[key],
+  const updateProviderDraft = (key, field, value) => {
+    setProviderDrafts((current) => ({
+      ...current,
+      [key]: { ...current[key], [field]: value },
     }));
+  };
+
+  const saveProviderSetting = async (definition) => {
+    const draft = providerDrafts[definition.key] || {};
+    setSavingKey(`provider:${definition.key}`);
+    setErrorMessage('');
+    setStatusMessage('');
+    try {
+      await updateNotificationProviderSetting({
+        provider: definition.provider,
+        channel: definition.channel,
+        enabled: draft.enabled,
+        configured: draft.configured,
+        fromName: draft.fromName,
+        fromEmail: draft.fromEmail,
+        replyTo: draft.replyTo,
+        senderPhoneLabel: draft.senderPhoneLabel,
+        notes: draft.notes,
+      });
+      setStatusMessage('Non-secret provider status saved. No API keys, tokens, or provider secrets were collected.');
+    } catch (error) {
+      setErrorMessage(error.message || 'Provider setting could not be saved.');
+    } finally {
+      setSavingKey('');
+    }
   };
 
   return (
     <AppLayout
       title="Notification Settings"
-      subtitle="Preview in-app, email, SMS, and WhatsApp notification settings. Preference saving and external delivery are not active yet."
+      subtitle={`Workspace/user notification preferences for ${getWorkspaceName(currentWorkspace)}.`}
     >
       <section className="stat-grid dense">
-        <StatCard
-          label="Enabled previews"
-          value={`${enabledChannels}/4`}
-          subtitle="Only local UI previews can be toggled"
-          icon={Bell}
-        />
-
-        <StatCard
-          label="Event preferences"
-          value={`${enabledPreferences}/${preferenceGroups.length}`}
-          subtitle="Preview only until persistence is connected"
-          icon={ShieldCheck}
-        />
-
-        <StatCard
-          label="Email provider"
-          value="Not configured"
-          subtitle="Resend backend setup required"
-          icon={Mail}
-          tone="warning"
-        />
-
-        <StatCard
-          label="SMS / WhatsApp"
-          value="Not configured"
-          subtitle="Twilio backend setup required"
-          icon={MessageSquare}
-          tone="warning"
-        />
+        <StatCard label="Preference groups" value={preferenceRows.length} subtitle="Workspace/user scoped" icon={Bell} />
+        <StatCard label="In-app enabled" value={`${enabledInApp}/${preferenceRows.length}`} subtitle="Real notification records" icon={ShieldCheck} />
+        <StatCard label="External providers" value={`${configuredExternal}/3`} subtitle="Provider-safe placeholders" icon={MessageSquare} tone={configuredExternal ? 'success' : 'warning'} />
+        <StatCard label="Delivery logs" value={deliveryLogs.length} subtitle="Queued/skipped/provider status" icon={Save} />
       </section>
 
       <section className="card notification-warning-card urgent">
         <div className="card-header">
           <div>
             <h3>Provider setup required</h3>
-            <p>
-              Configure notification providers securely on the backend before enabling production
-              email, SMS, or WhatsApp delivery.
-            </p>
+            <p>Email, SMS, and WhatsApp preferences can be saved, but PropFlow will not send externally until secure backend provider functions and server-side secrets are connected.</p>
           </div>
-
           <AlertTriangle size={22} className="muted" />
         </div>
-
-        <div className="helper">
-          Email, SMS, WhatsApp, and saved preference controls stay disabled until backend provider setup and Supabase preference persistence are complete. Resend, Twilio SMS, and Twilio WhatsApp credentials must stay server-side. Do not expose API keys, auth tokens, or provider secrets in frontend code.
-        </div>
+        <div className="helper">This page never asks for API keys, auth tokens, webhook signing secrets, or service-role values. Provider rows store only non-secret status and labels.</div>
       </section>
 
-      <section className="notification-channel-grid">
-        {channelDefinitions.map((channel) => (
-          <ChannelCard
-            key={channel.key}
-            channel={channel}
-            enabled={Boolean(channels[channel.key])}
-            onToggle={() => toggleChannel(channel.key)}
-          />
-        ))}
+      {(statusMessage || errorMessage) && (
+        <section className={`workspace-load-warning ${errorMessage ? 'error' : ''}`} role="status">
+          <strong>{errorMessage ? 'Notification settings error' : 'Notification settings saved'}</strong>
+          <span>{errorMessage || statusMessage}</span>
+        </section>
+      )}
+
+      <section className="card">
+        <div className="card-header">
+          <div>
+            <h3>Event preferences</h3>
+            <p>Saved per user and workspace. In-app defaults to enabled; external channels remain provider-safe placeholders.</p>
+          </div>
+          <Bell size={20} className="muted" />
+        </div>
+        <div className="notification-preference-list">
+          {preferenceRows.map(({ group, preference }) => (
+            <PreferenceRow key={group} group={group} preference={preference} savingKey={savingKey} onToggle={handlePreferenceToggle} />
+          ))}
+        </div>
       </section>
 
       <section className="panel-grid two">
         <section className="card">
           <div className="card-header">
             <div>
-              <h3>Event preferences</h3>
-              <p>
-                Notification categories for {getUserName(currentUser)} in {getWorkspaceName(currentWorkspace)}.
-              </p>
+              <h3>Provider setup status</h3>
+              <p>Non-secret Resend/Twilio status rows only.</p>
             </div>
-
-            <Bell size={20} className="muted" />
+            <ShieldCheck size={20} className="muted" />
           </div>
-
-          <div className="notification-preference-list">
-            {preferenceGroups.map((preference) => (
-              <PreferenceCard
-                key={preference.key}
-                preference={preference}
-                enabled={Boolean(preferences[preference.key])}
-              />
-            ))}
-          </div>
-
-          <div className="helper">
-            Event preference toggles are preview-only and cannot be changed yet. Persist notification preferences to a Supabase notification preferences table in the backend notification phase.
+          <div className="notification-provider-list real">
+            {providerDefinitions.map((definition) => {
+              const Icon = definition.icon;
+              const setting = getProviderSetting(providerSettings, definition.provider, definition.channel);
+              const draft = providerDrafts[definition.key] || {};
+              return (
+                <article className="notification-provider-row" key={definition.key}>
+                  <div>
+                    <Icon size={16} />
+                    <span>
+                      <strong>{definition.title}</strong>
+                      <small>{definition.description}</small>
+                    </span>
+                  </div>
+                  <StatusBadge tone={providerTone(setting)}>{providerStatus(setting)}</StatusBadge>
+                  {canManageProviders && (
+                    <div className="notification-provider-form">
+                      <label><input type="checkbox" checked={Boolean(draft.enabled)} onChange={(event) => updateProviderDraft(definition.key, 'enabled', event.target.checked)} /> Enabled flag</label>
+                      <label><input type="checkbox" checked={Boolean(draft.configured)} onChange={(event) => updateProviderDraft(definition.key, 'configured', event.target.checked)} /> Configured flag</label>
+                      {definition.channel === 'email' ? (
+                        <>
+                          <input placeholder="From name" value={draft.fromName || ''} onChange={(event) => updateProviderDraft(definition.key, 'fromName', event.target.value)} />
+                          <input placeholder="From email label" value={draft.fromEmail || ''} onChange={(event) => updateProviderDraft(definition.key, 'fromEmail', event.target.value)} />
+                          <input placeholder="Reply-to label" value={draft.replyTo || ''} onChange={(event) => updateProviderDraft(definition.key, 'replyTo', event.target.value)} />
+                        </>
+                      ) : (
+                        <input placeholder="Sender phone label" value={draft.senderPhoneLabel || ''} onChange={(event) => updateProviderDraft(definition.key, 'senderPhoneLabel', event.target.value)} />
+                      )}
+                      <textarea placeholder="Non-secret setup notes" value={draft.notes || ''} onChange={(event) => updateProviderDraft(definition.key, 'notes', event.target.value)} />
+                      <button type="button" onClick={() => saveProviderSetting(definition)} disabled={savingKey === `provider:${definition.key}`}>
+                        <Save size={16} /> Save status
+                      </button>
+                    </div>
+                  )}
+                </article>
+              );
+            })}
           </div>
         </section>
 
         <section className="card">
           <div className="card-header">
             <div>
-              <h3>Provider setup status</h3>
-              <p>Backend delivery provider readiness.</p>
+              <h3>Delivery logs</h3>
+              <p>Real delivery/outbox foundation records when notifications are created.</p>
             </div>
-
             <ShieldCheck size={20} className="muted" />
           </div>
-
-          <div className="notification-provider-list">
-            <span>
-              <Mail size={16} />
-              <strong>Resend Email</strong>
-              <StatusBadge tone="warning">not configured</StatusBadge>
-            </span>
-
-            <span>
-              <Smartphone size={16} />
-              <strong>Twilio SMS</strong>
-              <StatusBadge tone="warning">not configured</StatusBadge>
-            </span>
-
-            <span>
-              <MessageSquare size={16} />
-              <strong>Twilio WhatsApp</strong>
-              <StatusBadge tone="warning">not configured</StatusBadge>
-            </span>
-
-            <span>
-              <Bell size={16} />
-              <strong>In-app notifications</strong>
-              <StatusBadge tone="info">preview only</StatusBadge>
-            </span>
-          </div>
+          {deliveryLogs.length ? (
+            <div className="notification-delivery-log-list">
+              {deliveryLogs.slice(0, 12).map((log) => (
+                <article className="notification-delivery-log-row" key={log.id}>
+                  <span><strong>{log.channel}</strong><small>{log.provider || 'internal'}</small></span>
+                  <StatusBadge tone={log.status === 'sent' ? 'success' : log.status === 'failed' ? 'error' : 'warning'}>{String(log.status || '').replaceAll('_', ' ')}</StatusBadge>
+                  <small>{formatDate(log.createdAt || log.created_at)}</small>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <EmptyState compact icon={Bell} title="No delivery logs yet" description="Delivery rows will appear when real in-app notifications are created. External channels will be skipped or marked provider_not_configured until providers are connected server-side." />
+          )}
         </section>
-      </section>
-
-      <section className="card">
-        <div className="card-header">
-          <div>
-            <h3>Launch notification events</h3>
-            <p>Core notification events PropFlow should support in the MVP.</p>
-          </div>
-
-          <CalendarCheck size={20} className="muted" />
-        </div>
-
-        <div className="notification-event-grid">
-          {launchEvents.map((event) => {
-            const Icon = event.icon;
-
-            return (
-              <article className="notification-event-card" key={event.title}>
-                <Icon size={18} />
-                <span>
-                  <strong>{event.title}</strong>
-                  <small>{event.description}</small>
-                </span>
-              </article>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="card">
-        <div className="card-header">
-          <div>
-            <h3>Delivery logs</h3>
-            <p>Provider delivery history foundation.</p>
-          </div>
-
-          <ShieldCheck size={20} className="muted" />
-        </div>
-
-        <EmptyState
-          compact
-          icon={Bell}
-          title="No delivery logs yet"
-          description="Notification delivery records will appear here after backend provider integrations are configured."
-        />
       </section>
     </AppLayout>
   );
