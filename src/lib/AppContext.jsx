@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
-import { currencies, expenseCategories, expensePaymentStatuses, expenseStatuses, invitePermissionLevels, inviteRoleOptions, propertyAssignmentRoleOptions, propertyScopedInviteRoles, propertyStatuses, propertyTypes, rentalTypes, roles } from '../data/constants.js';
+import { currencies, deliveryStatuses, expenseCategories, expensePaymentStatuses, expenseStatuses, invitePermissionLevels, inviteRoleOptions, notificationChannels, notificationEventTypes, notificationPreferenceGroups, notificationStatuses, propertyAssignmentRoleOptions, propertyScopedInviteRoles, propertyStatuses, propertyTypes, rentalTypes, roles } from '../data/constants.js';
 import { resolvePrimaryRole } from './auth.js';
 import { isSupabaseConfigured, supabase } from './supabase.js';
 
@@ -100,6 +100,10 @@ const emptyData = {
   contacts: [],
   supplies: [],
   notifications: [],
+  notificationPreferences: [],
+  notificationDeliveryLogs: [],
+  notificationProviderSettings: [],
+  unreadNotificationCount: 0,
   ownerReports: [],
   fileUploads: [],
   invites: [],
@@ -385,6 +389,84 @@ function normalizeExpense(row, properties = []) {
   };
 }
 
+
+function normalizeNotification(row) {
+  if (!row) return row;
+
+  return {
+    ...row,
+    type: row.event_type || row.type || 'workspace_activity',
+    message: row.body || row.message || '',
+    workspaceId: row.workspace_id,
+    recipientUserId: row.recipient_user_id,
+    actorUserId: row.actor_user_id,
+    eventType: row.event_type || row.type,
+    relatedPropertyId: row.related_property_id,
+    relatedBookingId: row.related_booking_id,
+    relatedCleaningTaskId: row.related_cleaning_task_id,
+    relatedMaintenanceWorkOrderId: row.related_maintenance_work_order_id,
+    relatedExpenseId: row.related_expense_id,
+    relatedReportId: row.related_report_id,
+    relatedFileUploadId: row.related_file_upload_id,
+    relatedInviteId: row.related_invite_id,
+    actionUrl: row.action_url,
+    readAt: row.read_at,
+    archivedAt: row.archived_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function normalizeNotificationPreference(row) {
+  if (!row) return row;
+
+  return {
+    ...row,
+    workspaceId: row.workspace_id,
+    userId: row.user_id,
+    eventGroup: row.event_group,
+    inAppEnabled: row.in_app_enabled,
+    emailEnabled: row.email_enabled,
+    smsEnabled: row.sms_enabled,
+    whatsappEnabled: row.whatsapp_enabled,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function normalizeNotificationDeliveryLog(row) {
+  if (!row) return row;
+
+  return {
+    ...row,
+    workspaceId: row.workspace_id,
+    notificationId: row.notification_id,
+    recipientUserId: row.recipient_user_id,
+    recipientAddress: row.recipient_address,
+    errorMessage: row.error_message,
+    providerMessageId: row.provider_message_id,
+    attemptedAt: row.attempted_at,
+    sentAt: row.sent_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function normalizeNotificationProviderSetting(row) {
+  if (!row) return row;
+
+  return {
+    ...row,
+    workspaceId: row.workspace_id,
+    fromName: row.from_name,
+    fromEmail: row.from_email,
+    replyTo: row.reply_to,
+    senderPhoneLabel: row.sender_phone_label,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 function requireSupabase() {
   if (!supabase) {
     throw new Error(
@@ -534,6 +616,49 @@ const workspaceActionRoles = {
   expense: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
   inventory: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
 };
+
+
+const notificationChannelValues = notificationChannels.map(([value]) => value);
+const notificationEventTypeValues = notificationEventTypes.map(([value]) => value);
+const notificationPreferenceGroupValues = notificationPreferenceGroups.map(([value]) => value);
+const notificationStatusValues = notificationStatuses.map(([value]) => value);
+const deliveryStatusValues = deliveryStatuses.map(([value]) => value);
+const notificationPriorities = ['low', 'normal', 'high', 'urgent'];
+const notificationManagerRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER];
+const providerManagerRoles = [roles.OWNER_ADMIN];
+const externalNotificationChannels = ['email', 'sms', 'whatsapp'];
+const blockedProviderSettingKeys = ['api_key', 'apikey', 'apiKey', 'token', 'auth_token', 'authToken', 'secret', 'webhook_secret', 'webhookSecret', 'service_role', 'serviceRole'];
+
+function getNotificationEventGroup(eventType) {
+  if (String(eventType || '').startsWith('booking_')) return 'bookings';
+  if (String(eventType || '').startsWith('cleaning_')) return 'cleaning';
+  if (String(eventType || '').startsWith('maintenance_')) return 'maintenance';
+  if (String(eventType || '').startsWith('owner_report_')) return 'owner_reports';
+  if (String(eventType || '').startsWith('expense_')) return 'finance';
+  if (eventType === 'low_stock_alert') return 'inventory';
+  if (eventType === 'file_uploaded') return 'files';
+  if (['team_invite_created', 'team_invite_accepted', 'member_suspended', 'member_reactivated'].includes(eventType)) return 'team';
+  if (String(eventType || '').startsWith('billing_')) return 'billing';
+  return 'workspace_activity';
+}
+
+function getActiveWorkspaceMembers(members, workspaceId) {
+  return asArray(members).filter((member) => member.workspace_id === workspaceId && member.status === 'active');
+}
+
+function getWorkspaceManagers(members, workspaceId) {
+  return getActiveWorkspaceMembers(members, workspaceId).filter((member) =>
+    asArray(member.roles).some((role) => notificationManagerRoles.includes(role)),
+  );
+}
+
+function getWorkspaceOwners(members, workspaceId) {
+  return getActiveWorkspaceMembers(members, workspaceId).filter((member) => asArray(member.roles).includes(roles.OWNER_ADMIN));
+}
+
+function isUnreadNotification(notification) {
+  return !notification?.read_at && !notification?.readAt && notification?.status === 'unread';
+}
 
 const workspaceFileBucket = 'workspace-files';
 const legacyFileCategoryMap = {
@@ -944,8 +1069,41 @@ export function AppProvider({ children }) {
           .from('notifications')
           .select('*')
           .eq('workspace_id', workspaceId)
+          .eq('recipient_user_id', session?.user?.id || '')
           .order('created_at', { ascending: false }),
-        normalize: (rows) => rows,
+        normalize: (rows) => rows.map(normalizeNotification),
+      },
+      {
+        label: 'notification preferences',
+        key: 'notificationPreferences',
+        query: supabase
+          .from('notification_preferences')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .eq('user_id', session?.user?.id || '')
+          .order('event_group', { ascending: true }),
+        normalize: (rows) => rows.map(normalizeNotificationPreference),
+      },
+      {
+        label: 'notification provider settings',
+        key: 'notificationProviderSettings',
+        query: supabase
+          .from('notification_provider_settings')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .order('channel', { ascending: true }),
+        normalize: (rows) => rows.map(normalizeNotificationProviderSetting),
+      },
+      {
+        label: 'notification delivery logs',
+        key: 'notificationDeliveryLogs',
+        query: supabase
+          .from('notification_delivery_logs')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .order('created_at', { ascending: false })
+          .limit(50),
+        normalize: (rows) => rows.map(normalizeNotificationDeliveryLog),
       },
       {
         label: 'owner reports',
@@ -981,6 +1139,8 @@ export function AppProvider({ children }) {
       if (result.error) warnings.push(`${result.label}: ${formatSupabaseError(result.error)}`);
       nextData[result.key] = result.error ? [] : result.normalize(asArray(result.data));
     });
+
+    nextData.unreadNotificationCount = asArray(nextData.notifications).filter(isUnreadNotification).length;
 
     setData(nextData);
 
@@ -1427,6 +1587,20 @@ export function AppProvider({ children }) {
       console.warn('[PropFlow] Workspace invite status update failed after membership creation', acceptError);
     } else {
       await writeActivityLog('workspace_invite.accepted', { invite_id: invite.id }, invite.workspace_id);
+      try {
+        const ownerRows = getWorkspaceOwners(data.members, invite.workspace_id);
+        await Promise.all(ownerRows.map((member) => safeCreateNotification({
+          recipient_user_id: memberUserId(member),
+          event_type: 'team_invite_accepted',
+          title: 'Team invite accepted',
+          body: `${currentEmail} joined the workspace.`,
+          priority: 'normal',
+          related_invite_id: invite.id,
+          action_url: '/team',
+        })));
+      } catch (notificationError) {
+        console.warn('[PropFlow] Invite accepted notification skipped', notificationError);
+      }
     }
 
     saveWorkspaceId(invite.workspace_id);
@@ -1983,6 +2157,20 @@ export function AppProvider({ children }) {
 
     if (insertError) throw new Error(formatSupabaseError(insertError, 'Cleaning task could not be saved.'));
 
+    if (row.assigned_cleaner_id) {
+      await safeCreateNotification({
+        recipient_user_id: row.assigned_cleaner_id,
+        event_type: 'cleaning_task_assigned',
+        title: 'Cleaning task assigned',
+        body: `You have a cleaning task scheduled for ${new Date(row.scheduled_for).toLocaleDateString()}.`,
+        priority: 'normal',
+        related_property_id: row.property_id,
+        related_booking_id: row.booking_id,
+        related_cleaning_task_id: row.id,
+        action_url: '/cleaning',
+      });
+    }
+
     await refreshWorkspaceData();
 
     return normalizeCleaning(row, data.properties);
@@ -2079,6 +2267,32 @@ export function AppProvider({ children }) {
 
     if (updateError) throw new Error(formatSupabaseError(updateError, 'Cleaning task could not be updated.'));
 
+    if (['completed', 'guest_ready'].includes(row.status) && currentTask.status !== row.status) {
+      await notifyWorkspaceManagers({
+        event_type: 'cleaning_task_completed',
+        title: row.status === 'guest_ready' ? 'Cleaning marked guest-ready' : 'Cleaning task completed',
+        body: 'A cleaning task was completed and is ready for manager review.',
+        priority: 'normal',
+        related_property_id: row.property_id,
+        related_booking_id: row.booking_id,
+        related_cleaning_task_id: row.id,
+        action_url: '/cleaning',
+      });
+    }
+
+    if (row.issue_reported && !currentTask.issue_reported) {
+      await notifyWorkspaceManagers({
+        event_type: 'cleaning_task_issue_reported',
+        title: 'Cleaning issue reported',
+        body: 'A cleaner reported an issue on an assigned task.',
+        priority: 'high',
+        related_property_id: row.property_id,
+        related_booking_id: row.booking_id,
+        related_cleaning_task_id: row.id,
+        action_url: '/cleaning',
+      });
+    }
+
     await refreshWorkspaceData();
 
     return normalizeCleaning(row, data.properties);
@@ -2143,6 +2357,19 @@ export function AppProvider({ children }) {
 
     if (insertError) {
       throw new Error(formatSupabaseError(insertError, 'Maintenance work order could not be saved.'));
+    }
+
+    if (row.assigned_maintenance_id) {
+      await safeCreateNotification({
+        recipient_user_id: row.assigned_maintenance_id,
+        event_type: row.priority === 'urgent' ? 'maintenance_work_order_urgent' : 'maintenance_work_order_assigned',
+        title: row.priority === 'urgent' ? 'Urgent maintenance work order assigned' : 'Maintenance work order assigned',
+        body: row.title || 'A maintenance work order has been assigned to you.',
+        priority: row.priority === 'urgent' ? 'urgent' : row.priority === 'high' ? 'high' : 'normal',
+        related_property_id: row.property_id,
+        related_maintenance_work_order_id: row.id,
+        action_url: '/maintenance',
+      });
     }
 
     await refreshWorkspaceData();
@@ -2229,6 +2456,18 @@ export function AppProvider({ children }) {
 
     if (updateError) {
       throw new Error(formatSupabaseError(updateError, 'Maintenance work order could not be updated.'));
+    }
+
+    if (row.status === 'completed' && currentWorkOrder.status !== 'completed') {
+      await notifyWorkspaceManagers({
+        event_type: 'maintenance_work_order_completed',
+        title: 'Maintenance work order completed',
+        body: row.title || 'A maintenance work order was completed.',
+        priority: 'normal',
+        related_property_id: row.property_id,
+        related_maintenance_work_order_id: row.id,
+        action_url: '/maintenance',
+      });
     }
 
     await refreshWorkspaceData();
@@ -2458,6 +2697,14 @@ export function AppProvider({ children }) {
     if (insertError) throw new Error(formatSupabaseError(insertError, 'Invite could not be created.'));
 
     await writeActivityLog('workspace_invite.created', { invite_id: row.id, email, roles: roleList });
+    await notifyWorkspaceManagers({
+      event_type: 'team_invite_created',
+      title: 'Team invite created',
+      body: `An invite was created for ${email}.`,
+      priority: 'normal',
+      related_invite_id: row.id,
+      action_url: '/team',
+    });
     await refreshWorkspaceData();
 
     return row;
@@ -3015,15 +3262,237 @@ export function AppProvider({ children }) {
     return normalizeFileUpload(row);
   };
 
-  const markNotificationRead = async (notificationId) => {
+
+  const requireNotificationManagerRole = () => {
+    const activeRoles = getActiveWorkspaceRoles(currentUser, memberships, currentWorkspace);
+    if (!notificationManagerRoles.some((role) => activeRoles.includes(role))) {
+      throw new Error('Your current workspace role cannot create workspace notifications.');
+    }
+  };
+
+  const requireProviderManagerRole = () => {
+    const activeRoles = getActiveWorkspaceRoles(currentUser, memberships, currentWorkspace);
+    if (!providerManagerRoles.some((role) => activeRoles.includes(role))) {
+      throw new Error('Only Workspace Owners / Company Admins can update notification provider settings.');
+    }
+  };
+
+  const requireActiveNotificationRecipient = (recipientUserId) => {
+    if (!recipientUserId) return null;
+
+    const member = getActiveWorkspaceMembers(data.members, currentWorkspace.id).find((item) => memberUserId(item) === recipientUserId);
+    if (!member) throw new Error('Notification recipient must be an active member of this workspace.');
+    if (asArray(member.roles).includes(roles.ADMIN)) {
+      throw new Error('PropFlow Admin is platform-level only and cannot be targeted as a customer workspace recipient.');
+    }
+
+    return member;
+  };
+
+  const validateNotificationRelatedRecords = (payload) => {
+    if (payload.related_property_id) requireWorkspaceProperty(data.properties, payload.related_property_id);
+    if (payload.related_booking_id) requireWorkspaceScopedRecord(data.bookings, payload.related_booking_id, 'booking', payload.related_property_id);
+    if (payload.related_cleaning_task_id) requireWorkspaceScopedRecord(data.cleaningTasks, payload.related_cleaning_task_id, 'cleaning task', payload.related_property_id);
+    if (payload.related_maintenance_work_order_id) requireWorkspaceScopedRecord(data.maintenanceWorkOrders, payload.related_maintenance_work_order_id, 'maintenance work order', payload.related_property_id);
+    if (payload.related_expense_id) requireWorkspaceScopedRecord(data.expenses, payload.related_expense_id, 'expense', payload.related_property_id);
+    if (payload.related_report_id) requireWorkspaceScopedRecord(data.ownerReports, payload.related_report_id, 'owner report', payload.related_property_id);
+    if (payload.related_file_upload_id) requireWorkspaceScopedRecord(data.fileUploads, payload.related_file_upload_id, 'file upload', payload.related_property_id);
+    if (payload.related_invite_id) requireWorkspaceScopedRecord(data.invites, payload.related_invite_id, 'workspace invite');
+  };
+
+  const getPreferenceForEventType = (recipientUserId, eventType) => {
+    const eventGroup = getNotificationEventGroup(eventType);
+    if (recipientUserId !== session?.user?.id) {
+      return {
+        eventGroup,
+        in_app_enabled: true,
+        email_enabled: false,
+        sms_enabled: false,
+        whatsapp_enabled: false,
+      };
+    }
+
+    const preference = asArray(data.notificationPreferences).find((item) => (item.event_group || item.eventGroup) === eventGroup);
+    return preference || {
+      eventGroup,
+      in_app_enabled: true,
+      email_enabled: false,
+      sms_enabled: false,
+      whatsapp_enabled: false,
+    };
+  };
+
+  const getProviderSettingForChannel = (channel) => {
+    const provider = channel === 'email' ? 'resend' : 'twilio';
+    return asArray(data.notificationProviderSettings).find((item) => item.channel === channel && item.provider === provider) || {
+      provider,
+      channel,
+      enabled: false,
+      configured: false,
+    };
+  };
+
+  const createDeliveryLogsForNotification = async (client, notification, channels = null) => {
+    const preference = getPreferenceForEventType(notification.recipient_user_id, notification.event_type);
+    const requestedChannels = Array.isArray(channels) && channels.length ? channels : notificationChannelValues;
+    const logs = requestedChannels
+      .filter((channel) => notificationChannelValues.includes(channel))
+      .map((channel) => {
+        const enabled = channel === 'in_app'
+          ? preference.in_app_enabled !== false && preference.inAppEnabled !== false
+          : Boolean(preference[`${channel}_enabled`] ?? preference[`${channel}Enabled`]);
+        const providerSetting = channel === 'in_app' ? { provider: 'internal', enabled: true, configured: true } : getProviderSettingForChannel(channel);
+        const status = !enabled
+          ? 'skipped'
+          : channel === 'in_app'
+            ? 'sent'
+            : providerSetting.enabled && providerSetting.configured
+              ? 'queued'
+              : 'provider_not_configured';
+
+        return {
+          workspace_id: currentWorkspace.id,
+          notification_id: notification.id,
+          channel,
+          provider: providerSetting.provider,
+          recipient_user_id: notification.recipient_user_id,
+          recipient_address: null,
+          status,
+          error_message: status === 'provider_not_configured' ? 'Provider setup required before external delivery can send.' : null,
+          attempted_at: channel === 'in_app' ? new Date().toISOString() : null,
+          sent_at: channel === 'in_app' && status === 'sent' ? new Date().toISOString() : null,
+        };
+      })
+      .filter((log) => deliveryStatusValues.includes(log.status));
+
+    if (!logs.length) return;
+
+    const { error: logError } = await client.from('notification_delivery_logs').insert(logs);
+    if (logError) console.warn('[PropFlow] Notification delivery log insert failed', logError);
+  };
+
+  const createNotification = async (payload) => {
+    const client = requireSupabase();
+    requireWorkspaceSession(currentWorkspace, session);
+    requireNotificationManagerRole();
+
+    const allowed = [
+      'recipient_user_id',
+      'recipientUserId',
+      'actor_user_id',
+      'actorUserId',
+      'event_type',
+      'eventType',
+      'title',
+      'body',
+      'message',
+      'priority',
+      'related_property_id',
+      'relatedPropertyId',
+      'related_booking_id',
+      'relatedBookingId',
+      'related_cleaning_task_id',
+      'relatedCleaningTaskId',
+      'related_maintenance_work_order_id',
+      'relatedMaintenanceWorkOrderId',
+      'related_expense_id',
+      'relatedExpenseId',
+      'related_report_id',
+      'relatedReportId',
+      'related_file_upload_id',
+      'relatedFileUploadId',
+      'related_invite_id',
+      'relatedInviteId',
+      'action_url',
+      'actionUrl',
+      'metadata',
+      'channels',
+    ];
+    const cleanPayload = stripUnsupportedPayloadKeys(payload || {}, allowed);
+    const eventType = cleanText(cleanPayload.event_type || cleanPayload.eventType);
+    const title = cleanText(cleanPayload.title);
+    const body = cleanText(cleanPayload.body || cleanPayload.message);
+    const priority = cleanPayload.priority || 'normal';
+    const recipientUserId = cleanPayload.recipient_user_id || cleanPayload.recipientUserId;
+
+    requireActiveNotificationRecipient(recipientUserId);
+    requireAllowedValue(eventType, notificationEventTypeValues, 'notification event type');
+    requireAllowedValue(priority, notificationPriorities, 'notification priority');
+    if (!title || title.length > 160) throw new Error('Notification title is required and must be 160 characters or less.');
+    if (body && body.length > 1000) throw new Error('Notification body must be 1,000 characters or less.');
+
+    const notificationPayload = {
+      workspace_id: currentWorkspace.id,
+      recipient_user_id: recipientUserId,
+      actor_user_id: cleanPayload.actor_user_id || cleanPayload.actorUserId || session.user.id,
+      event_type: eventType,
+      type: eventType,
+      title,
+      body,
+      message: body || title,
+      status: 'unread',
+      priority,
+      related_property_id: cleanPayload.related_property_id || cleanPayload.relatedPropertyId || null,
+      related_booking_id: cleanPayload.related_booking_id || cleanPayload.relatedBookingId || null,
+      related_cleaning_task_id: cleanPayload.related_cleaning_task_id || cleanPayload.relatedCleaningTaskId || null,
+      related_maintenance_work_order_id: cleanPayload.related_maintenance_work_order_id || cleanPayload.relatedMaintenanceWorkOrderId || null,
+      related_expense_id: cleanPayload.related_expense_id || cleanPayload.relatedExpenseId || null,
+      related_report_id: cleanPayload.related_report_id || cleanPayload.relatedReportId || null,
+      related_file_upload_id: cleanPayload.related_file_upload_id || cleanPayload.relatedFileUploadId || null,
+      related_invite_id: cleanPayload.related_invite_id || cleanPayload.relatedInviteId || null,
+      action_url: cleanPayload.action_url || cleanPayload.actionUrl || null,
+      metadata: cleanPayload.metadata && typeof cleanPayload.metadata === 'object' ? cleanPayload.metadata : {},
+    };
+
+    validateNotificationRelatedRecords(notificationPayload);
+
+    const { data: row, error: insertError } = await client
+      .from('notifications')
+      .insert(notificationPayload)
+      .select('*')
+      .single();
+
+    if (insertError) throw new Error(formatSupabaseError(insertError, 'Notification could not be created.'));
+
+    await createDeliveryLogsForNotification(client, row, cleanPayload.channels);
+    await refreshWorkspaceData();
+
+    return normalizeNotification(row);
+  };
+
+  const safeCreateNotification = async (payload) => {
+    try {
+      return await createNotification(payload);
+    } catch (notificationError) {
+      console.warn('[PropFlow] Notification hook skipped', notificationError);
+      return null;
+    }
+  };
+
+  const notifyWorkspaceManagers = async (payload, { ownersOnly = false } = {}) => {
+    const recipients = ownersOnly ? getWorkspaceOwners(data.members, currentWorkspace.id) : getWorkspaceManagers(data.members, currentWorkspace.id);
+    await Promise.all(
+      recipients
+        .map(memberUserId)
+        .filter(Boolean)
+        .filter((userId, index, list) => list.indexOf(userId) === index)
+        .map((recipientUserId) => safeCreateNotification({ ...payload, recipient_user_id: recipientUserId })),
+    );
+  };
+
+  const markNotificationRead = async (notificationId, read = true) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
+    const status = read ? 'read' : 'unread';
+    requireAllowedValue(status, notificationStatusValues, 'notification status');
+
     const { data: row, error: updateError } = await client
       .from('notifications')
-      .update({ status: 'read' })
+      .update({ status, read_at: read ? new Date().toISOString() : null })
       .eq('id', notificationId)
       .eq('workspace_id', currentWorkspace.id)
+      .eq('recipient_user_id', session.user.id)
       .select('*')
       .single();
 
@@ -3033,8 +3502,107 @@ export function AppProvider({ children }) {
 
     await refreshWorkspaceData();
 
-    return row;
+    return normalizeNotification(row);
   };
+
+  const archiveNotification = async (notificationId, archived = true) => {
+    const client = requireSupabase();
+    requireWorkspaceSession(currentWorkspace, session);
+
+    const { data: row, error: updateError } = await client
+      .from('notifications')
+      .update({
+        status: archived ? 'archived' : 'unread',
+        archived_at: archived ? new Date().toISOString() : null,
+        read_at: archived ? new Date().toISOString() : null,
+      })
+      .eq('id', notificationId)
+      .eq('workspace_id', currentWorkspace.id)
+      .eq('recipient_user_id', session.user.id)
+      .select('*')
+      .single();
+
+    if (updateError) {
+      throw new Error(formatSupabaseError(updateError, 'Notification archive status could not be updated.'));
+    }
+
+    await refreshWorkspaceData();
+
+    return normalizeNotification(row);
+  };
+
+  const updateNotificationPreference = async (eventGroup, channels = {}) => {
+    const client = requireSupabase();
+    requireWorkspaceSession(currentWorkspace, session);
+
+    requireAllowedValue(eventGroup, notificationPreferenceGroupValues, 'notification preference group');
+
+    const preferencePayload = {
+      workspace_id: currentWorkspace.id,
+      user_id: session.user.id,
+      event_group: eventGroup,
+      in_app_enabled: channels.in_app_enabled ?? channels.inAppEnabled ?? channels.in_app ?? channels.inApp ?? true,
+      email_enabled: Boolean(channels.email_enabled ?? channels.emailEnabled ?? channels.email),
+      sms_enabled: Boolean(channels.sms_enabled ?? channels.smsEnabled ?? channels.sms),
+      whatsapp_enabled: Boolean(channels.whatsapp_enabled ?? channels.whatsappEnabled ?? channels.whatsapp),
+    };
+
+    const { data: row, error: upsertError } = await client
+      .from('notification_preferences')
+      .upsert(preferencePayload, { onConflict: 'workspace_id,user_id,event_group' })
+      .select('*')
+      .single();
+
+    if (upsertError) {
+      throw new Error(formatSupabaseError(upsertError, 'Notification preference could not be saved.'));
+    }
+
+    await refreshWorkspaceData();
+
+    return normalizeNotificationPreference(row);
+  };
+
+  const updateNotificationProviderSetting = async (payload) => {
+    const client = requireSupabase();
+    requireWorkspaceSession(currentWorkspace, session);
+    requireProviderManagerRole();
+
+    const hasBlockedSecretKey = Object.keys(payload || {}).some((key) => blockedProviderSettingKeys.includes(key) || /secret|token|api.?key|service.?role/i.test(key));
+    if (hasBlockedSecretKey) throw new Error('Provider secrets must stay server-side and cannot be saved in PropFlow frontend settings.');
+
+    const provider = cleanText(payload.provider);
+    const channel = cleanText(payload.channel);
+    const allowedProviders = channel === 'email' ? ['resend'] : ['twilio'];
+
+    requireAllowedValue(channel, externalNotificationChannels, 'provider channel');
+    requireAllowedValue(provider, allowedProviders, 'provider');
+
+    const settingPayload = {
+      workspace_id: currentWorkspace.id,
+      provider,
+      channel,
+      enabled: Boolean(payload.enabled),
+      configured: Boolean(payload.configured),
+      from_name: cleanText(payload.from_name || payload.fromName),
+      from_email: cleanEmail(payload.from_email || payload.fromEmail),
+      reply_to: cleanEmail(payload.reply_to || payload.replyTo),
+      sender_phone_label: cleanText(payload.sender_phone_label || payload.senderPhoneLabel),
+      notes: cleanText(payload.notes),
+    };
+
+    const { data: row, error: upsertError } = await client
+      .from('notification_provider_settings')
+      .upsert(settingPayload, { onConflict: 'workspace_id,provider,channel' })
+      .select('*')
+      .single();
+
+    if (upsertError) throw new Error(formatSupabaseError(upsertError, 'Notification provider setting could not be saved.'));
+
+    await refreshWorkspaceData();
+
+    return normalizeNotificationProviderSetting(row);
+  };
+
 
   const contextValue = useMemo(
     () => ({
@@ -3089,7 +3657,11 @@ export function AppProvider({ children }) {
       uploadWorkspaceFile,
       getFileSignedUrl,
       archiveFileUpload,
+      createNotification,
       markNotificationRead,
+      archiveNotification,
+      updateNotificationPreference,
+      updateNotificationProviderSetting,
     }),
     [
       session,

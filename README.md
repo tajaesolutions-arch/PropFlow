@@ -474,3 +474,13 @@ Supplies are real, workspace-scoped Supabase records that can be tracked either 
 Estimated inventory value is an operational preview based on current quantity and estimated unit cost; it is not finalized accounting, tax, invoice, payout, purchase-order, or payment data. Adding or editing supplies does not automatically create expenses, vendor invoices, supplier payments, purchase orders, exports, or accounting automation.
 
 Supplier/contact details and cost visibility are role-limited. Workspace Owner / Company Admin, Property Manager, and Host roles can manage supplies; Accountant users can review supplier details and estimated inventory value in read-only mode; Property Owner, Cleaner, and Maintenance Crew roles do not receive broad inventory-ledger access. Real inventory records require Supabase environment variables and applied migrations, and frontend code uses only the Supabase anon client without any service-role key.
+
+## Notifications / Provider Settings foundation
+
+Notifications now use workspace-scoped Supabase records when `supabase/migrations/202605100014_notifications_foundation.sql` is applied. Notification preferences are stored per user, per workspace, and per event group, with in-app enabled by default and email/SMS/WhatsApp preferences saved as provider-safe flags.
+
+In-app notifications are real `notifications` rows addressed to a recipient user in the current workspace. The notification center and topbar bell read those records, support read/unread/archive status updates, and rely on RLS so users see only notifications addressed to them.
+
+Email, SMS, and WhatsApp sending is intentionally not active from the frontend. Resend and Twilio credentials must stay server-side only in secure backend/Supabase Edge Function environment variables before external delivery is connected. The `notification_provider_settings` table stores only non-secret status flags and labels such as enabled/configured, from name/email labels, sender phone label, and notes; it must never store API keys, auth tokens, webhook signing secrets, or service-role values.
+
+`notification_delivery_logs` is the delivery/outbox foundation for in-app and future provider channels. Logs track `queued`, `skipped`, `provider_not_configured`, `sent`, and `failed` statuses without storing provider secrets. Frontend code continues to use the public Supabase anon client only and does not use or expose a service-role key. Real notification records require Supabase environment variables and all migrations applied.

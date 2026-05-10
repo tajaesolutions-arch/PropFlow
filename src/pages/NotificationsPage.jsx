@@ -23,7 +23,7 @@ import { StatCard } from '../components/StatCard.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
 import { useApp } from '../lib/AppContext.jsx';
 import { hasAnyRole } from '../lib/auth.js';
-import { roles } from '../data/constants.js';
+import { notificationEventTypes, roles } from '../data/constants.js';
 import { navigate } from '../routes/AppRouter.jsx';
 
 const notificationTypes = [
@@ -65,7 +65,15 @@ function formatDate(value) {
 }
 
 function getNotificationType(notification) {
-  return notification.type || notification.category || 'system';
+  const eventType = notification.eventType || notification.event_type || notification.type || notification.category || 'workspace_activity';
+  if (String(eventType).startsWith('booking_')) return 'booking';
+  if (String(eventType).startsWith('cleaning_')) return 'cleaning';
+  if (String(eventType).startsWith('maintenance_')) return 'maintenance';
+  if (String(eventType).startsWith('owner_report_')) return 'owner_report';
+  if (String(eventType).startsWith('billing_')) return 'billing';
+  if (String(eventType).startsWith('team_') || String(eventType).startsWith('member_')) return 'team';
+  if (eventType === 'low_stock_alert') return 'inventory_alert';
+  return 'system';
 }
 
 function getNotificationTitle(notification) {
@@ -81,7 +89,12 @@ function getNotificationDate(notification) {
 }
 
 function getRecipientId(notification) {
-  return notification.user_id || notification.userId || notification.recipient_id || notification.recipientId || notification.assigned_to || notification.assignedTo || '';
+  return notification.recipientUserId || notification.recipient_user_id || notification.user_id || notification.userId || notification.recipient_id || notification.recipientId || notification.assigned_to || notification.assignedTo || '';
+}
+
+function getEventTypeLabel(notification) {
+  const eventType = notification.eventType || notification.event_type || notification.type || 'workspace_activity';
+  return notificationEventTypes.find(([value]) => value === eventType)?.[1] || formatLabel(eventType);
 }
 
 function isUnread(notification) {
@@ -209,7 +222,7 @@ function sortNotifications(notifications) {
   });
 }
 
-function NotificationRow({ notification }) {
+function NotificationRow({ notification, onMarkRead, onArchive }) {
   const type = getNotificationType(notification);
   const Icon = getIcon(type);
   const unread = isUnread(notification);
@@ -227,20 +240,26 @@ function NotificationRow({ notification }) {
         </div>
 
         <small>
-          {formatLabel(type)} · {formatDate(getNotificationDate(notification))}
+          {getEventTypeLabel(notification)} · {formatDate(getNotificationDate(notification))}
         </small>
       </div>
 
       <div className="notification-row-status">
         <StatusBadge tone={unread ? 'warning' : 'success'}>{unread ? 'unread' : 'read'}</StatusBadge>
-        <StatusBadge tone={getTone(notification)}>{notification.status || type}</StatusBadge>
+        <StatusBadge tone={getTone(notification)}>{notification.priority || notification.status || type}</StatusBadge>
+        <button type="button" onClick={() => onMarkRead(notification, unread)} data-skip-create-action="true">
+          {unread ? 'Mark read' : 'Mark unread'}
+        </button>
+        <button type="button" onClick={() => onArchive(notification)} data-skip-create-action="true">
+          Archive
+        </button>
       </div>
     </article>
   );
 }
 
 export function NotificationsPage() {
-  const { data, currentUser } = useApp();
+  const { data, currentUser, markNotificationRead, archiveNotification } = useApp();
 
   const [filters, setFilters] = React.useState({
     query: '',
@@ -286,6 +305,22 @@ export function NotificationsPage() {
       type: 'all',
       status: 'all',
     });
+  };
+
+  const handleMarkRead = async (notification, read = true) => {
+    try {
+      await markNotificationRead(notification.id, read);
+    } catch (notificationError) {
+      console.warn('[PropFlow] Could not update notification read state', notificationError);
+    }
+  };
+
+  const handleArchive = async (notification) => {
+    try {
+      await archiveNotification(notification.id, true);
+    } catch (notificationError) {
+      console.warn('[PropFlow] Could not archive notification', notificationError);
+    }
   };
 
   return (
@@ -406,7 +441,7 @@ export function NotificationsPage() {
         {filteredNotifications.length ? (
           <div className="notifications-list">
             {filteredNotifications.map((notification) => (
-              <NotificationRow key={notification.id} notification={notification} />
+              <NotificationRow key={notification.id} notification={notification} onMarkRead={handleMarkRead} onArchive={handleArchive} />
             ))}
           </div>
         ) : (
