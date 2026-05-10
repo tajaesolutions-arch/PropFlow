@@ -299,6 +299,10 @@ RLS is enabled on `contacts`, `bookings`, and `leases`.
 - Suspended profile/workspace/member checks continue to flow through the existing helper functions.
 - `propflow_admin` remains platform-only and is not customer-assignable.
 
+### 2026-05-10 create-action RLS audit
+
+`supabase/migrations/202605100001_rls_create_action_alignment.sql` aligns server-side RLS with the current create-action modal and AppContext save rules. The audit keeps schema changes non-destructive, does not add broad `USING (true)` customer-data policies, and tightens workspace/property linkage for invites, assignments, contacts, bookings, leases, cleaning tasks, maintenance work orders, supplies, file uploads, activity logs, notifications, and report exports. Customer invites and workspace memberships remain limited to valid customer roles; `propflow_admin` remains excluded from customer workspace roles and must be controlled only by trusted platform/admin operations.
+
 ### Double-booking rules
 
 Database triggers block unsafe overlaps before insert/update:
