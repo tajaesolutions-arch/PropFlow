@@ -40,6 +40,7 @@ const DashboardPage = lazyPage(() => import('../pages/DashboardPage.jsx'), 'Dash
 const PropertiesPage = lazyPage(() => import('../pages/PropertiesPage.jsx'), 'PropertiesPage');
 const PropertyDetailPage = lazyPage(() => import('../pages/PropertyDetailPage.jsx'), 'PropertyDetailPage');
 const BookingsPage = lazyPage(() => import('../pages/BookingsPage.jsx'), 'BookingsPage');
+const DirectBookingsPage = lazyPage(() => import('../pages/DirectBookingsPage.jsx'), 'DirectBookingsPage');
 const CalendarPage = lazyPage(() => import('../pages/CalendarPage.jsx'), 'CalendarPage');
 const CleaningPage = lazyPage(() => import('../pages/CleaningPage.jsx'), 'CleaningPage');
 const MaintenancePage = lazyPage(() => import('../pages/MaintenancePage.jsx'), 'MaintenancePage');
@@ -81,7 +82,7 @@ const AccountantDashboardPage = lazyPage(
 );
 const BillingPage = lazyPage(() => import('../pages/BillingPage.jsx'), 'BillingPage');
 const ComingSoonPage = lazyPage(() => import('../pages/ComingSoonPage.jsx'), 'ComingSoonPage');
-const PublicBookingPage = lazyPage(() => import('../pages/PublicBookingPage.jsx'), 'PublicBookingPage');
+const PublicDirectBookingPage = lazyPage(() => import('../pages/PublicDirectBookingPage.jsx'), 'PublicDirectBookingPage');
 
 const publicRoutes = {
   '/': { Page: LandingPage },
@@ -90,7 +91,7 @@ const publicRoutes = {
   '/signup': { Page: SignupPage },
   '/join': { Page: JoinWorkspacePage },
   '/suspended': { Page: SuspendedPage },
-  '/book': { Page: PublicBookingPage },
+  '/book': { Page: PublicDirectBookingPage },
 };
 
 const operationalRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
@@ -113,6 +114,7 @@ const financeRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, rol
 const filesPageRoles = [...operationalRoles, roles.ACCOUNTANT, roles.OWNER];
 const inventoryPageRoles = financeRoles;
 const calendarManagerRoles = operationalRoles;
+const directBookingManagerRoles = operationalRoles;
 
 const dashboardAccess = {
   '/dashboard': operationalRoles,
@@ -130,6 +132,7 @@ const protectedRoutes = {
     Page: BookingsPage,
     access: bookingPageRoles,
   },
+  '/direct-bookings': { Page: DirectBookingsPage, access: directBookingManagerRoles },
   '/calendar': { Page: CalendarPage, access: calendarManagerRoles },
   '/cleaning': { Page: CleaningPage, access: [...operationalRoles, roles.CLEANER] },
   '/maintenance': { Page: MaintenancePage, access: maintenancePageRoles },
@@ -406,7 +409,7 @@ function isPublicPath(path) {
 }
 
 function getPublicRoute(path) {
-  if (path.startsWith('/book/')) return { Page: PublicBookingPage };
+  if (path.startsWith('/book/')) return { Page: PublicDirectBookingPage };
   return publicRoutes[path];
 }
 

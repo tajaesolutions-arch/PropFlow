@@ -48,10 +48,24 @@ Not implemented in this phase:
 - Stripe billing.
 - Full notification automation.
 - Full reports/PDF/CSV exports.
-- Direct booking public pages.
+- Live guest payment checkout for direct bookings.
 - Airbnb/Booking.com/Vrbo API integrations.
+- iCal import/export for direct booking channels.
 - Twilio SMS/WhatsApp automation.
 - Real AI tools.
+
+
+## Direct Booking public request foundation
+
+- Public direct booking pages use the route `/book/:slug` and are intentionally rendered outside the private dashboard/sidebar layout.
+- Workspace Owners, Property Managers, and Hosts can manage direct booking pages from `/direct-bookings`; pages are linked one-to-one with existing workspace properties and default to `manual_approval` plus `payment_mode = none`.
+- Public guests can submit booking requests or general inquiries against a published page. These records stay in `direct_booking_requests` and are **not** internal bookings until a manager reviews and explicitly converts them.
+- Approved/under-review requests can be converted into internal bookings with `source = direct`, `status = pending`, and `payment_status = unpaid`; no booking is marked paid unless a real guest-payment flow is implemented later.
+- Online payment modes are placeholder-safe (`none`, `full_payment_placeholder`, `deposit_placeholder`). Direct booking guest checkout must be implemented through a separate secure guest-payment backend and must not reuse PropFlow SaaS subscription/Stripe checkout endpoints.
+- Public page data is loaded through safe public RPCs that return only public page/property fields and unavailable date ranges. Existing booking guest names, internal notes, owner payouts, revenue, expenses, workspace members, operational tasks, and private file paths are not exposed.
+- Property photos and operational uploads remain private by default. Public pages use a placeholder visual unless a future public-marked media workflow is deliberately added.
+- Apply `supabase/migrations/202605100016_direct_booking_foundation.sql` after the earlier workspace, property, booking, notification, and billing migrations. The frontend uses only the Supabase anon key; do **not** expose a Supabase service-role key in Vite/frontend environment variables.
+- Public request spam/rate limiting is future backend protection; this foundation restricts anon inserts through RLS to published, matching direct booking pages only.
 
 ## Tech stack
 

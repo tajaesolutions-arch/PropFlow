@@ -126,6 +126,39 @@ export const billingPlanDetails = [
   },
 ];
 
+
+export const directBookingPageStatuses = [
+  ['draft', 'Draft'],
+  ['published', 'Published'],
+  ['paused', 'Paused'],
+  ['archived', 'Archived'],
+];
+
+export const directBookingRequestStatuses = [
+  ['new', 'New'],
+  ['under_review', 'Under review'],
+  ['approved', 'Approved'],
+  ['declined', 'Declined'],
+  ['converted_to_booking', 'Converted to booking'],
+  ['cancelled', 'Cancelled'],
+];
+
+export const directBookingPaymentModes = [
+  ['none', 'No online payment'],
+  ['full_payment_placeholder', 'Full payment placeholder'],
+  ['deposit_placeholder', 'Deposit placeholder'],
+];
+
+export const directBookingConfirmationModes = [
+  ['manual_approval', 'Manual approval'],
+  ['instant_booking_placeholder', 'Instant booking placeholder'],
+];
+
+export const directBookingInquiryTypes = [
+  ['booking_request', 'Booking request'],
+  ['general_inquiry', 'General inquiry'],
+];
+
 export const subscriptionStatuses = [
   'trialing',
   'active',

@@ -7375,3 +7375,168 @@ label {
   gap: 0.6rem;
   margin-top: 1rem;
 }
+
+.public-direct-booking-hero {
+  align-items: stretch;
+}
+
+.public-booking-loading {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  color: #64748b;
+  font-weight: 700;
+}
+
+.public-booking-visual {
+  min-height: 280px;
+  border-radius: 28px;
+  background: linear-gradient(145deg, rgba(27, 153, 139, 0.14), rgba(11, 37, 69, 0.08));
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  display: grid;
+  place-items: center;
+  text-align: center;
+  color: #0b2545;
+  padding: 2rem;
+}
+
+.public-booking-visual span {
+  max-width: 260px;
+  color: #64748b;
+  font-weight: 700;
+}
+
+.public-booking-content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.8fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.public-booking-main-column {
+  display: grid;
+  gap: 1rem;
+}
+
+.public-booking-info-pill {
+  display: grid;
+  gap: 0.25rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 0.9rem;
+  background: #fff;
+}
+
+.public-booking-info-pill svg {
+  color: #1b998b;
+}
+
+.public-booking-info-pill small {
+  color: #64748b;
+  text-transform: capitalize;
+}
+
+.public-booking-form-card {
+  position: sticky;
+  top: 1rem;
+}
+
+.public-booking-copy-card {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.success-helper {
+  border: 1px solid rgba(22, 163, 74, 0.25);
+  background: rgba(22, 163, 74, 0.08);
+  color: #166534;
+  border-radius: 14px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.direct-booking-form .form-grid.three,
+.direct-booking-filters,
+.form-grid.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.form-grid.four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.direct-booking-checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.direct-booking-checkbox-grid label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 0.7rem;
+  background: #f8fafc;
+}
+
+.direct-booking-table-actions,
+.direct-booking-review-actions,
+.property-direct-booking-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.direct-booking-review-actions input {
+  max-width: 160px;
+  min-height: 36px;
+}
+
+.direct-booking-filters-card,
+.direct-booking-setup-card {
+  margin-top: 1rem;
+}
+
+.direct-booking-filters {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.property-direct-booking-card {
+  margin: 1rem 0;
+}
+
+.property-direct-booking-actions code {
+  background: #f1f5f9;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  color: #0b2545;
+  padding: 0.45rem 0.7rem;
+  overflow-wrap: anywhere;
+}
+
+.link-button {
+  color: #0b2545;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+}
+
+@media (max-width: 960px) {
+  .public-booking-content-grid,
+  .direct-booking-form .form-grid.three,
+  .direct-booking-filters,
+  .form-grid.three,
+  .form-grid.four,
+  .direct-booking-checkbox-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .public-booking-form-card {
+    position: static;
+  }
+}

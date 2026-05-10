@@ -11,6 +11,7 @@ import {
   Eye,
   FileText,
   FileUp,
+  Globe2,
   Home,
   Image,
   Lock,
@@ -592,6 +593,9 @@ export function PropertyDetailPage({ propertyId }) {
   }
 
   const canEdit = hasAnyActiveWorkspaceRole(memberships, currentWorkspace, propertyEditorRoles);
+  const canManageDirectBooking = hasAnyActiveWorkspaceRole(memberships, currentWorkspace, taskManagerRoles);
+  const directBookingPage = (data.directBookingPages || []).find((page) => (page.propertyId || page.property_id) === property.id);
+  const directBookingUrl = directBookingPage?.slug ? `${window.location.origin}/book/${directBookingPage.slug}` : '';
   const canCreateOperationalRecords = hasAnyActiveWorkspaceRole(memberships, currentWorkspace, taskManagerRoles);
   const canSeeFinance = canViewPropertyFinance(property, currentUser, memberships, currentWorkspace);
   const propertyCurrency = property.currency || 'USD';
@@ -772,6 +776,43 @@ export function PropertyDetailPage({ propertyId }) {
         <StatCard label="Open cleaning" value={openCleaning.length} icon={ClipboardCheck} />
         <StatCard label="Open maintenance" value={openMaintenance.length} icon={Wrench} tone={openMaintenance.length ? 'warning' : 'accent'} />
       </section>
+
+      {canManageDirectBooking && (
+        <section className="card property-direct-booking-card">
+          <div className="card-header">
+            <div>
+              <p className="eyebrow">Direct booking</p>
+              <h3>{directBookingPage ? 'Public booking page configured' : 'Set up public booking requests'}</h3>
+              <p>
+                {directBookingPage
+                  ? 'Share the public page for manual booking requests. Requests do not become internal bookings until reviewed and converted.'
+                  : 'Create a direct booking page so guests can send manual requests without exposing private files or owner financial data.'}
+              </p>
+            </div>
+            <Globe2 size={20} className="muted" />
+          </div>
+
+          {directBookingPage ? (
+            <div className="property-direct-booking-actions">
+              <StatusBadge>{directBookingPage.status}</StatusBadge>
+              <code>{directBookingUrl}</code>
+              <button type="button" onClick={() => navigator.clipboard?.writeText(directBookingUrl)} data-skip-create-action="true">
+                Copy link
+              </button>
+              <button type="button" onClick={() => window.open(directBookingUrl, '_blank', 'noopener,noreferrer')} data-skip-create-action="true">
+                Open public page
+              </button>
+              <button type="button" className="primary" onClick={() => navigate('/direct-bookings')} data-skip-create-action="true">
+                Manage
+              </button>
+            </div>
+          ) : (
+            <button type="button" className="primary" onClick={() => navigate('/direct-bookings')} data-skip-create-action="true">
+              Set up direct booking page
+            </button>
+          )}
+        </section>
+      )}
 
       <section className="property-detail-grid">
         <section className="card property-detail-summary-card">
