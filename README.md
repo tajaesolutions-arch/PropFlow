@@ -39,7 +39,7 @@ Implemented in this phase:
 - Cleaning tasks connected to Supabase with workspace/property scoping, shared Add Cleaning Task modal validation, booking linkage, assigned-cleaner dashboard visibility, status updates, notes, supplies, issue flags, and private photo upload hooks.
 - Maintenance work orders connected to Supabase with priority/status/cost/parts fields and private upload hooks.
 - Workspace Owner team invite system with invite tokens/links and copy-link fallback.
-- Private Supabase Storage bucket and file metadata table for MVP upload categories.
+- Private Supabase Storage bucket `workspace-files`, workspace-scoped `file_uploads` metadata, signed viewing links, and a Files / Documents workspace page for permitted roles.
 - Basic activity logs schema and write helpers.
 - Polished coming-soon placeholders for out-of-scope pages.
 
@@ -137,7 +137,7 @@ The migration creates or repairs these app-required objects without dropping cus
 - `file_uploads`
 - `activity_logs`
 - `notifications`
-- private Storage bucket `propflow-private`
+- private Storage bucket `workspace-files`
 - RLS helper functions and table/storage policies
 - secure `public.create_workspace_with_owner(...)` RPC for initial workspace creation
 
@@ -259,15 +259,17 @@ Use a real Supabase project for these checks:
 - [ ] Owner/Property Manager/Host can create a maintenance work order.
 - [ ] Urgent maintenance work orders are visually separated in the urgent panel.
 - [ ] Upload controls do not crash when the private bucket is missing; they show a Supabase error.
-- [ ] Private Storage upload succeeds after the `propflow-private` bucket and policies are applied.
+- [ ] Private Storage upload succeeds after the `workspace-files` bucket and policies are applied.
 - [ ] Logout clears session and protected routes redirect to `/login`.
 - [ ] Suspended profile or membership routes to `/suspended` and cannot read workspace data.
 
-## Storage behavior
+## Files / Documents and private Storage behavior
 
-Operational uploads use the private `propflow-private` bucket. Paths are scoped by `workspace_id`, and upload metadata is recorded in `file_uploads`. The app does not expose permanent public URLs; signed/authenticated download flows can be layered on this foundation.
+Operational files use the private Supabase Storage bucket `workspace-files`; public buckets are not used for property photos, cleaning photos, maintenance photos/videos, receipts, leases, contracts, reports, invoices, or internal documents. Storage paths include the workspace id using the convention `workspace/{workspace_id}/{file_category}/{record_context}/{timestamp-safe-file-name}`, while `file_uploads` stores workspace-scoped metadata only.
 
-Supported MVP categories include property photos/documents, leases, contracts, receipts, invoices, cleaning before/after photos, maintenance photos, and repair completion photos.
+Files can be linked to properties, bookings, cleaning tasks, maintenance work orders, expenses, owner reports, contacts, or workspace-level documents. Viewing/downloading uses short-lived Supabase signed URLs created from authorized `file_uploads` records; permanent public URLs are not stored in the database. The frontend uses the Supabase anon client only and must never expose a service-role key.
+
+Supported MVP categories include property photos/documents, cleaning before/after/issue photos, maintenance issue/completion photos and videos, receipts, leases, contracts, owner reports, invoices, general documents, and other private documents. Receipt uploads and report document files remain placeholder-safe unless a workflow explicitly links them to real expense or owner-report records. Real uploads require Supabase environment variables, the latest migrations, and the private `workspace-files` bucket/policies applied.
 
 ## Known limitations
 
@@ -437,7 +439,7 @@ PDF export, CSV export, scheduled report automation, and generated owner stateme
 
 Manual expenses are workspace-scoped Supabase records once the expenses foundation migration is applied. The Expenses page and Accountant Dashboard use those records for operational finance previews alongside bookings, cleaning tasks, maintenance work orders, and owner reports.
 
-Finance summaries in PropFlow are not finalized accounting ledgers, tax filings, invoices, owner statements, or payout instructions. CSV/PDF exports remain disabled until backend export generation is added, and receipt upload stays placeholder-safe unless private receipt storage is explicitly connected. Real records require the Supabase environment variables to be configured and migrations applied; frontend code uses the Supabase anon client and does not use or expose a service-role key.
+Finance summaries in PropFlow are not finalized accounting ledgers, tax filings, invoices, owner statements, or payout instructions. CSV/PDF exports remain disabled until backend export generation is added, and receipt upload stays placeholder-safe unless private receipt storage is explicitly connected to a real expense record through `file_uploads`. Real records require the Supabase environment variables to be configured and migrations applied; frontend code uses the Supabase anon client and does not use or expose a service-role key.
 
 ## Supplies / Inventory safety note
 

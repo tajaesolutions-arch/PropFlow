@@ -324,13 +324,24 @@ function normalizeFileUpload(row) {
 
   return {
     ...row,
+    workspaceId: row.workspace_id,
     propertyId: row.property_id,
+    bookingId: row.booking_id,
     cleaningTaskId: row.cleaning_task_id,
     maintenanceWorkOrderId: row.maintenance_work_order_id,
-    uploadedBy: row.uploaded_by,
+    expenseId: row.expense_id,
+    reportId: row.report_id,
+    contactId: row.contact_id,
+    fileCategory: row.file_category || row.category,
     fileName: row.file_name,
-    fileType: row.file_type,
+    filePath: row.file_path || row.path,
+    bucketName: row.bucket_name || row.bucket || 'workspace-files',
+    mimeType: row.mime_type || row.file_type,
+    fileType: row.mime_type || row.file_type,
     fileSize: row.file_size,
+    uploadedBy: row.uploaded_by,
+    archivedAt: row.archived_at,
+    visibility: row.visibility || 'private',
   };
 }
 
@@ -504,6 +515,111 @@ const workspaceActionRoles = {
   expense: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
   inventory: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
 };
+
+const workspaceFileBucket = 'workspace-files';
+const legacyFileCategoryMap = {
+  cleaning_photo: 'cleaning_before_photo',
+  maintenance_photo: 'maintenance_issue_photo',
+  repair_completion_photo: 'maintenance_completion_photo',
+};
+const imageMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
+const documentMimeTypes = [
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+];
+const videoMimeTypes = ['video/mp4', 'video/quicktime', 'video/webm'];
+const fileCategoryRules = {
+  property_photo: { types: imageMimeTypes, maxSize: 10 * 1024 * 1024 },
+  cleaning_before_photo: { types: imageMimeTypes, maxSize: 10 * 1024 * 1024 },
+  cleaning_after_photo: { types: imageMimeTypes, maxSize: 10 * 1024 * 1024 },
+  cleaning_issue_photo: { types: imageMimeTypes, maxSize: 10 * 1024 * 1024 },
+  maintenance_issue_photo: { types: imageMimeTypes, maxSize: 10 * 1024 * 1024 },
+  maintenance_completion_photo: { types: imageMimeTypes, maxSize: 10 * 1024 * 1024 },
+  maintenance_video: { types: videoMimeTypes, maxSize: 100 * 1024 * 1024 },
+  receipt: { types: documentMimeTypes, maxSize: 20 * 1024 * 1024 },
+  lease: { types: documentMimeTypes, maxSize: 20 * 1024 * 1024 },
+  contract: { types: documentMimeTypes, maxSize: 20 * 1024 * 1024 },
+  owner_report: { types: documentMimeTypes, maxSize: 20 * 1024 * 1024 },
+  invoice: { types: documentMimeTypes, maxSize: 20 * 1024 * 1024 },
+  property_document: { types: documentMimeTypes, maxSize: 20 * 1024 * 1024 },
+  general_document: { types: documentMimeTypes, maxSize: 20 * 1024 * 1024 },
+  other: { types: [...documentMimeTypes, ...imageMimeTypes], maxSize: 20 * 1024 * 1024 },
+};
+const fileManagerRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER];
+const hostFileCategories = [
+  'property_photo',
+  'cleaning_before_photo',
+  'cleaning_after_photo',
+  'cleaning_issue_photo',
+  'maintenance_issue_photo',
+  'maintenance_completion_photo',
+  'maintenance_video',
+  'property_document',
+  'general_document',
+  'other',
+];
+const accountantFileCategories = ['receipt', 'invoice', 'owner_report', 'property_document'];
+const cleanerFileCategories = ['cleaning_before_photo', 'cleaning_after_photo', 'cleaning_issue_photo'];
+const maintenanceFileCategories = ['maintenance_issue_photo', 'maintenance_completion_photo', 'maintenance_video'];
+
+function normalizeFileCategory(value = 'property_document') {
+  const category = legacyFileCategoryMap[value] || value || 'property_document';
+  return fileCategoryRules[category] ? category : 'other';
+}
+
+function safeStorageFileName(fileName = 'upload') {
+  const cleanName = String(fileName || 'upload')
+    .normalize('NFKD')
+    .replace(/[^a-zA-Z0-9._-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^[.-]+/, '')
+    .slice(0, 120);
+
+  return cleanName || 'upload';
+}
+
+function getFileExtension(fileName = '') {
+  const match = String(fileName).match(/\.([a-zA-Z0-9]{1,12})$/);
+  return match ? match[1].toLowerCase() : '';
+}
+
+function buildFileContextSegment(context) {
+  if (context.cleaningTaskId) return `cleaning-${context.cleaningTaskId}`;
+  if (context.maintenanceWorkOrderId) return `work-order-${context.maintenanceWorkOrderId}`;
+  if (context.expenseId) return `expense-${context.expenseId}`;
+  if (context.reportId) return `report-${context.reportId}`;
+  if (context.bookingId) return `booking-${context.bookingId}`;
+  if (context.contactId) return `contact-${context.contactId}`;
+  if (context.propertyId) return `property-${context.propertyId}`;
+  return 'workspace';
+}
+
+function buildWorkspaceFilePath(workspaceId, context, file) {
+  const extension = getFileExtension(file?.name);
+  const name = safeStorageFileName(file?.name || `upload${extension ? `.${extension}` : ''}`);
+  const uniquePrefix = `${Date.now()}-${globalThis.crypto?.randomUUID?.() || Math.random().toString(16).slice(2)}`;
+
+  return `workspace/${workspaceId}/${context.fileCategory}/${buildFileContextSegment(context)}/${uniquePrefix}-${name}`;
+}
+
+function assertFileTypeAndSize(file, fileCategory) {
+  const rules = fileCategoryRules[fileCategory];
+  if (!rules) throw new Error('Select a supported file category.');
+
+  if (file.size > rules.maxSize) {
+    const sizeMb = Math.round(rules.maxSize / (1024 * 1024));
+    throw new Error(`File is too large for this category. Maximum size is ${sizeMb} MB.`);
+  }
+
+  const mimeType = file.type || '';
+  if (mimeType && !rules.types.includes(mimeType)) {
+    throw new Error('This file type is not allowed for the selected category.');
+  }
+}
 
 function getActiveWorkspaceRoles(currentUser, memberships, currentWorkspace) {
   const activeMembership = asArray(memberships).find(
@@ -2493,85 +2609,123 @@ export function AppProvider({ children }) {
 
   const createWorkspaceExpense = createExpense;
 
-  const uploadWorkspaceFile = async ({
-    file,
-    propertyId,
-    property_id,
-    cleaningTaskId,
-    cleaning_task_id,
-    maintenanceWorkOrderId,
-    maintenance_work_order_id,
-    category = 'property_document',
-  }) => {
+  const validateFileUploadContext = (normalizedContext) => {
+    const activeRoles = getActiveWorkspaceRoles(currentUser, memberships, currentWorkspace);
+    const fileCategory = normalizedContext.fileCategory;
+
+    if (normalizedContext.propertyId) {
+      requireWorkspaceProperty(data.properties, normalizedContext.propertyId);
+    }
+
+    const booking = requireWorkspaceScopedRecord(data.bookings, normalizedContext.bookingId, 'booking', normalizedContext.propertyId);
+    const cleaningTask = requireWorkspaceScopedRecord(data.cleaningTasks, normalizedContext.cleaningTaskId, 'cleaning task', normalizedContext.propertyId);
+    const workOrder = requireWorkspaceScopedRecord(data.maintenanceWorkOrders, normalizedContext.maintenanceWorkOrderId, 'maintenance work order', normalizedContext.propertyId);
+    const expense = requireWorkspaceScopedRecord(data.expenses, normalizedContext.expenseId, 'expense', normalizedContext.propertyId);
+    const report = requireWorkspaceScopedRecord(data.ownerReports, normalizedContext.reportId, 'owner report', normalizedContext.propertyId);
+    requireWorkspaceScopedRecord(data.contacts, normalizedContext.contactId, 'contact');
+
+    if (booking && normalizedContext.propertyId && getRecordPropertyId(booking) !== normalizedContext.propertyId) {
+      throw new Error('Selected booking must match the selected property.');
+    }
+
+    if (cleanerFileCategories.includes(fileCategory)) {
+      if (!cleaningTask) throw new Error('Cleaning photos must be linked to a visible cleaning task.');
+      if (['completed', 'guest_ready', 'cancelled'].includes(cleaningTask.status)) {
+        throw new Error('Completed, guest-ready, and cancelled cleaning tasks cannot receive new photos.');
+      }
+      const isManager = workspaceActionRoles.cleaning.some((role) => activeRoles.includes(role));
+      const isAssignedCleaner = cleaningTask.assigned_cleaner_id === session.user.id || cleaningTask.assignedCleanerId === session.user.id;
+      if (!isManager && !isAssignedCleaner) {
+        throw new Error('You can only upload cleaning photos for assigned cleaning tasks.');
+      }
+      return;
+    }
+
+    if (maintenanceFileCategories.includes(fileCategory)) {
+      if (!workOrder) throw new Error('Maintenance files must be linked to a visible maintenance work order.');
+      if (maintenanceClosedStatuses.includes(workOrder.status)) {
+        throw new Error('Completed and cancelled maintenance work orders cannot receive new files.');
+      }
+      const isManager = workspaceActionRoles.maintenance.some((role) => activeRoles.includes(role));
+      const isAssignedMaintenance = workOrder.assigned_maintenance_id === session.user.id || workOrder.assignedMaintenanceId === session.user.id;
+      if (!isManager && !isAssignedMaintenance) {
+        throw new Error('You can only upload maintenance files for assigned work orders.');
+      }
+      return;
+    }
+
+    if (fileManagerRoles.some((role) => activeRoles.includes(role))) return;
+
+    if (activeRoles.includes(roles.HOST) && hostFileCategories.includes(fileCategory)) return;
+
+    if (activeRoles.includes(roles.ACCOUNTANT) && accountantFileCategories.includes(fileCategory)) {
+      if (fileCategory === 'receipt' && !expense) throw new Error('Receipt uploads must be linked to a workspace expense.');
+      if (fileCategory === 'owner_report' && !report) throw new Error('Owner report uploads must be linked to an owner report record.');
+      return;
+    }
+
+    throw new Error('Your current workspace role cannot upload this file category.');
+  };
+
+  const uploadWorkspaceFile = async (fileOrOptions, maybeContext = {}) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
+
+    const options = fileOrOptions?.file ? fileOrOptions : { file: fileOrOptions, ...maybeContext };
+    const file = options.file;
 
     if (!file) {
       throw new Error('Choose a file before uploading.');
     }
 
-    const resolvedPropertyId = propertyId || property_id || null;
-    const resolvedCleaningTaskId = cleaningTaskId || cleaning_task_id || null;
-    const resolvedMaintenanceWorkOrderId = maintenanceWorkOrderId || maintenance_work_order_id || null;
+    const normalizedContext = {
+      fileCategory: normalizeFileCategory(options.fileCategory || options.file_category || options.category),
+      propertyId: options.propertyId || options.property_id || null,
+      bookingId: options.bookingId || options.booking_id || null,
+      cleaningTaskId: options.cleaningTaskId || options.cleaning_task_id || (options.relatedTable === 'cleaning_tasks' ? options.relatedId : null) || null,
+      maintenanceWorkOrderId: options.maintenanceWorkOrderId || options.maintenance_work_order_id || (options.relatedTable === 'maintenance_work_orders' ? options.relatedId : null) || null,
+      expenseId: options.expenseId || options.expense_id || null,
+      reportId: options.reportId || options.report_id || null,
+      contactId: options.contactId || options.contact_id || null,
+      notes: cleanText(options.notes),
+    };
 
-    if (category === 'cleaning_photo') {
-      const cleaningTask = asArray(data.cleaningTasks).find((task) => task.id === resolvedCleaningTaskId);
-      if (!cleaningTask) throw new Error('Cleaning photo must be linked to a visible cleaning task.');
-      if (['completed', 'guest_ready', 'cancelled'].includes(cleaningTask.status)) {
-        throw new Error('Completed, guest-ready, and cancelled cleaning tasks cannot receive new photos.');
-      }
-      if (cleaningTask.property_id !== resolvedPropertyId) {
-        throw new Error('Cleaning photo must be linked to the cleaning task property.');
-      }
+    assertFileTypeAndSize(file, normalizedContext.fileCategory);
+    validateFileUploadContext(normalizedContext);
 
-      const isManager = getActiveWorkspaceRoles(currentUser, memberships, currentWorkspace).some((role) => workspaceActionRoles.cleaning.includes(role));
-      const isAssignedCleaner = cleaningTask.assigned_cleaner_id === session.user.id;
-      if (!isManager && !isAssignedCleaner) {
-        throw new Error('You can only upload cleaning photos for assigned cleaning tasks.');
-      }
-    }
+    const storagePath = buildWorkspaceFilePath(currentWorkspace.id, normalizedContext, file);
 
-    if (['maintenance_photo', 'repair_completion_photo'].includes(category)) {
-      const workOrder = asArray(data.maintenanceWorkOrders).find((item) => item.id === resolvedMaintenanceWorkOrderId);
-      if (!workOrder) throw new Error('Maintenance upload must be linked to a visible maintenance work order.');
-      if (maintenanceClosedStatuses.includes(workOrder.status)) {
-        throw new Error('Completed and cancelled maintenance work orders cannot receive new files.');
-      }
-      if (workOrder.property_id !== resolvedPropertyId) {
-        throw new Error('Maintenance upload must be linked to the work order property.');
-      }
-
-      const isManager = getActiveWorkspaceRoles(currentUser, memberships, currentWorkspace).some((role) => workspaceActionRoles.maintenance.includes(role));
-      const isAssignedMaintenance = workOrder.assigned_maintenance_id === session.user.id;
-      if (!isManager && !isAssignedMaintenance) {
-        throw new Error('You can only upload maintenance files for assigned work orders.');
-      }
-    }
-
-    const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '-');
-    const storagePath = `${currentWorkspace.id}/${Date.now()}-${safeFileName}`;
-    const bucket = 'propflow-private';
-
-    const uploadResponse = await client.storage.from(bucket).upload(storagePath, file, {
+    const uploadResponse = await client.storage.from(workspaceFileBucket).upload(storagePath, file, {
       upsert: false,
+      contentType: file.type || undefined,
     });
 
     if (uploadResponse.error) {
-      throw new Error(formatSupabaseError(uploadResponse.error, 'File upload failed.'));
+      throw new Error(formatSupabaseError(uploadResponse.error, 'File upload failed. Confirm the private workspace-files bucket and storage policies are applied.'));
     }
 
     const filePayload = {
       workspace_id: currentWorkspace.id,
-      property_id: resolvedPropertyId,
-      cleaning_task_id: resolvedCleaningTaskId,
-      maintenance_work_order_id: resolvedMaintenanceWorkOrderId,
-      uploaded_by: session.user.id,
-      bucket,
-      path: storagePath,
+      property_id: normalizedContext.propertyId,
+      booking_id: normalizedContext.bookingId,
+      cleaning_task_id: normalizedContext.cleaningTaskId,
+      maintenance_work_order_id: normalizedContext.maintenanceWorkOrderId,
+      expense_id: normalizedContext.expenseId,
+      report_id: normalizedContext.reportId,
+      contact_id: normalizedContext.contactId,
+      file_category: normalizedContext.fileCategory,
       file_name: file.name,
-      file_type: file.type || null,
+      file_path: storagePath,
+      bucket_name: workspaceFileBucket,
+      mime_type: file.type || null,
       file_size: file.size || null,
-      category,
+      visibility: 'private',
+      uploaded_by: session.user.id,
+      notes: normalizedContext.notes,
+      bucket: workspaceFileBucket,
+      path: storagePath,
+      file_type: file.type || null,
+      category: normalizedContext.fileCategory,
     };
 
     const { data: row, error: insertError } = await client
@@ -2580,7 +2734,73 @@ export function AppProvider({ children }) {
       .select('*')
       .single();
 
-    if (insertError) throw new Error(formatSupabaseError(insertError, 'File record could not be saved.'));
+    if (insertError) {
+      await client.storage.from(workspaceFileBucket).remove([storagePath]);
+      throw new Error(formatSupabaseError(insertError, 'File record could not be saved. The uploaded object was cleaned up when possible.'));
+    }
+
+    await refreshWorkspaceData();
+
+    return normalizeFileUpload(row);
+  };
+
+  const getFileSignedUrl = async (fileUploadOrId, expiresIn = 300) => {
+    const client = requireSupabase();
+    requireWorkspaceSession(currentWorkspace, session);
+
+    const fileId = typeof fileUploadOrId === 'string' ? fileUploadOrId : fileUploadOrId?.id;
+    let fileUpload = typeof fileUploadOrId === 'object' ? fileUploadOrId : null;
+
+    if (!fileId && !fileUpload?.filePath) throw new Error('Select a file to view.');
+
+    if (!fileUpload || fileUpload.workspaceId !== currentWorkspace.id) {
+      const { data: row, error: lookupError } = await client
+        .from('file_uploads')
+        .select('*')
+        .eq('id', fileId)
+        .eq('workspace_id', currentWorkspace.id)
+        .maybeSingle();
+
+      if (lookupError) throw new Error(formatSupabaseError(lookupError, 'File record could not be loaded.'));
+      if (!row) throw new Error('File is not available in this workspace.');
+      fileUpload = normalizeFileUpload(row);
+    }
+
+    const bucketName = fileUpload.bucketName || fileUpload.bucket_name || workspaceFileBucket;
+    const filePath = fileUpload.filePath || fileUpload.file_path || fileUpload.path;
+
+    if (bucketName !== workspaceFileBucket || !filePath) {
+      throw new Error('This file is not stored in the private workspace file bucket.');
+    }
+
+    const { data: signedData, error: signedError } = await client.storage
+      .from(workspaceFileBucket)
+      .createSignedUrl(filePath, expiresIn);
+
+    if (signedError || !signedData?.signedUrl) {
+      throw new Error(formatSupabaseError(signedError, 'Signed file link could not be created.'));
+    }
+
+    return signedData.signedUrl;
+  };
+
+  const archiveFileUpload = async (fileUploadId, archived = true) => {
+    const client = requireSupabase();
+    requireWorkspaceSession(currentWorkspace, session);
+
+    if (!fileUploadId) throw new Error('Select a file to update.');
+
+    const { data: row, error: updateError } = await client
+      .from('file_uploads')
+      .update({ archived_at: archived ? new Date().toISOString() : null })
+      .eq('id', fileUploadId)
+      .eq('workspace_id', currentWorkspace.id)
+      .select('*')
+      .single();
+
+    if (updateError) {
+      throw new Error(formatSupabaseError(updateError, 'File archive status could not be updated.'));
+    }
 
     await refreshWorkspaceData();
 
@@ -2655,6 +2875,8 @@ export function AppProvider({ children }) {
       archiveExpense,
       createWorkspaceExpense,
       uploadWorkspaceFile,
+      getFileSignedUrl,
+      archiveFileUpload,
       markNotificationRead,
     }),
     [

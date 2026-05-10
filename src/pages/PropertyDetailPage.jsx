@@ -185,11 +185,11 @@ function getMaintenanceDate(workOrder) {
 }
 
 function getFileName(file) {
-  return file.file_name || file.filename || file.name || file.path || 'Workspace file';
+  return file.fileName || file.file_name || file.filename || file.name || file.filePath || file.path || 'Workspace file';
 }
 
 function getFileCategory(file) {
-  return file.category || file.file_category || 'file';
+  return file.fileCategory || file.file_category || file.category || 'file';
 }
 
 function getAssignedCleanerId(task) {
@@ -530,6 +530,7 @@ export function PropertyDetailPage({ propertyId }) {
     updateProperty,
     archiveProperty,
     uploadWorkspaceFile,
+    getFileSignedUrl,
     currentUser,
     memberships,
     currentWorkspace,
@@ -680,6 +681,16 @@ export function PropertyDetailPage({ propertyId }) {
       setMessage(error.message || 'File upload failed.');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const viewFile = async (file) => {
+    setMessage('');
+    try {
+      const signedUrl = await getFileSignedUrl(file, 300);
+      window.open(signedUrl, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      setMessage(error.message || 'Signed file link could not be created.');
     }
   };
 
@@ -1063,7 +1074,13 @@ export function PropertyDetailPage({ propertyId }) {
                     <small>{formatLabel(getFileCategory(file))} · {formatDate(file.created_at || file.createdAt)}</small>
                   </span>
 
-                  <StatusBadge tone="info">private</StatusBadge>
+                  <span className="table-actions">
+                    <StatusBadge tone="info">private</StatusBadge>
+                    <button type="button" onClick={() => viewFile(file)} data-skip-create-action="true">
+                      <Eye size={15} />
+                      View
+                    </button>
+                  </span>
                 </div>
               ))}
             </div>

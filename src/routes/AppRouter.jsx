@@ -47,6 +47,7 @@ const OwnersPage = lazyPage(() => import('../pages/OwnersPage.jsx'), 'OwnersPage
 const GuestsPage = lazyPage(() => import('../pages/GuestsPage.jsx'), 'GuestsPage');
 const ReportsPage = lazyPage(() => import('../pages/ReportsPage.jsx'), 'ReportsPage');
 const ExpensesPage = lazyPage(() => import('../pages/ExpensesPage.jsx'), 'ExpensesPage');
+const FilesPage = lazyPage(() => import('../pages/FilesPage.jsx'), 'FilesPage');
 const NotificationsPage = lazyPage(() => import('../pages/NotificationsPage.jsx'), 'NotificationsPage');
 const NotificationSettingsPage = lazyPage(
   () => import('../pages/NotificationSettingsPage.jsx'),
@@ -109,6 +110,7 @@ const propertyDetailRoles = ownerVisibleRoles;
 const bookingPageRoles = [...operationalRoles, roles.ACCOUNTANT];
 const maintenancePageRoles = operationalRoles;
 const financeRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
+const filesPageRoles = [...operationalRoles, roles.ACCOUNTANT, roles.OWNER];
 const inventoryPageRoles = financeRoles;
 const calendarManagerRoles = operationalRoles;
 
@@ -138,6 +140,7 @@ const protectedRoutes = {
     access: [...operationalRoles, roles.OWNER, roles.ACCOUNTANT],
   },
   '/expenses': { Page: ExpensesPage, access: financeRoles },
+  '/files': { Page: FilesPage, access: filesPageRoles },
   '/notifications': {
     Page: NotificationsPage,
     access: [roles.ADMIN, ...allWorkspaceRoles],
