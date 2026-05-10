@@ -14,7 +14,7 @@ Validated/fixed in this pass:
 - Login, signup, workspace setup, and settings surfaces show clear Supabase configuration messages when `VITE_SUPABASE_URL` or `VITE_SUPABASE_ANON_KEY` is missing.
 - Demo login remains removed from the production auth UI.
 - Role dashboard routing is guarded so users are redirected to their expected dashboard if they manually visit another role dashboard.
-- Workspace creation sanitizes optional numeric fields and records the creator.
+- Workspace creation uses the authenticated `public.create_workspace_with_owner(...)` RPC so hardened RLS can block broad direct inserts while still creating the workspace and owner membership safely.
 - Workspace invite creation strips non-customer roles defensively and stores empty expiration dates as `null`.
 - Upload actions fail cleanly when no file/workspace/Supabase Storage bucket is available.
 - RLS was tightened for workspace membership self-insert, profile visibility, property assignments, maintenance insert reporting, and assigned property access.
@@ -116,9 +116,11 @@ The current Phase 1 schema migrations are:
 ```text
 supabase/migrations/202605050001_propflow_schema.sql
 supabase/migrations/202605060001_create_workspace_with_owner_rpc.sql
+supabase/migrations/202605100001_rls_create_action_alignment.sql
+supabase/migrations/202605100002_create_workspace_with_owner_rpc.sql
 ```
 
-Apply both migrations before running the app against a Supabase project. If you see `Could not find the table 'public.workspaces' in the schema cache`, the base migration has not been applied to that project, was applied to a different project, or Supabase needs its API schema cache refreshed after the SQL runs.
+Apply the migrations in timestamp order before running the app against a Supabase project. The `202605100002_create_workspace_with_owner_rpc.sql` RPC migration must be applied after `202605100001_rls_create_action_alignment.sql`. If you see `Could not find the table 'public.workspaces' in the schema cache`, the base migration has not been applied to that project, was applied to a different project, or Supabase needs its API schema cache refreshed after the SQL runs.
 
 The migration creates or repairs these app-required objects without dropping customer data:
 
@@ -147,7 +149,7 @@ Use this path when the hosted app is already connected to a Supabase project or 
 2. Go to **SQL Editor** → **New query**.
 3. Copy the full contents of `supabase/migrations/202605050001_propflow_schema.sql`.
 4. Paste the full SQL into the editor and click **Run**. The file is idempotent and uses `CREATE TABLE IF NOT EXISTS`, non-destructive `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, and policy/trigger replacement so it can be run again if needed.
-5. Open another **New query**, copy the full contents of `supabase/migrations/202605060001_create_workspace_with_owner_rpc.sql`, paste it, and click **Run**. This second migration creates the `SECURITY DEFINER` RPC used by the app for workspace creation and drops the older broad direct `workspaces` insert policy.
+5. Open additional **New query** tabs and apply the remaining migration files in timestamp order, including `supabase/migrations/202605100001_rls_create_action_alignment.sql` followed by `supabase/migrations/202605100002_create_workspace_with_owner_rpc.sql`. The final RPC migration creates the hardened `SECURITY DEFINER` workspace creation function used by the app and grants execute only to authenticated users.
 6. In **Table Editor**, confirm the `public.workspaces` table exists along with the other Phase 1 tables listed above. In **Database** → **Functions**, confirm `public.create_workspace_with_owner` exists and is executable by authenticated users.
 7. If the app still reports a schema-cache error immediately after running the SQL, wait briefly and reload the app; Supabase PostgREST schema cache refresh can lag right after DDL.
 
@@ -173,10 +175,24 @@ supabase db reset
 2. The app upserts/loads `profiles` for the authenticated user.
 3. The app loads `workspace_members` and joined `workspaces`.
 4. If the user has no workspace membership, they are routed to `/workspace-setup`.
-5. New workspace creation calls the secure `public.create_workspace_with_owner(...)` RPC, which upserts the creator profile, inserts the workspace, adds owner membership, writes an activity log when available, and returns the created workspace. Authenticated clients should not insert directly into `public.workspaces`.
+5. New workspace creation calls the secure `public.create_workspace_with_owner(...)` RPC, which requires `auth.uid()`, upserts a non-admin creator profile when needed, inserts the workspace, adds `workspace_owner` membership, validates launch currencies (`USD`, `JMD`, `CAD`, `GBP`, `EUR`), and returns the created workspace. Authenticated clients should not insert directly into `public.workspaces` or `public.workspace_members` for initial workspace setup.
 6. Joining by invite token or workspace/company code only succeeds when a pending invite exists for the authenticated user's email and is not expired/revoked.
 7. Users with multiple workspaces can switch the active workspace from the top bar.
 8. Suspended users can log in but are routed to `/suspended` and RLS blocks workspace data.
+
+
+### Workspace creation RPC under hardened RLS
+
+Workspace creation now uses `public.create_workspace_with_owner(...)` from frontend code instead of direct client inserts into `public.workspaces` and `public.workspace_members`. Apply `supabase/migrations/202605100002_create_workspace_with_owner_rpc.sql` after `supabase/migrations/202605100001_rls_create_action_alignment.sql` so strict RLS can remain in place without blocking first-workspace setup.
+
+The only required frontend environment variables remain:
+
+```bash
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+```
+
+Do **not** use or expose a Supabase service-role key in frontend code.
 
 ## Role and permission notes
 
@@ -272,6 +288,9 @@ The migration is written to be safe for existing projects where practical: it us
 supabase/migrations/202605050001_propflow_schema.sql
 supabase/migrations/202605060001_create_workspace_with_owner_rpc.sql
 supabase/migrations/202605060002_bookings_calendar_foundation.sql
+# ...continue applying any remaining 20260506xxxx feature migrations...
+supabase/migrations/202605100001_rls_create_action_alignment.sql
+supabase/migrations/202605100002_create_workspace_with_owner_rpc.sql
 ```
 
 Or with the Supabase CLI:
