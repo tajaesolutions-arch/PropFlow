@@ -35,7 +35,7 @@ export const roleLabels = {
   guest: 'Guest',
 };
 
-export const inviteRoleOptions = [
+export const customerWorkspaceRoles = [
   roles.OWNER_ADMIN,
   roles.PROPERTY_MANAGER,
   roles.HOST,
@@ -44,6 +44,20 @@ export const inviteRoleOptions = [
   roles.CLEANER,
   roles.MAINTENANCE,
 ];
+
+export const inviteRoleOptions = [...customerWorkspaceRoles];
+
+export const propertyScopedInviteRoles = [roles.OWNER, roles.CLEANER, roles.MAINTENANCE];
+
+export const propertyAssignmentRoleOptions = [
+  roles.OWNER,
+  roles.CLEANER,
+  roles.MAINTENANCE,
+  roles.HOST,
+  roles.ACCOUNTANT,
+];
+
+export const invitePermissionLevels = ['standard', 'limited'];
 
 export const roleRedirects = {
   propflow_admin: '/admin',

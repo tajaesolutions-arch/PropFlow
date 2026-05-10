@@ -232,6 +232,20 @@ Customers cannot invite or assign `propflow_admin`. That role is platform-level 
 
 Property write access is limited to `workspace_owner` and `property_manager`. Cleaning and maintenance creation is limited to `workspace_owner`, `property_manager`, and `host`. Assigned lower-role users can access only the operational records/properties exposed by RLS through property assignments, assigned cleaning tasks, assigned maintenance work orders, or reported issues. Cleaning tasks are always workspace/property scoped; the shared Add Cleaning Task modal requires a real property, optional booking links must match the selected property, assigned cleaners must be active workspace cleaner members, and cleaner dashboards remain assigned-task scoped. Maintenance work orders are workspace/property scoped, use the shared Add Maintenance Work Order modal, require a real property, validate active maintenance-member assignments, and keep the Maintenance Crew dashboard assigned-work-order scoped. Maintenance issue/completion files use private workspace upload hooks and real records require Supabase env vars plus applied migrations. Frontend code uses only the anon key and never a service-role key.
 
+
+## Team, invites, and role-management notes
+
+- Team management remains workspace-scoped in **Settings**; no duplicate Team page or duplicate invite system is used for MVP.
+- Workspace Owners / Company Admins create and revoke team invites. Property Managers can manage property assignments but cannot invite members, grant higher workspace roles, or edit roles in this release.
+- Workspace invites require a matching authenticated email plus a valid pending token or company-code invite record. A company/workspace code alone does **not** grant access.
+- Invited users who open a valid invite link after signup/login are joined to the workspace immediately when the email, token/code, status, and expiration checks pass.
+- `propflow_admin` is platform-level only. It is excluded from customer invite options, workspace member updates, and property assignment flows.
+- Property assignments are real Supabase records for property-specific visibility. Assignment roles are limited to `property_owner`, `cleaner`, `maintenance`, `host`, and `accountant`, and the assigned user must be an active workspace member with the matching role.
+- Owner CRM contacts are not the same as owner login users; owner portal access requires a workspace member invite with the `property_owner` role.
+- Email sending is not wired yet. PropFlow creates copyable invite links only, and workspace owners must send those links manually until a backend email provider is connected.
+- Custom permissions are future work. MVP access uses fixed workspace roles and RLS policies.
+- Real team records require `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and all Supabase migrations applied in timestamp order. Frontend code uses the anon key only and must never expose a service-role key.
+
 ## Manual test checklist
 
 Use a real Supabase project for these checks:
@@ -247,6 +261,12 @@ Use a real Supabase project for these checks:
 - [ ] Invite role dropdown does not include `propflow_admin`.
 - [ ] Invite link copy works when no email provider is configured.
 - [ ] Invite acceptance requires matching authenticated email and valid pending token/code.
+- [ ] Company code join fails unless the signed-in email has a matching pending invite.
+- [ ] Expired, revoked, and accepted invites cannot be reused.
+- [ ] Workspace Owner can suspend, reactivate, and revoke non-last-owner members without hard-deleting member history.
+- [ ] Property Manager can manage property assignments but cannot invite members or manage lifecycle controls.
+- [ ] Cleaner/Maintenance/Property Owner/Host/Accountant cannot view broad member lists or manage team access unless explicitly allowed by RLS and UI.
+- [ ] Property assignment creation requires an active member with the matching assignment role and a property in the current workspace.
 - [ ] Owner/Property Manager can create a property.
 - [ ] Host can view operational workspace data but cannot create/edit/archive property profiles.
 - [ ] Archived properties are hidden by default and can be shown with the archived filter.
@@ -344,6 +364,12 @@ RLS is enabled on `contacts`, `bookings`, and `leases`.
 ### 2026-05-10 create-action RLS audit
 
 `supabase/migrations/202605100001_rls_create_action_alignment.sql` aligns server-side RLS with the current create-action modal and AppContext save rules. The audit keeps schema changes non-destructive, does not add broad `USING (true)` customer-data policies, and tightens workspace/property linkage for invites, assignments, contacts, bookings, leases, cleaning tasks, maintenance work orders, supplies, file uploads, activity logs, notifications, and report exports. Customer invites and workspace memberships remain limited to valid customer roles; `propflow_admin` remains excluded from customer workspace roles and must be controlled only by trusted platform/admin operations.
+
+
+
+### 2026-05-10 team invites and role-management RLS audit
+
+`supabase/migrations/202605100013_team_invites_roles_rls_alignment.sql` adds non-destructive guards for team access: customer role validation, owner-only invite creation/revocation, matching-email invite acceptance, last-active-owner protection, member lifecycle status updates, and property assignment validation against active members with matching roles. The audit does not add broad `USING (true)` or `WITH CHECK (true)` customer-data policies, does not add fake users/invites, and keeps `propflow_admin` out of customer workspace roles.
 
 ### 2026-05-10 bookings module hardening
 

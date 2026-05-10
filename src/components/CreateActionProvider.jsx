@@ -1758,6 +1758,16 @@ function InviteForm({ app, close, submitting, setSubmitting, setError, notifySuc
       ? form.assigned_property_ids.filter((propertyId) => findProperty(properties, propertyId))
       : [];
 
+    if (scopedInviteRoles.includes(form.role) && !scopedPropertyIds.length) {
+      setError('Property Owner, Cleaner, and Maintenance invites require at least one assigned property.');
+      return;
+    }
+
+    if (!scopedInviteRoles.includes(form.role) && form.assigned_property_ids.length) {
+      setError('Assigned properties only apply to Property Owner, Cleaner, and Maintenance invites.');
+      return;
+    }
+
     if (form.assigned_property_ids.length && scopedPropertyIds.length !== form.assigned_property_ids.length) {
       setError('Assigned properties must be existing properties in this workspace.');
       return;
@@ -1775,10 +1785,11 @@ function InviteForm({ app, close, submitting, setSubmitting, setError, notifySuc
         assigned_property_ids: scopedPropertyIds,
         expires_at: form.expires_at || null,
         message: form.message.trim() || null,
+        permission_level: form.permission_level,
       });
 
       await refreshAfterSave(app);
-      notifySuccess('Team invite saved successfully.');
+      notifySuccess('Invite created. Email sending is not wired yet, so copy and send the invite link manually.');
       close();
     } catch (error) {
       setError(error?.message || 'Invite could not be saved.');
@@ -1819,7 +1830,7 @@ function InviteForm({ app, close, submitting, setSubmitting, setError, notifySuc
             >
               <PropertyOptions properties={properties} emptyLabel="No properties available" />
             </select>
-            <small className="form-hint">Hold Cmd/Ctrl to select multiple assigned properties.</small>
+            <small className="form-hint">Required for Property Owner, Cleaner, and Maintenance roles. Hold Cmd/Ctrl to select multiple assigned properties.</small>
           </label>
 
           <label>
@@ -1832,7 +1843,6 @@ function InviteForm({ app, close, submitting, setSubmitting, setError, notifySuc
             <select value={form.permission_level} onChange={set('permission_level')}>
               <option value="standard">Standard role permissions</option>
               <option value="limited">Limited access</option>
-              <option value="manager">Manager-level access</option>
             </select>
           </label>
 
