@@ -13,7 +13,7 @@ import { AppLayout } from '../components/layout/AppLayout.jsx';
 import { EmptyState } from '../components/EmptyState.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
 import { useApp } from '../lib/AppContext.jsx';
-import { currencies } from '../data/constants.js';
+import { currencies, roles } from '../data/constants.js';
 import { navigate } from '../routes/AppRouter.jsx';
 
 const bookingStatuses = ['pending', 'confirmed', 'checked_in', 'checked_out', 'completed', 'cancelled'];
@@ -30,6 +30,22 @@ function isValidDate(value) {
 function dateOnly(value) {
   if (!value || !isValidDate(value)) return '';
   return new Date(value).toISOString().slice(0, 10);
+}
+
+function normalizeValue(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function normalizedStatus(value, fallback = 'active') {
+  return normalizeValue(value) || fallback;
+}
+
+function safeCurrency(record, properties = []) {
+  return normalizeValue(record?.currency || getPropertyFromRecord(record, properties)?.currency).toUpperCase() || null;
+}
+
+function safeBookingSource(booking) {
+  return normalizedStatus(booking?.source || booking?.platform, 'manual');
 }
 
 function addDays(date, days) {
@@ -157,7 +173,17 @@ function getCleaningDate(task) {
 }
 
 function getMaintenanceDate(workOrder) {
-  return dateOnly(workOrder.due || workOrder.due_date);
+  return dateOnly(workOrder.due || workOrder.due_date || workOrder.date);
+}
+
+function memberHasRole(member, role) {
+  return (member?.roles || []).includes(role);
+}
+
+function findMemberLabel(members = [], userId) {
+  if (!userId) return null;
+  const member = members.find((item) => getMemberId(item) === userId);
+  return member ? getMemberLabel(member) : null;
 }
 
 function buildBookingEvents(bookings = [], properties = []) {
@@ -170,24 +196,28 @@ function buildBookingEvents(bookings = [], properties = []) {
     const guestName = getBookingGuestName(booking);
     const propertyId = getPropertyId(booking);
     const property = getPropertyName(booking, properties);
+    const status = normalizedStatus(booking.status, 'confirmed');
+    const source = safeBookingSource(booking);
+    const currency = safeCurrency(booking, properties);
 
     const events = [];
 
-    if (checkIn && checkOut) {
+    if (checkIn && checkOut && checkIn <= checkOut) {
       events.push({
         id: `booking-${booking.id}`,
         sourceId: booking.id,
         type: 'booking',
-        title: guestName,
+        title: `Stay: ${guestName}`,
         propertyId,
         property,
         start: checkIn,
         end: checkOut,
-        status: booking.status || 'confirmed',
-        source: booking.source || 'manual',
-        currency: booking.currency || getPropertyFromRecord(booking, properties)?.currency || null,
+        status,
+        source,
+        currency,
         priority: null,
         assignedId: null,
+        sourcePath: '/bookings',
         row: booking,
       });
     }
@@ -202,9 +232,10 @@ function buildBookingEvents(bookings = [], properties = []) {
         property,
         start: checkIn,
         end: checkIn,
-        status: booking.status || 'confirmed',
-        source: booking.source || 'manual',
-        currency: booking.currency || getPropertyFromRecord(booking, properties)?.currency || null,
+        status,
+        source,
+        currency,
+        sourcePath: '/bookings',
         row: booking,
       });
     }
@@ -219,9 +250,10 @@ function buildBookingEvents(bookings = [], properties = []) {
         property,
         start: checkOut,
         end: checkOut,
-        status: booking.status || 'confirmed',
-        source: booking.source || 'manual',
-        currency: booking.currency || getPropertyFromRecord(booking, properties)?.currency || null,
+        status,
+        source,
+        currency,
+        sourcePath: '/bookings',
         row: booking,
       });
     }
@@ -234,30 +266,16 @@ function buildLeaseEvents(leases = [], properties = []) {
   return leases.flatMap((lease) => {
     const leaseStart = getLeaseStart(lease);
     const leaseEnd = getLeaseEnd(lease);
-    const fallbackLeaseEnd = dateOnly(addDays(new Date(), 365));
 
     if (!leaseStart) return [];
 
     const tenantName = lease.tenantName || lease.tenant_name || 'Tenant';
     const propertyId = getPropertyId(lease);
     const property = getPropertyName(lease, properties);
-    const end = leaseEnd || fallbackLeaseEnd;
-    const status = lease.leaseStatus || lease.lease_status || 'active';
+    const status = normalizedStatus(lease.leaseStatus || lease.lease_status, 'active');
+    const currency = safeCurrency(lease, properties);
 
     const events = [
-      {
-        id: `lease-${lease.id}`,
-        sourceId: lease.id,
-        type: 'lease',
-        title: `Lease: ${tenantName}`,
-        propertyId,
-        property,
-        start: leaseStart,
-        end,
-        status,
-        currency: lease.currency || getPropertyFromRecord(lease, properties)?.currency || null,
-        row: lease,
-      },
       {
         id: `lease-start-${lease.id}`,
         sourceId: lease.id,
@@ -268,12 +286,30 @@ function buildLeaseEvents(leases = [], properties = []) {
         start: leaseStart,
         end: leaseStart,
         status,
-        currency: lease.currency || getPropertyFromRecord(lease, properties)?.currency || null,
+        currency,
+        sourcePath: '/bookings',
         row: lease,
       },
     ];
 
     if (leaseEnd) {
+      if (leaseStart <= leaseEnd) {
+        events.push({
+          id: `lease-${lease.id}`,
+          sourceId: lease.id,
+          type: 'lease',
+          title: `Lease: ${tenantName}`,
+          propertyId,
+          property,
+          start: leaseStart,
+          end: leaseEnd,
+          status,
+          currency,
+          sourcePath: '/bookings',
+          row: lease,
+        });
+      }
+
       events.push({
         id: `lease-end-${lease.id}`,
         sourceId: lease.id,
@@ -284,7 +320,8 @@ function buildLeaseEvents(leases = [], properties = []) {
         start: leaseEnd,
         end: leaseEnd,
         status,
-        currency: lease.currency || getPropertyFromRecord(lease, properties)?.currency || null,
+        currency,
+        sourcePath: '/bookings',
         row: lease,
       });
     }
@@ -293,12 +330,15 @@ function buildLeaseEvents(leases = [], properties = []) {
   });
 }
 
-function buildCleaningEvents(cleaningTasks = [], properties = []) {
+function buildCleaningEvents(cleaningTasks = [], properties = [], members = []) {
   return cleaningTasks
     .map((task) => {
       const scheduledDate = getCleaningDate(task);
 
       if (!scheduledDate) return null;
+
+      const assignedId = task.assignedCleanerId || task.assigned_cleaner_id || null;
+      const assignedLabel = findMemberLabel(members, assignedId);
 
       return {
         id: `cleaning-${task.id}`,
@@ -309,20 +349,25 @@ function buildCleaningEvents(cleaningTasks = [], properties = []) {
         property: getPropertyName(task, properties),
         start: scheduledDate,
         end: scheduledDate,
-        status: task.status || 'scheduled',
-        assignedId: task.assignedCleanerId || task.assigned_cleaner_id || null,
+        status: normalizedStatus(task.status, 'scheduled'),
+        assignedId,
+        assignedLabel,
+        sourcePath: '/cleaning',
         row: task,
       };
     })
     .filter(Boolean);
 }
 
-function buildMaintenanceEvents(maintenanceWorkOrders = [], properties = []) {
+function buildMaintenanceEvents(maintenanceWorkOrders = [], properties = [], members = []) {
   return maintenanceWorkOrders
     .map((workOrder) => {
       const dueDate = getMaintenanceDate(workOrder);
 
       if (!dueDate) return null;
+
+      const assignedId = workOrder.assignedMaintenanceId || workOrder.assigned_maintenance_id || null;
+      const assignedLabel = findMemberLabel(members, assignedId);
 
       return {
         id: `maintenance-${workOrder.id}`,
@@ -333,21 +378,23 @@ function buildMaintenanceEvents(maintenanceWorkOrders = [], properties = []) {
         property: getPropertyName(workOrder, properties),
         start: dueDate,
         end: dueDate,
-        status: workOrder.status || 'reported',
-        priority: workOrder.priority || 'medium',
-        assignedId: workOrder.assignedMaintenanceId || workOrder.assigned_maintenance_id || null,
+        status: normalizedStatus(workOrder.status, 'reported'),
+        priority: normalizedStatus(workOrder.priority, 'medium'),
+        assignedId,
+        assignedLabel,
+        sourcePath: '/maintenance',
         row: workOrder,
       };
     })
     .filter(Boolean);
 }
 
-function makeEvents(data, properties) {
+function makeEvents(data, properties, members) {
   return [
     ...buildBookingEvents(data.bookings || [], properties),
     ...buildLeaseEvents(data.leases || [], properties),
-    ...buildCleaningEvents(data.cleaningTasks || [], properties),
-    ...buildMaintenanceEvents(data.maintenanceWorkOrders || [], properties),
+    ...buildCleaningEvents(data.cleaningTasks || [], properties, members),
+    ...buildMaintenanceEvents(data.maintenanceWorkOrders || [], properties, members),
   ];
 }
 
@@ -444,19 +491,7 @@ function EventDetails({ event, onClose }) {
   }
 
   const goToSource = () => {
-    if (['booking', 'checkin', 'checkout', 'lease'].includes(event.type)) {
-      navigate('/bookings');
-      return;
-    }
-
-    if (event.type === 'cleaning') {
-      navigate('/cleaning');
-      return;
-    }
-
-    if (event.type === 'maintenance') {
-      navigate('/maintenance');
-    }
+    navigate(event.sourcePath || '/calendar');
   };
 
   return (
@@ -510,6 +545,13 @@ function EventDetails({ event, onClose }) {
             </StatusBadge>
           </span>
         )}
+
+        {event.assignedLabel && (
+          <span>
+            <strong>Assigned</strong>
+            <small>{event.assignedLabel}</small>
+          </span>
+        )}
       </div>
 
       <div className="action-row">
@@ -555,7 +597,7 @@ function CalendarLegend() {
 }
 
 export function CalendarPage() {
-  const { data } = useApp();
+  const { currentUser, currentWorkspace, data, memberships } = useApp();
 
   const [view, setView] = React.useState('month');
   const [anchor, setAnchor] = React.useState(new Date());
@@ -577,11 +619,19 @@ export function CalendarPage() {
   });
 
   const properties = data.properties || [];
-  const ownerContacts = (data.contacts || []).filter(
-    (contact) => (contact.contact_type || contact.contactType) === 'owner',
+  const workspaceMembers = data.members || [];
+  const activeWorkspaceRoles = (memberships || []).find(
+    (membership) => membership.workspace_id === currentWorkspace?.id && membership.status !== 'revoked',
+  )?.roles || currentUser?.roles || [];
+  const canCreateBooking = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST].some((role) =>
+    activeWorkspaceRoles.includes(role),
+  );
+  const canCreateCleaning = canCreateBooking;
+  const ownerMembers = workspaceMembers.filter(
+    (member) => member.status === 'active' && memberHasRole(member, roles.OWNER),
   );
 
-  const members = (data.members || [])
+  const members = workspaceMembers
     .map((member) => ({
       id: getMemberId(member),
       label: getMemberLabel(member),
@@ -595,14 +645,21 @@ export function CalendarPage() {
     }));
   };
 
-  const allEvents = React.useMemo(() => makeEvents(data, properties), [data, properties]);
+  const allEvents = React.useMemo(() => makeEvents(data, properties, workspaceMembers), [data, properties, workspaceMembers]);
+  const hasSourceData = Boolean(
+    (data.bookings || []).length ||
+      (data.leases || []).length ||
+      (data.cleaningTasks || []).length ||
+      (data.maintenanceWorkOrders || []).length,
+  );
+  const dateRangeInvalid = Boolean(filters.start && filters.end && filters.end < filters.start);
 
   const events = React.useMemo(() => {
     return allEvents
       .filter((event) => filters.showCancelled || !['cancelled', 'terminated'].includes(event.status))
       .filter((event) => filters.property === 'all' || event.propertyId === filters.property)
-      .filter((event) => !filters.start || event.end >= filters.start)
-      .filter((event) => !filters.end || event.start <= filters.end)
+      .filter((event) => dateRangeInvalid || !filters.start || event.end >= filters.start)
+      .filter((event) => dateRangeInvalid || !filters.end || event.start <= filters.end)
       .filter(
         (event) =>
           filters.bookingStatus === 'all' ||
@@ -634,18 +691,18 @@ export function CalendarPage() {
           !['booking', 'checkin', 'checkout'].includes(event.type) ||
           event.source === filters.source,
       )
-      .filter((event) => filters.currency === 'all' || event.currency === filters.currency)
+      .filter((event) => filters.currency === 'all' || !event.currency || event.currency === filters.currency)
       .filter((event) => {
         const query = filters.query.trim().toLowerCase();
         if (!query) return true;
 
-        return [event.title, event.property, event.type, event.status, event.source, event.priority]
+        return [event.title, event.property, event.type, event.status, event.source, event.priority, event.assignedLabel]
           .filter(Boolean)
           .join(' ')
           .toLowerCase()
           .includes(query);
       });
-  }, [allEvents, filters, properties]);
+  }, [allEvents, dateRangeInvalid, filters, properties]);
 
   const visibleDays = React.useMemo(() => buildDays(anchor, view), [anchor, view]);
 
@@ -767,10 +824,12 @@ export function CalendarPage() {
             <ChevronRight size={16} />
           </button>
 
-          <button type="button" className="primary" data-create-action="booking">
-            <Plus size={16} />
-            Add Booking
-          </button>
+          {canCreateBooking && (
+            <button type="button" className="primary" data-create-action="booking">
+              <Plus size={16} />
+              Add Booking
+            </button>
+          )}
         </div>
       </section>
 
@@ -886,9 +945,9 @@ export function CalendarPage() {
             Owner
             <select value={filters.owner} onChange={setFilter('owner')}>
               <option value="all">All owners</option>
-              {ownerContacts.map((owner) => (
-                <option key={owner.id} value={owner.id}>
-                  {owner.full_name || owner.fullName || owner.email || 'Owner'}
+              {ownerMembers.map((owner) => (
+                <option key={getMemberId(owner)} value={getMemberId(owner)}>
+                  {getMemberLabel(owner)}
                 </option>
               ))}
             </select>
@@ -928,6 +987,16 @@ export function CalendarPage() {
           </label>
         </div>
 
+        {dateRangeInvalid && (
+          <p className="calendar-filter-helper" role="alert">
+            End date is before start date, so the date range is not being applied. Choose a valid range to filter by date.
+          </p>
+        )}
+
+        <p className="calendar-filter-helper">
+          Owner filter uses assigned workspace owner members, not CRM owner contacts. Currency only narrows events with currency data.
+        </p>
+
         <div className="calendar-filter-actions">
           <CalendarLegend />
 
@@ -937,28 +1006,35 @@ export function CalendarPage() {
         </div>
       </section>
 
-      {!allEvents.length ? (
+      {!hasSourceData ? (
         <EmptyState
           eyebrow="Calendar"
           icon={CalendarDays}
           title="No calendar events yet"
-          description="Add bookings, leases, cleaning tasks, or maintenance work orders to populate the operations calendar."
-          action={
+          description="Real bookings, leases, cleaning tasks, and maintenance work orders create calendar events. No demo events are added for empty workspaces."
+          action={canCreateBooking ? (
             <button type="button" className="primary" data-create-action="booking">
               <Plus size={16} />
               Add Booking
             </button>
-          }
-          secondaryAction={
+          ) : null}
+          secondaryAction={canCreateCleaning ? (
             <button type="button" data-create-action="cleaning">
               Add Cleaning Task
             </button>
-          }
+          ) : null}
         />
       ) : (
         <section className="calendar-layout-grid">
           <div className="card calendar-grid-card">
-            {view === 'agenda' ? (
+            {!events.length ? (
+              <EmptyState
+                compact
+                icon={CalendarDays}
+                title="No matching calendar events"
+                description="Adjust the filters, clear the invalid date range, or enable cancelled events to widen the schedule."
+              />
+            ) : view === 'agenda' ? (
               <div className="calendar-agenda-list">
                 {agendaEvents.length ? (
                   agendaEvents.map((event) => (
@@ -992,7 +1068,7 @@ export function CalendarPage() {
                 )}
               </div>
             ) : (
-              <div className={`calendar-days calendar-${view}`}>
+              <div className={`calendar-days calendar-view-${view}`}>
                 {visibleDays.map((day) => {
                   const dayEvents = events.filter((event) => overlapsDay(event, day));
                   const isCurrentMonth = day.getMonth() === anchor.getMonth();
