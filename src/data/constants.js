@@ -60,6 +60,33 @@ export const dashboardRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.
 export const propertyEditorRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER];
 export const taskManagerRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
 
+export const expenseCategories = [
+  ['cleaning', 'Cleaning'],
+  ['maintenance', 'Maintenance'],
+  ['supplies', 'Supplies'],
+  ['utilities', 'Utilities'],
+  ['platform_fee', 'Platform fee'],
+  ['owner_payout', 'Owner payout'],
+  ['property_tax', 'Property tax'],
+  ['insurance', 'Insurance'],
+  ['repairs', 'Repairs'],
+  ['other', 'Other'],
+];
+
+export const expensePaymentStatuses = [
+  ['unpaid', 'Unpaid'],
+  ['paid', 'Paid'],
+  ['reimbursed', 'Reimbursed'],
+  ['pending', 'Pending'],
+  ['cancelled', 'Cancelled'],
+];
+
+export const expenseStatuses = [
+  ['active', 'Active'],
+  ['archived', 'Archived'],
+  ['draft', 'Draft'],
+];
+
 export const propertyTypes = [
   'short_term_rental',
   'long_term_rental',
