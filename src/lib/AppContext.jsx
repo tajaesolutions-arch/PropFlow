@@ -140,6 +140,15 @@ function cleanEmail(value) {
   return text || null;
 }
 
+function cleanPhone(value) {
+  const text = String(value || '')
+    .replace(/[^+\d()\-.\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return text || null;
+}
+
 function normalizeWorkspace(row) {
   if (!row) return null;
 
@@ -411,7 +420,7 @@ function stripUnsupportedPayloadKeys(payload, allowedKeys) {
 }
 
 const scopedInviteRoles = [roles.OWNER, roles.CLEANER, roles.MAINTENANCE];
-
+const supportedContactTypes = ['owner', 'guest', 'tenant', 'vendor', 'cleaner', 'maintenance', 'other'];
 
 const maintenancePriorities = ['low', 'medium', 'high', 'urgent'];
 const maintenanceStatuses = ['reported', 'assigned', 'in_progress', 'waiting_parts', 'completed', 'cancelled'];
@@ -449,6 +458,8 @@ const workspaceActionRoles = {
   cleaning: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
   maintenance: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
   contact: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
+  ownerContact: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
+  guestContact: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
   invite: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
   report: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT],
 };
@@ -1334,7 +1345,14 @@ export function AppProvider({ children }) {
   }) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
-    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'contact');
+
+    if (!supportedContactTypes.includes(contact_type)) {
+      throw new Error('Unsupported contact type.');
+    }
+
+    const normalizedContactType = contact_type;
+    const action = normalizedContactType === 'owner' ? 'ownerContact' : normalizedContactType === 'guest' ? 'guestContact' : 'contact';
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, action);
 
     const fullName = cleanText(full_name || name);
 
@@ -1342,13 +1360,17 @@ export function AppProvider({ children }) {
       throw new Error('Contact name is required.');
     }
 
+    const normalizedEmail = cleanEmail(email);
+    const normalizedPhone = cleanPhone(phone);
+    const normalizedNotes = cleanText(notes);
+
     const rpcPayload = {
       p_workspace_id: currentWorkspace.id,
       p_full_name: fullName,
-      p_email: cleanEmail(email),
-      p_phone: cleanText(phone),
-      p_contact_type: ['owner', 'guest', 'tenant', 'other'].includes(contact_type) ? contact_type : 'other',
-      p_notes: cleanText(notes),
+      p_email: normalizedEmail,
+      p_phone: normalizedPhone,
+      p_contact_type: normalizedContactType,
+      p_notes: normalizedNotes,
     };
 
     const rpcResponse = await client.rpc('create_or_update_contact', rpcPayload);
@@ -1361,26 +1383,55 @@ export function AppProvider({ children }) {
     const fallbackPayload = {
       workspace_id: currentWorkspace.id,
       full_name: fullName,
-      email: cleanEmail(email),
-      phone: cleanText(phone),
-      contact_type: ['owner', 'guest', 'tenant', 'other'].includes(contact_type) ? contact_type : 'other',
-      notes: cleanText(notes),
+      email: normalizedEmail,
+      phone: normalizedPhone,
+      contact_type: normalizedContactType,
+      notes: normalizedNotes,
       created_by: session.user.id,
     };
 
-    const insertResponse = await client
-      .from('contacts')
-      .insert(fallbackPayload)
-      .select('*')
-      .single();
+    let fallbackQuery = client.from('contacts').select('*').eq('workspace_id', currentWorkspace.id).limit(1);
 
-    if (insertResponse.error) {
-      throw new Error(formatSupabaseError(insertResponse.error, 'Contact could not be saved.'));
+    if (normalizedEmail) {
+      fallbackQuery = fallbackQuery.eq('email', normalizedEmail);
+    } else if (normalizedPhone) {
+      fallbackQuery = fallbackQuery.eq('phone', normalizedPhone).eq('contact_type', normalizedContactType);
+    } else {
+      fallbackQuery = fallbackQuery.eq('full_name', fullName).eq('contact_type', normalizedContactType);
+    }
+
+    const existingResponse = await fallbackQuery.maybeSingle();
+
+    if (existingResponse.error) {
+      throw new Error(formatSupabaseError(existingResponse.error, 'Contact could not be checked for duplicates.'));
+    }
+
+    const saveResponse = existingResponse.data
+      ? await client
+          .from('contacts')
+          .update({
+            full_name: fullName,
+            phone: normalizedPhone || existingResponse.data.phone || null,
+            contact_type: normalizedContactType,
+            notes: normalizedNotes || existingResponse.data.notes || null,
+          })
+          .eq('id', existingResponse.data.id)
+          .eq('workspace_id', currentWorkspace.id)
+          .select('*')
+          .single()
+      : await client
+          .from('contacts')
+          .insert(fallbackPayload)
+          .select('*')
+          .single();
+
+    if (saveResponse.error) {
+      throw new Error(formatSupabaseError(saveResponse.error, 'Contact could not be saved.'));
     }
 
     await refreshWorkspaceData();
 
-    return normalizeContact(insertResponse.data);
+    return normalizeContact(saveResponse.data);
   };
 
   const createContact = (payload) => createOrUpdateContact(payload);

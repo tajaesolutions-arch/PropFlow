@@ -117,6 +117,7 @@ Apply the current Phase 1 hosted-project migrations in this timestamp order:
 1. supabase/migrations/202605050001_propflow_schema.sql
 2. supabase/migrations/202605100001_rls_create_action_alignment.sql
 3. supabase/migrations/202605100002_create_workspace_with_owner_rpc.sql
+4. Later timestamped module alignment migrations, including contacts/owners/guests RLS alignment when present.
 ```
 
 Apply the migrations in timestamp order before running the app against a Supabase project. The `202605100002_create_workspace_with_owner_rpc.sql` RPC migration must be applied after `202605100001_rls_create_action_alignment.sql`. If your checkout also contains older development migrations, keep timestamp ordering and ensure the final `202605100002_create_workspace_with_owner_rpc.sql` function definition is applied last for workspace creation. If you see `Could not find the table 'public.workspaces' in the schema cache`, the base migration has not been applied to that project, was applied to a different project, or Supabase needs its API schema cache refreshed after the SQL runs.
@@ -203,6 +204,16 @@ VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
 ```
 
 Do **not** use or expose a Supabase service-role key in frontend code.
+
+
+## Contacts, owners, and guest CRM notes
+
+- Contacts are workspace-scoped CRM records in Supabase and are loaded through the active `workspace_id`.
+- Owners and guests created from **Add Owner** / **Add Guest** are contact records unless the person is also invited as a workspace login user.
+- Owner portal access is controlled through workspace member invites and the `property_owner` role; `properties.assigned_owner_id` points to an invited workspace member/profile, not an owner CRM contact.
+- **Add Owner** and **Add Guest** use the shared create-action modal and save through the shared AppContext contact action.
+- Real records require `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and the Supabase migrations applied in timestamp order.
+- The frontend uses the Supabase anon key only. Do **not** expose a Supabase service-role key in Vite/frontend environment variables.
 
 ## Role and permission notes
 

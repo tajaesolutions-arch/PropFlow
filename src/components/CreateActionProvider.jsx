@@ -228,7 +228,7 @@ const createActionAllowedRoles = {
   booking: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
   cleaning: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
   maintenance: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
-  owner: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
+  owner: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
   guest: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
   invite: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
   expense: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT],
@@ -259,6 +259,15 @@ function normalizeEmail(value) {
 function isValidEmail(value) {
   const email = normalizeEmail(value);
   return Boolean(email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+}
+
+function cleanPhone(value) {
+  const text = String(value || '')
+    .replace(/[^+\d()\-.\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return text || null;
 }
 
 function optionValues(options) {
@@ -392,8 +401,8 @@ function selectedPropertyNames(properties, propertyIds) {
 }
 
 function buildContactNotes({ notes, contextLines }) {
-  const cleanNotes = String(notes || '').trim();
-  const cleanContext = contextLines.filter(Boolean);
+  const cleanNotes = String(notes || '').replace(/\s+$/g, '').trim();
+  const cleanContext = contextLines.map((line) => String(line || '').trim()).filter(Boolean);
 
   if (!cleanContext.length) return cleanNotes || null;
 
@@ -1513,6 +1522,7 @@ function ContactForm({ app, close, submitting, setSubmitting, setError, notifySu
 
   const submit = async (event) => {
     event.preventDefault();
+    if (submitting) return;
     setError('');
 
     if (!app.currentWorkspace?.id) {
@@ -1525,6 +1535,15 @@ function ContactForm({ app, close, submitting, setSubmitting, setError, notifySu
       return;
     }
 
+    const email = normalizeEmail(form.email);
+
+    if (email && !isValidEmail(email)) {
+      setError('Enter a valid email address or leave email blank.');
+      return;
+    }
+
+    const phone = cleanPhone(form.phone);
+
     try {
       setSubmitting(true);
 
@@ -1536,6 +1555,7 @@ function ContactForm({ app, close, submitting, setSubmitting, setError, notifySu
       const notes = buildContactNotes({
         notes: form.notes,
         contextLines: [
+          form.company_name.trim() && `Company / business: ${form.company_name.trim()}`,
           selectedPropertyName && `Requested property context: ${selectedPropertyName}`,
           isOwner && form.payout_percentage && `Requested payout percentage: ${form.payout_percentage}%`,
           !isOwner &&
@@ -1555,9 +1575,8 @@ function ContactForm({ app, close, submitting, setSubmitting, setError, notifySu
           contact_type: isOwner ? 'owner' : 'guest',
           name: form.name.trim(),
           full_name: form.name.trim(),
-          email: normalizeEmail(form.email) || null,
-          phone: form.phone.trim() || null,
-          company_name: form.company_name.trim() || null,
+          email: email || null,
+          phone,
           notes,
         },
       );
@@ -1677,6 +1696,7 @@ function InviteForm({ app, close, submitting, setSubmitting, setError, notifySuc
 
   const submit = async (event) => {
     event.preventDefault();
+    if (submitting) return;
     setError('');
 
     if (!app.currentWorkspace?.id) {

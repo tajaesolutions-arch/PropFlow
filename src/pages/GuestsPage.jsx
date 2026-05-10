@@ -128,6 +128,7 @@ function isUpcomingBooking(booking) {
 
 function buildGuestRows(bookings, contacts, properties, currency) {
   const guestMap = new Map();
+  const contactKeyById = new Map();
 
   contacts.filter(isGuestContact).forEach((contact) => {
     const name = getContactName(contact);
@@ -136,6 +137,8 @@ function buildGuestRows(bookings, contacts, properties, currency) {
     const key = getGuestKey({ email, phone, name, fallback: contact.id });
 
     if (!key) return;
+
+    contactKeyById.set(contact.id, key);
 
     guestMap.set(key, {
       id: contact.id || key,
@@ -162,7 +165,8 @@ function buildGuestRows(bookings, contacts, properties, currency) {
     const email = getGuestEmail(booking);
     const phone = getGuestPhone(booking);
     const name = getGuestName(booking);
-    const key = getGuestKey({ email, phone, name, fallback: `${name}-${booking.id}` });
+    const contactId = booking.contactId || booking.contact_id;
+    const key = contactKeyById.get(contactId) || getGuestKey({ email, phone, name, fallback: `${name}-${booking.id}` });
 
     if (!key) return;
 
@@ -198,6 +202,11 @@ function buildGuestRows(bookings, contacts, properties, currency) {
     existing.paymentStatus = getPaymentStatus(booking) || existing.paymentStatus;
     existing.source = booking.source || existing.source;
     existing.bookingRecords.push(booking);
+    existing.bookingContext = existing.bookingRecords
+      .map((record) => [getGuestName(record), getPropertyName(record, properties), getCheckIn(record)]
+        .filter(Boolean)
+        .join(' · '))
+      .join(' | ');
 
     if (!existing.lastStay || isLaterDate(stayDate, existing.lastStay)) {
       existing.lastStay = stayDate;
@@ -224,6 +233,7 @@ function matchesGuestSearch(guest, query) {
     guest.paymentStatus,
     guest.status,
     guest.notes,
+    guest.bookingContext,
   ]
     .filter(Boolean)
     .join(' ')
@@ -411,7 +421,7 @@ export function GuestsPage() {
             <input
               value={filters.query}
               onChange={setFilter('query')}
-              placeholder="Search guest, email, phone, property, source, payment, or status..."
+              placeholder="Search guest, email, phone, property, booking context, notes, payment, or status..."
               aria-label="Search guests"
             />
 
