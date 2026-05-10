@@ -373,14 +373,16 @@ The page supports create, edit, view, cancel/terminate flows; auto contact creat
 
 ### Calendar scope
 
-`/calendar` displays Supabase-backed operational events:
+`/calendar` is a unified operations schedule derived from existing Supabase workspace-scoped records loaded by the app context. It does not create fake/demo events and does not query a separate calendar table. Real records require the Supabase environment variables to be configured and the migrations in this repository to be applied.
+
+Current event sources:
 
 - Short-term booking stay blocks
 - Check-in events
 - Check-out events
 - Checkout cleaning tasks
 - Maintenance work orders by due date
-- Long-term lease period blocks and start/end markers
+- Long-term lease start/end events and lease period blocks when a lease end date is available
 
 Calendar views included now:
 
@@ -389,7 +391,7 @@ Calendar views included now:
 - Day
 - List / agenda
 
-The property timeline and drag-and-drop rescheduling are intentionally prepared as future extension points, not built in this phase.
+Calendar create buttons use the shared create-action modal and remain limited to roles allowed to create bookings or cleaning tasks. Staff calendar visibility is role-scoped through protected routing and sidebar navigation so owner, cleaner, maintenance, and accountant users do not receive a broad workspace calendar by accident. External integrations such as Google Calendar, Airbnb, Booking.com, Vrbo, and iCal import/export are not connected yet. Drag-and-drop editing, recurring events, public sharing, and notification automation are intentionally future extension points, not built in this phase.
 
 ### Known limitations
 
