@@ -8,6 +8,50 @@ const AppContext = createContext(null);
 
 const storageKey = 'propflow.currentWorkspaceId';
 
+const workspaceCreationCurrencies = ['USD', 'JMD', 'CAD', 'GBP', 'EUR'];
+
+function normalizeWorkspaceCurrency(value) {
+  return String(value || 'USD').trim().toUpperCase();
+}
+
+function formatWorkspaceCreationError(error) {
+  const rawMessage = String(error?.message || '').toLowerCase();
+  const rawDetails = String(error?.details || '').toLowerCase();
+  const rawHint = String(error?.hint || '').toLowerCase();
+  const code = String(error?.code || '');
+  const combined = `${rawMessage} ${rawDetails} ${rawHint}`;
+
+  if (combined.includes('workspace_name_required') || combined.includes('null value')) {
+    return 'Workspace/business name is required.';
+  }
+
+  if (combined.includes('missing_authenticated_session') || code === '28000') {
+    return 'Your session expired. Sign in again before creating a workspace.';
+  }
+
+  if (combined.includes('invalid_default_currency') || combined.includes('default_currency')) {
+    return 'Choose a supported launch currency: USD, JMD, CAD, GBP, or EUR.';
+  }
+
+  if (combined.includes('could not find the function') || combined.includes('schema cache') || code === 'PGRST202') {
+    return 'Workspace setup is not deployed yet. Ask an admin to apply the create_workspace_with_owner RPC migration.';
+  }
+
+  if (combined.includes('row-level security') || combined.includes('permission denied') || code === '42501') {
+    return 'Workspace setup is blocked by database security rules. Ask an admin to verify the workspace creation RPC is deployed.';
+  }
+
+  if (combined.includes('workspace_created_but_membership_failed')) {
+    return 'Workspace setup could not finish assigning your owner membership. Please try again or contact support.';
+  }
+
+  if (combined.includes('workspace_creation_validation_failed')) {
+    return 'Workspace setup could not be saved. Check the workspace details and try again.';
+  }
+
+  return 'Workspace could not be created. Please try again.';
+}
+
 const emptyData = {
   properties: [],
   cleaningTasks: [],
@@ -816,44 +860,50 @@ export function AppProvider({ children }) {
 
   const createWorkspace = async (payload) => {
     const client = requireSupabase();
-    requireWorkspaceSession(currentWorkspace || { id: 'workspace-setup' }, session);
 
-    const workspacePayload = {
-      name: cleanText(payload.name),
-      business_type: cleanText(payload.business_type),
-      country: cleanText(payload.country) || 'United States',
-      default_currency: payload.default_currency || payload.defaultCurrency || 'USD',
-      business_email: cleanEmail(payload.business_email),
-      phone: cleanText(payload.phone),
-      website: cleanText(payload.website),
-      property_count_estimate: cleanNumber(payload.property_count_estimate),
-      plan_placeholder: payload.plan || payload.plan_placeholder || 'starter',
-      status: 'active',
-      created_by: session.user.id,
-    };
-
-    const { data: workspaceRow, error: workspaceError } = await client
-      .from('workspaces')
-      .insert(workspacePayload)
-      .select('*')
-      .single();
-
-    if (workspaceError) {
-      throw new Error(formatSupabaseError(workspaceError, 'Workspace could not be created.'));
+    if (!session?.user?.id) {
+      throw new Error('Your session expired. Sign in again before creating a workspace.');
     }
 
-    const workspace = normalizeWorkspace(workspaceRow);
+    const name = cleanText(payload.name);
 
-    const { error: memberError } = await client.from('workspace_members').insert({
-      workspace_id: workspace.id,
-      user_id: session.user.id,
-      roles: [roles.OWNER_ADMIN],
-      status: 'active',
-      invited_by: session.user.id,
-    });
+    if (!name) {
+      throw new Error('Workspace/business name is required.');
+    }
 
-    if (memberError) {
-      throw new Error(formatSupabaseError(memberError, 'Workspace was created but membership failed.'));
+    const defaultCurrency = normalizeWorkspaceCurrency(payload.default_currency || payload.defaultCurrency);
+
+    if (!workspaceCreationCurrencies.includes(defaultCurrency)) {
+      throw new Error('Choose a supported launch currency: USD, JMD, CAD, GBP, or EUR.');
+    }
+
+    const rpcPayload = {
+      p_name: name,
+      p_business_type: cleanText(payload.business_type),
+      p_country: cleanText(payload.country) || 'United States',
+      p_default_currency: defaultCurrency,
+      p_business_email: cleanEmail(payload.business_email),
+      p_phone: cleanText(payload.phone),
+      p_website: cleanText(payload.website),
+      p_property_count_estimate: cleanNumber(payload.property_count_estimate),
+      p_plan_placeholder: cleanText(payload.plan_placeholder || payload.plan) || 'starter',
+    };
+
+    const { data: workspaceData, error: workspaceError } = await client.rpc(
+      'create_workspace_with_owner',
+      rpcPayload,
+    );
+
+    if (workspaceError) {
+      console.error('[PropFlow] create_workspace_with_owner failed', workspaceError);
+      throw new Error(formatWorkspaceCreationError(workspaceError));
+    }
+
+    const workspace = normalizeWorkspace(firstResult(workspaceData));
+
+    if (!workspace?.id) {
+      console.error('[PropFlow] create_workspace_with_owner returned no workspace row', workspaceData);
+      throw new Error('Workspace setup could not finish assigning your owner membership. Please try again or contact support.');
     }
 
     saveWorkspaceId(workspace.id);
