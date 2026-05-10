@@ -14,12 +14,47 @@ function normalizeWorkspaceCurrency(value) {
   return String(value || 'USD').trim().toUpperCase();
 }
 
+function getErrorText(error) {
+  return [error?.message, error?.details, error?.hint, error?.name]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+}
+
+function formatAuthError(error, fallback = 'Authentication failed.') {
+  const combined = getErrorText(error);
+  const status = Number(error?.status || 0);
+
+  if (combined.includes('already registered') || combined.includes('already exists') || combined.includes('user already')) {
+    return 'This email is already registered. Log in instead, or use password reset if needed.';
+  }
+
+  if (combined.includes('password') && (combined.includes('weak') || combined.includes('short') || status === 422)) {
+    return 'Choose a stronger password. Use at least 8 characters and avoid common passwords.';
+  }
+
+  if (combined.includes('email not confirmed') || combined.includes('confirm')) {
+    return 'Email confirmation is required. Check your inbox, confirm your account, then log in again.';
+  }
+
+  if (combined.includes('invalid login') || combined.includes('invalid credentials')) {
+    return 'Email or password is incorrect. Check your credentials and try again.';
+  }
+
+  if (combined.includes('failed to fetch') || combined.includes('network') || combined.includes('timeout')) {
+    return 'Could not reach Supabase. Check your connection and try again.';
+  }
+
+  return fallback;
+}
+
 function formatWorkspaceCreationError(error) {
-  const rawMessage = String(error?.message || '').toLowerCase();
-  const rawDetails = String(error?.details || '').toLowerCase();
-  const rawHint = String(error?.hint || '').toLowerCase();
   const code = String(error?.code || '');
-  const combined = `${rawMessage} ${rawDetails} ${rawHint}`;
+  const combined = getErrorText(error);
+
+  if (combined.includes('failed to fetch') || combined.includes('network') || combined.includes('timeout')) {
+    return 'Network issue while creating the workspace. Check your connection and try again.';
+  }
 
   if (combined.includes('workspace_name_required') || combined.includes('null value')) {
     return 'Workspace/business name is required.';
@@ -33,12 +68,16 @@ function formatWorkspaceCreationError(error) {
     return 'Choose a supported launch currency: USD, JMD, CAD, GBP, or EUR.';
   }
 
-  if (combined.includes('could not find the function') || combined.includes('schema cache') || code === 'PGRST202') {
+  if (combined.includes('schema cache')) {
+    return 'Workspace setup RPC is not visible to Supabase yet. Confirm the create_workspace_with_owner migration is applied, then wait briefly, reload the app, and try again.';
+  }
+
+  if (combined.includes('could not find the function') || combined.includes('function public.create_workspace_with_owner') || code === 'PGRST202' || code === '42883') {
     return 'Workspace setup is not deployed yet. Ask an admin to apply the create_workspace_with_owner RPC migration.';
   }
 
   if (combined.includes('row-level security') || combined.includes('permission denied') || code === '42501') {
-    return 'Workspace setup is blocked by database security rules. Ask an admin to verify the workspace creation RPC is deployed.';
+    return 'Workspace setup is blocked by database security rules. Ask an admin to verify the workspace creation RPC grant and RLS migration.';
   }
 
   if (combined.includes('workspace_created_but_membership_failed')) {
@@ -798,7 +837,7 @@ export function AppProvider({ children }) {
       password,
     });
 
-    if (signInError) throw new Error(formatSupabaseError(signInError, 'Login failed.'));
+    if (signInError) throw new Error(formatAuthError(signInError, 'Login failed.'));
 
     const accountState = await loadAccount();
 
@@ -822,19 +861,23 @@ export function AppProvider({ children }) {
       },
     });
 
-    if (signUpError) throw new Error(formatSupabaseError(signUpError, 'Signup failed.'));
+    if (signUpError) throw new Error(formatAuthError(signUpError, 'Signup failed.'));
 
     if (authData?.user?.id) {
-      await client.from('profiles').upsert(
+      const { error: profileError } = await client.from('profiles').upsert(
         {
           id: authData.user.id,
           full_name: fullName,
-          email,
+          email: cleanEmail(email),
           status: 'active',
           is_propflow_admin: false,
         },
         { onConflict: 'id' },
       );
+
+      if (profileError) {
+        console.warn('[PropFlow] Signup profile upsert was deferred or blocked by RLS.', profileError);
+      }
     }
 
     if (authData?.session) {
@@ -889,20 +932,26 @@ export function AppProvider({ children }) {
       p_plan_placeholder: cleanText(payload.plan_placeholder || payload.plan) || 'starter',
     };
 
-    const { data: workspaceData, error: workspaceError } = await client.rpc(
-      'create_workspace_with_owner',
-      rpcPayload,
-    );
+    let rpcResponse;
+
+    try {
+      rpcResponse = await client.rpc('create_workspace_with_owner', rpcPayload);
+    } catch (rpcError) {
+      console.warn('[PropFlow] create_workspace_with_owner network/runtime failure', rpcError);
+      throw new Error(formatWorkspaceCreationError(rpcError));
+    }
+
+    const { data: workspaceData, error: workspaceError } = rpcResponse;
 
     if (workspaceError) {
-      console.error('[PropFlow] create_workspace_with_owner failed', workspaceError);
+      console.warn('[PropFlow] create_workspace_with_owner failed', workspaceError);
       throw new Error(formatWorkspaceCreationError(workspaceError));
     }
 
     const workspace = normalizeWorkspace(firstResult(workspaceData));
 
     if (!workspace?.id) {
-      console.error('[PropFlow] create_workspace_with_owner returned no workspace row', workspaceData);
+      console.warn('[PropFlow] create_workspace_with_owner returned no workspace row', workspaceData);
       throw new Error('Workspace setup could not finish assigning your owner membership. Please try again or contact support.');
     }
 
@@ -925,10 +974,17 @@ export function AppProvider({ children }) {
       throw new Error('Enter a valid invite token or company code.');
     }
 
+    const currentEmail = cleanEmail(currentUser?.email || session.user.email);
+
+    if (!currentEmail) {
+      throw new Error('Your signed-in account needs an email address before joining a workspace.');
+    }
+
     let inviteQuery = client
       .from('workspace_invites')
       .select('*')
       .eq('status', 'pending')
+      .eq('email', currentEmail)
       .limit(1);
 
     if (token) {
@@ -938,7 +994,6 @@ export function AppProvider({ children }) {
     }
 
     const { data: inviteRows, error: inviteError } = await inviteQuery;
-
     if (inviteError) {
       throw new Error(formatSupabaseError(inviteError, 'Could not validate invite.'));
     }
@@ -949,18 +1004,27 @@ export function AppProvider({ children }) {
       throw new Error('Invite not found, expired, or already used.');
     }
 
-    const currentEmail = String(currentUser?.email || session.user.email || '').toLowerCase();
-    const invitedEmail = String(invite.email || '').toLowerCase();
+    const invitedEmail = cleanEmail(invite.email);
 
-    if (invitedEmail && invitedEmail !== currentEmail) {
-      throw new Error('This invite was created for a different email address.');
+    if (!invitedEmail || invitedEmail !== currentEmail) {
+      throw new Error('This invite was created for a different email address. Log in with the invited email to join.');
+    }
+
+    if (invite.expires_at && new Date(invite.expires_at).getTime() <= Date.now()) {
+      throw new Error('Invite not found, expired, or already used.');
+    }
+
+    const inviteRoles = asArray(invite.roles).filter((role) => inviteRoleOptions.includes(role));
+
+    if (!inviteRoles.length || inviteRoles.length !== asArray(invite.roles).length) {
+      throw new Error('This invite contains an unsupported role. Ask the workspace owner to send a new invite.');
     }
 
     const { error: memberError } = await client.from('workspace_members').upsert(
       {
         workspace_id: invite.workspace_id,
         user_id: session.user.id,
-        roles: invite.roles || [],
+        roles: inviteRoles,
         status: 'active',
         invited_by: invite.invited_by || null,
       },
@@ -968,17 +1032,23 @@ export function AppProvider({ children }) {
     );
 
     if (memberError) {
+      console.warn('[PropFlow] Workspace invite membership insert failed', memberError);
       throw new Error(formatSupabaseError(memberError, 'Could not join workspace.'));
     }
 
-    await client
+    const { error: acceptError } = await client
       .from('workspace_invites')
       .update({
         status: 'accepted',
         accepted_by: session.user.id,
         accepted_at: new Date().toISOString(),
       })
-      .eq('id', invite.id);
+      .eq('id', invite.id)
+      .eq('status', 'pending');
+
+    if (acceptError) {
+      console.warn('[PropFlow] Workspace invite status update failed after membership creation', acceptError);
+    }
 
     saveWorkspaceId(invite.workspace_id);
     await loadAccount();
