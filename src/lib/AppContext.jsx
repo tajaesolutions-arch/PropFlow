@@ -393,11 +393,14 @@ function getWorkspaceCode(workspace) {
 function makeDateTimeFromDate(value, fallback = new Date()) {
   if (!value) return fallback.toISOString();
 
-  const text = String(value);
+  const text = String(value).trim();
+  const date = new Date(text.includes('T') ? text : `${text}T11:00:00`);
 
-  if (text.includes('T')) return text;
+  if (Number.isNaN(date.getTime())) {
+    throw new Error('Select a valid scheduled date and time.');
+  }
 
-  return new Date(`${text}T11:00:00`).toISOString();
+  return date.toISOString();
 }
 
 function stripUnsupportedPayloadKeys(payload, allowedKeys) {
@@ -418,12 +421,17 @@ const workspaceActionRoles = {
   report: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT],
 };
 
-function assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, action) {
-  const allowedRoles = workspaceActionRoles[action] || [];
+function getActiveWorkspaceRoles(currentUser, memberships, currentWorkspace) {
   const activeMembership = asArray(memberships).find(
     (membership) => membership.workspace_id === currentWorkspace?.id && membership.status !== 'revoked',
   );
-  const activeRoles = asArray(activeMembership?.roles || currentUser?.membership?.roles);
+
+  return asArray(activeMembership?.roles || currentUser?.membership?.roles);
+}
+
+function assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, action) {
+  const allowedRoles = workspaceActionRoles[action] || [];
+  const activeRoles = getActiveWorkspaceRoles(currentUser, memberships, currentWorkspace);
 
   if (!allowedRoles.some((role) => activeRoles.includes(role))) {
     throw new Error('Your current workspace role cannot create this type of record.');
@@ -438,6 +446,37 @@ function requireWorkspaceProperty(properties, propertyId, label = 'property') {
   }
 
   return property;
+}
+
+function memberUserId(member) {
+  return member?.user_id || member?.userId || member?.id || '';
+}
+
+function requireActiveWorkspaceMemberWithRole(members, userId, role, label) {
+  if (!userId) return null;
+
+  const member = asArray(members).find((item) => memberUserId(item) === userId);
+
+  if (!member || member.status !== 'active' || !asArray(member.roles).includes(role)) {
+    throw new Error(`${label} must be an active workspace ${role.replaceAll('_', ' ')}.`);
+  }
+
+  return member;
+}
+
+function normalizeChecklistItems(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || '').trim()).filter(Boolean);
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.values(value).map((item) => String(item || '').trim()).filter(Boolean);
+  }
+
+  return String(value || '')
+    .split('\n')
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function requireAllowedValue(value, allowedValues, label) {
@@ -1565,28 +1604,45 @@ export function AppProvider({ children }) {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'cleaning');
-    requireWorkspaceProperty(data.properties, payload.property_id);
 
-    if (!payload.scheduled_for) throw new Error('Cleaning date is required.');
-    requireAllowedValue(payload.status || 'scheduled', ['scheduled', 'in_progress', 'needs_inspection', 'completed'], 'cleaning status');
+    const allowed = [
+      'property_id',
+      'booking_id',
+      'assigned_cleaner_id',
+      'scheduled_for',
+      'status',
+      'checklist_items',
+      'checklist',
+      'cleaner_notes',
+      'supplies_used',
+    ];
+    const cleanPayload = stripUnsupportedPayloadKeys(payload, allowed);
 
-    if (payload.booking_id) {
-      const linkedBooking = asArray(data.bookings).find((booking) => booking.id === payload.booking_id);
-      if (!linkedBooking || linkedBooking.property_id !== payload.property_id) {
+    requireWorkspaceProperty(data.properties, cleanPayload.property_id);
+
+    if (!cleanPayload.scheduled_for) throw new Error('Cleaning date is required.');
+    requireAllowedValue(cleanPayload.status || 'scheduled', ['scheduled', 'in_progress', 'needs_inspection', 'completed', 'guest_ready', 'missed'], 'cleaning status');
+    if (cleanPayload.assigned_cleaner_id) {
+      requireActiveWorkspaceMemberWithRole(data.members, cleanPayload.assigned_cleaner_id, roles.CLEANER, 'Assigned cleaner');
+    }
+
+    if (cleanPayload.booking_id) {
+      const linkedBooking = asArray(data.bookings).find((booking) => booking.id === cleanPayload.booking_id);
+      if (!linkedBooking || linkedBooking.property_id !== cleanPayload.property_id) {
         throw new Error('Related booking must belong to the selected property in this workspace.');
       }
     }
 
     const cleaningPayload = {
       workspace_id: currentWorkspace.id,
-      property_id: payload.property_id,
-      booking_id: payload.booking_id || null,
-      assigned_cleaner_id: payload.assigned_cleaner_id || null,
-      scheduled_for: makeDateTimeFromDate(payload.scheduled_for),
-      status: payload.status || 'scheduled',
-      checklist_items: payload.checklist_items || payload.checklist || [],
-      cleaner_notes: cleanText(payload.cleaner_notes),
-      supplies_used: cleanText(payload.supplies_used),
+      property_id: cleanPayload.property_id,
+      booking_id: cleanPayload.booking_id || null,
+      assigned_cleaner_id: cleanPayload.assigned_cleaner_id || null,
+      scheduled_for: makeDateTimeFromDate(cleanPayload.scheduled_for),
+      status: cleanPayload.status || 'scheduled',
+      checklist_items: normalizeChecklistItems(cleanPayload.checklist_items || cleanPayload.checklist),
+      cleaner_notes: cleanText(cleanPayload.cleaner_notes),
+      supplies_used: cleanText(cleanPayload.supplies_used),
       created_by: session.user.id,
     };
 
@@ -1607,7 +1663,22 @@ export function AppProvider({ children }) {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
-    const allowed = [
+    const currentTask = asArray(data.cleaningTasks).find((task) => task.id === taskId);
+    if (!currentTask) throw new Error('Cleaning task was not found in the current workspace.');
+
+    const isManager = getActiveWorkspaceRoles(currentUser, memberships, currentWorkspace).some((role) => workspaceActionRoles.cleaning.includes(role));
+    const isAssignedCleaner = currentTask.assigned_cleaner_id === session.user.id;
+    const closedTask = ['completed', 'guest_ready', 'cancelled'].includes(currentTask.status);
+
+    if (!isManager && !isAssignedCleaner) {
+      throw new Error('You can only update assigned cleaning tasks.');
+    }
+
+    if (closedTask) {
+      throw new Error('Completed, guest-ready, and cancelled cleaning tasks are read-only.');
+    }
+
+    const managerAllowed = [
       'property_id',
       'booking_id',
       'assigned_cleaner_id',
@@ -1621,14 +1692,47 @@ export function AppProvider({ children }) {
       'started_at',
       'completed_at',
     ];
+    const cleanerAllowed = [
+      'status',
+      'cleaner_notes',
+      'supplies_used',
+      'low_supplies_reported',
+      'issue_reported',
+      'started_at',
+      'completed_at',
+    ];
+    const updatePayload = stripUnsupportedPayloadKeys(payload, isManager ? managerAllowed : cleanerAllowed);
 
-    const updatePayload = stripUnsupportedPayloadKeys(payload, allowed);
+    const nextPropertyId = updatePayload.property_id || currentTask.property_id;
+    if ('property_id' in updatePayload) requireWorkspaceProperty(data.properties, updatePayload.property_id);
+
+    if ('booking_id' in updatePayload && updatePayload.booking_id) {
+      const linkedBooking = asArray(data.bookings).find((booking) => booking.id === updatePayload.booking_id);
+      if (!linkedBooking || linkedBooking.property_id !== nextPropertyId) {
+        throw new Error('Related booking must belong to the selected property in this workspace.');
+      }
+    }
+
+    if ('assigned_cleaner_id' in updatePayload && updatePayload.assigned_cleaner_id) {
+      requireActiveWorkspaceMemberWithRole(data.members, updatePayload.assigned_cleaner_id, roles.CLEANER, 'Assigned cleaner');
+    }
+
+    if ('status' in updatePayload) {
+      requireAllowedValue(updatePayload.status, ['scheduled', 'in_progress', 'needs_inspection', 'completed', 'guest_ready', 'missed'], 'cleaning status');
+    }
+
+    if ('checklist_items' in updatePayload) {
+      updatePayload.checklist_items = normalizeChecklistItems(updatePayload.checklist_items);
+    }
+
+    if ('cleaner_notes' in updatePayload) updatePayload.cleaner_notes = cleanText(updatePayload.cleaner_notes);
+    if ('supplies_used' in updatePayload) updatePayload.supplies_used = cleanText(updatePayload.supplies_used);
 
     if (updatePayload.scheduled_for) {
       updatePayload.scheduled_for = makeDateTimeFromDate(updatePayload.scheduled_for);
     }
 
-    if (updatePayload.status === 'completed' && !updatePayload.completed_at) {
+    if (['completed', 'guest_ready'].includes(updatePayload.status) && !updatePayload.completed_at) {
       updatePayload.completed_at = new Date().toISOString();
     }
 
@@ -1943,6 +2047,27 @@ export function AppProvider({ children }) {
       throw new Error('Choose a file before uploading.');
     }
 
+    const resolvedPropertyId = propertyId || property_id || null;
+    const resolvedCleaningTaskId = cleaningTaskId || cleaning_task_id || null;
+    const resolvedMaintenanceWorkOrderId = maintenanceWorkOrderId || maintenance_work_order_id || null;
+
+    if (category === 'cleaning_photo') {
+      const cleaningTask = asArray(data.cleaningTasks).find((task) => task.id === resolvedCleaningTaskId);
+      if (!cleaningTask) throw new Error('Cleaning photo must be linked to a visible cleaning task.');
+      if (['completed', 'guest_ready', 'cancelled'].includes(cleaningTask.status)) {
+        throw new Error('Completed, guest-ready, and cancelled cleaning tasks cannot receive new photos.');
+      }
+      if (cleaningTask.property_id !== resolvedPropertyId) {
+        throw new Error('Cleaning photo must be linked to the cleaning task property.');
+      }
+
+      const isManager = getActiveWorkspaceRoles(currentUser, memberships, currentWorkspace).some((role) => workspaceActionRoles.cleaning.includes(role));
+      const isAssignedCleaner = cleaningTask.assigned_cleaner_id === session.user.id;
+      if (!isManager && !isAssignedCleaner) {
+        throw new Error('You can only upload cleaning photos for assigned cleaning tasks.');
+      }
+    }
+
     const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '-');
     const storagePath = `${currentWorkspace.id}/${Date.now()}-${safeFileName}`;
     const bucket = 'propflow-private';
@@ -1957,9 +2082,9 @@ export function AppProvider({ children }) {
 
     const filePayload = {
       workspace_id: currentWorkspace.id,
-      property_id: propertyId || property_id || null,
-      cleaning_task_id: cleaningTaskId || cleaning_task_id || null,
-      maintenance_work_order_id: maintenanceWorkOrderId || maintenance_work_order_id || null,
+      property_id: resolvedPropertyId,
+      cleaning_task_id: resolvedCleaningTaskId,
+      maintenance_work_order_id: resolvedMaintenanceWorkOrderId,
       uploaded_by: session.user.id,
       bucket,
       path: storagePath,

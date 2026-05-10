@@ -19,8 +19,8 @@ import { StatusBadge } from '../components/StatusBadge.jsx';
 import { useApp } from '../lib/AppContext.jsx';
 import { roles } from '../data/constants.js';
 
-const statuses = ['scheduled', 'in_progress', 'needs_inspection', 'completed', 'guest_ready', 'missed'];
-const closedStatuses = new Set(['completed', 'guest_ready']);
+const statuses = ['scheduled', 'in_progress', 'needs_inspection', 'completed', 'guest_ready', 'missed', 'cancelled'];
+const closedStatuses = new Set(['completed', 'guest_ready', 'cancelled']);
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -97,6 +97,12 @@ function getSuppliesUsed(task) {
   return task.suppliesUsed || task.supplies_used || '';
 }
 
+function getLinkedBooking(task, bookings = []) {
+  const bookingId = task.booking_id || task.bookingId;
+  if (!bookingId) return null;
+  return bookings.find((booking) => booking.id === bookingId) || null;
+}
+
 function isDueToday(task) {
   return dateOnly(task.scheduledFor || task.scheduled_for) === today();
 }
@@ -107,7 +113,7 @@ function isOverdue(task) {
 }
 
 function statusTone(status) {
-  if (['missed', 'overdue'].includes(status)) return 'error';
+  if (['missed', 'overdue', 'cancelled'].includes(status)) return 'error';
   if (['scheduled', 'needs_inspection'].includes(status)) return 'warning';
   if (['completed', 'guest_ready'].includes(status)) return 'success';
   return 'info';
@@ -118,7 +124,7 @@ function getVisibleCleanerTasks(tasks, currentUser) {
   return tasks.filter((task) => isAssignedToCurrentCleaner(task, currentUser));
 }
 
-function matchesSearch(task, properties, query) {
+function matchesSearch(task, properties, query, members = []) {
   const normalizedQuery = String(query || '').trim().toLowerCase();
 
   if (!normalizedQuery) return true;
@@ -156,7 +162,9 @@ function CleanerTaskCard({
   uploading,
   updating,
   onStatusChange,
+  bookings,
   onNotesSave,
+  onSuppliesSave,
   onIssueChange,
   onUpload,
 }) {
@@ -167,6 +175,7 @@ function CleanerTaskCard({
   const notes = getNotes(task);
   const suppliesUsed = getSuppliesUsed(task);
   const closed = closedStatuses.has(status);
+  const linkedBooking = getLinkedBooking(task, bookings);
 
   return (
     <article className={`card cleaner-dashboard-task-card ${overdue ? 'urgent' : ''}`}>
@@ -238,12 +247,27 @@ function CleanerTaskCard({
         </ul>
       </div>
 
-      {suppliesUsed && (
+      {linkedBooking && (
         <div className="cleaner-dashboard-section">
-          <h4>Supplies used</h4>
-          <p>{suppliesUsed}</p>
+          <h4>Related booking</h4>
+          <p>{linkedBooking.guest_name || linkedBooking.guestName || 'Guest booking'} · checkout {linkedBooking.check_out || linkedBooking.checkOut || 'not set'}</p>
         </div>
       )}
+
+      <label className="cleaner-dashboard-notes">
+        Supplies used / low supplies
+        <textarea
+          defaultValue={suppliesUsed}
+          disabled={closed}
+          onBlur={(event) => {
+            if (event.target.value !== suppliesUsed) {
+              onSuppliesSave(task, event.target.value);
+            }
+          }}
+          placeholder="List supplies used or low supplies to restock."
+          rows={2}
+        />
+      </label>
 
       <label className="cleaner-dashboard-notes">
         Cleaner notes
@@ -344,6 +368,7 @@ export function CleanerDashboardPage() {
   });
 
   const properties = data.properties || [];
+  const bookings = data.bookings || [];
   const allTasks = data.cleaningTasks || [];
   const visibleTasks = getVisibleCleanerTasks(allTasks, currentUser);
 
@@ -417,6 +442,29 @@ export function CleanerDashboardPage() {
       clearMessageSoon();
     } catch (error) {
       setMessage(error.message || 'Could not save cleaner notes.');
+    } finally {
+      setUpdatingTaskId('');
+    }
+  };
+
+  const updateSupplies = async (task, suppliesUsed) => {
+    if (!canUpdateCleanerTask(task, currentUser)) {
+      setMessage('You do not have permission to update supplies for this cleaning task, or this cleaning is already closed.');
+      return;
+    }
+
+    setUpdatingTaskId(task.id);
+
+    try {
+      await updateCleaningTask(task.id, {
+        supplies_used: suppliesUsed.trim() || null,
+        low_supplies_reported: Boolean(suppliesUsed.trim()),
+      });
+
+      setMessage('Supplies used saved.');
+      clearMessageSoon();
+    } catch (error) {
+      setMessage(error.message || 'Could not save supplies used.');
     } finally {
       setUpdatingTaskId('');
     }
@@ -603,10 +651,12 @@ export function CleanerDashboardPage() {
               key={task.id}
               task={task}
               properties={properties}
+              bookings={bookings}
               uploading={uploadingTaskId === task.id}
               updating={updatingTaskId === task.id}
               onStatusChange={changeStatus}
               onNotesSave={updateNotes}
+              onSuppliesSave={updateSupplies}
               onIssueChange={reportIssue}
               onUpload={handleUpload}
             />

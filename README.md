@@ -36,7 +36,7 @@ Implemented in this phase:
 - Suspended-account routing to `/suspended` with workspace-data access blocked by RLS.
 - Properties list/detail connected to Supabase.
 - Property create, edit, archive, restore, filters, and archived toggle.
-- Cleaning tasks connected to Supabase with status updates, notes, supplies, issue flag, and private photo upload hooks.
+- Cleaning tasks connected to Supabase with workspace/property scoping, shared Add Cleaning Task modal validation, booking linkage, assigned-cleaner dashboard visibility, status updates, notes, supplies, issue flags, and private photo upload hooks.
 - Maintenance work orders connected to Supabase with priority/status/cost/parts fields and private upload hooks.
 - Workspace Owner team invite system with invite tokens/links and copy-link fallback.
 - Private Supabase Storage bucket and file metadata table for MVP upload categories.
@@ -219,7 +219,7 @@ MVP active roles:
 
 Customers cannot invite or assign `propflow_admin`. That role is platform-level only and must be controlled by trusted backend/admin operations.
 
-Property write access is limited to `workspace_owner` and `property_manager`. Cleaning and maintenance creation is limited to `workspace_owner`, `property_manager`, and `host`. Assigned lower-role users can access only the operational records/properties exposed by RLS through property assignments, assigned cleaning tasks, assigned maintenance work orders, or reported issues.
+Property write access is limited to `workspace_owner` and `property_manager`. Cleaning and maintenance creation is limited to `workspace_owner`, `property_manager`, and `host`. Assigned lower-role users can access only the operational records/properties exposed by RLS through property assignments, assigned cleaning tasks, assigned maintenance work orders, or reported issues. Cleaning tasks are always workspace/property scoped; the shared Add Cleaning Task modal requires a real property, optional booking links must match the selected property, assigned cleaners must be active workspace cleaner members, and cleaner dashboards remain assigned-task scoped. Real cleaning records require Supabase env vars and applied migrations; frontend code uses only the anon key and never a service-role key.
 
 ## Manual test checklist
 

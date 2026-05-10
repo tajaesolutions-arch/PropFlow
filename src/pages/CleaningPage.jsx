@@ -28,9 +28,10 @@ const statuses = [
   'missed',
   'needs_inspection',
   'guest_ready',
+  'cancelled',
 ];
 
-const closedStatuses = new Set(['completed', 'guest_ready']);
+const closedStatuses = new Set(['completed', 'guest_ready', 'cancelled']);
 
 function dateOnly(value) {
   return value ? String(value).slice(0, 10) : '';
@@ -126,23 +127,37 @@ function getTaskSuppliesUsed(task) {
   return task.suppliesUsed || task.supplies_used || '';
 }
 
+function getMemberName(members = [], userId) {
+  if (!userId) return 'Unassigned';
+  const member = members.find((item) => (item.user_id || item.userId || item.id) === userId);
+  const profile = member?.profile || member?.profiles || {};
+  return profile.full_name || profile.name || profile.email || member?.email || member?.user_email || 'Assigned cleaner';
+}
+
+function getLinkedBooking(task, bookings = []) {
+  const bookingId = task.booking_id || task.bookingId;
+  if (!bookingId) return null;
+  return bookings.find((booking) => booking.id === bookingId) || null;
+}
+
 function canUpdateCleaningTask(currentUser) {
   return hasAnyRole(currentUser, [...taskManagerRoles, roles.CLEANER]);
 }
 
 function statusTone(status) {
-  if (['missed', 'overdue'].includes(status)) return 'error';
+  if (['missed', 'overdue', 'cancelled'].includes(status)) return 'error';
   if (['scheduled', 'needs_inspection'].includes(status)) return 'warning';
   if (['completed', 'guest_ready'].includes(status)) return 'success';
   return 'info';
 }
 
-function matchesSearch(task, properties, query) {
+function matchesSearch(task, properties, query, members = []) {
   const normalizedQuery = String(query || '').trim().toLowerCase();
   if (!normalizedQuery) return true;
 
   const searchText = [
     getTaskPropertyName(task, properties),
+    getMemberName(members, getAssignedCleanerId(task)),
     getTaskNotes(task),
     getTaskSuppliesUsed(task),
     task.status,
@@ -175,7 +190,10 @@ function CleaningTaskCard({
   uploading,
   onStatusChange,
   onIssueChange,
+  members,
+  bookings,
   onNotesSave,
+  onSuppliesSave,
   onUpload,
 }) {
   const propertyName = getTaskPropertyName(task, properties);
@@ -186,6 +204,8 @@ function CleaningTaskCard({
   const dueToday = isDueToday(task);
   const status = task.status || 'scheduled';
   const closed = closedStatuses.has(status);
+  const cleanerName = getMemberName(members, getAssignedCleanerId(task));
+  const linkedBooking = getLinkedBooking(task, bookings);
 
   return (
     <article className={`card cleaning-task-card ${overdue ? 'urgent' : ''}`}>
@@ -194,6 +214,7 @@ function CleaningTaskCard({
           <p className="eyebrow">{closed ? 'Closed cleaning' : overdue ? 'Overdue cleaning' : dueToday ? 'Due today' : 'Cleaning task'}</p>
           <h3>{propertyName}</h3>
           <p>{formatDateTime(task.scheduledFor || task.scheduled_for)}</p>
+          <small>Cleaner: {cleanerName}</small>
         </div>
 
         <StatusBadge tone={overdue ? 'error' : statusTone(status)}>{overdue ? 'overdue' : status}</StatusBadge>
@@ -243,12 +264,26 @@ function CleaningTaskCard({
         )}
       </div>
 
-      {suppliesUsed && (
+      {linkedBooking && (
         <div className="cleaning-task-section">
-          <h4>Supplies used</h4>
-          <p>{suppliesUsed}</p>
+          <h4>Related booking</h4>
+          <p>{linkedBooking.guest_name || linkedBooking.guestName || 'Guest booking'} · checkout {linkedBooking.check_out || linkedBooking.checkOut || 'not set'}</p>
         </div>
       )}
+
+      <label className="cleaning-notes-field">
+        Supplies used / low supplies
+        <textarea
+          defaultValue={suppliesUsed}
+          rows={2}
+          disabled={!canUpdate || closed}
+          onBlur={(event) => {
+            if (event.target.value !== suppliesUsed) {
+              onSuppliesSave(task, event.target.value);
+            }
+          }}
+        />
+      </label>
 
       <label className="cleaning-notes-field">
         Cleaner notes
@@ -340,6 +375,8 @@ export function CleaningPage() {
   });
 
   const properties = data.properties || [];
+  const members = data.members || [];
+  const bookings = data.bookings || [];
   const allTasks = data.cleaningTasks || [];
   const tasks = getVisibleCleaningTasks(allTasks, currentUser);
   const cleanerView = isCleanerRole(currentUser);
@@ -408,6 +445,29 @@ export function CleaningPage() {
     }
   };
 
+  const updateSupplies = async (task, suppliesUsed) => {
+    if (!canUpdateSpecificCleaningTask(currentUser, task)) {
+      setMessage('You do not have permission to update supplies for this cleaning task, or this cleaning is already closed.');
+      return;
+    }
+
+    setUpdatingTaskId(task.id);
+
+    try {
+      await updateCleaningTask(task.id, {
+        supplies_used: suppliesUsed.trim() || null,
+        low_supplies_reported: Boolean(suppliesUsed.trim()),
+      });
+
+      setMessage('Supplies used saved.');
+      clearMessageSoon();
+    } catch (error) {
+      setMessage(error?.message || 'Could not save supplies used.');
+    } finally {
+      setUpdatingTaskId('');
+    }
+  };
+
   const updateIssueReported = async (task, issueReported) => {
     if (!canUpdateSpecificCleaningTask(currentUser, task)) {
       setMessage('You do not have permission to update issue status for this cleaning task, or this cleaning is already closed.');
@@ -470,7 +530,7 @@ export function CleaningPage() {
       if (filters.view === 'issues') return Boolean(task.issue_reported);
       return true;
     })
-    .filter((task) => matchesSearch(task, properties, filters.query));
+    .filter((task) => matchesSearch(task, properties, filters.query, members));
 
   const openTasks = tasks.filter((task) => !closedStatuses.has(task.status));
   const todayTasks = tasks.filter(isDueToday);
@@ -629,12 +689,15 @@ export function CleaningPage() {
               key={task.id}
               task={task}
               properties={properties}
+              members={members}
+              bookings={bookings}
               canUpdate={canUpdateSpecificCleaningTask(currentUser, task)}
               uploading={uploadingTaskId === task.id}
               updating={updatingTaskId === task.id}
               onStatusChange={changeStatus}
               onIssueChange={updateIssueReported}
               onNotesSave={updateNotes}
+              onSuppliesSave={updateSupplies}
               onUpload={handleUpload}
             />
           ))}
