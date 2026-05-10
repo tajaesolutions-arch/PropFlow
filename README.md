@@ -430,3 +430,9 @@ Reports are workspace-scoped Supabase records. Owner reports should include a wo
 The owner dashboard only displays released owner-report statuses (`released`, `published`, `sent`, `delivered`, or `completed`) for assigned properties. Draft/internal reports stay hidden from Property Owner users.
 
 PDF export, CSV export, scheduled report automation, and generated owner statements remain placeholder-safe in the frontend. PropFlow does not generate fake report files or sample report records; real records require Supabase environment variables and all migrations applied. Frontend code uses the public Supabase client only and must not include a service-role key.
+
+## Finance / Expenses safety note
+
+Manual expenses are workspace-scoped Supabase records once the expenses foundation migration is applied. The Expenses page and Accountant Dashboard use those records for operational finance previews alongside bookings, cleaning tasks, maintenance work orders, and owner reports.
+
+Finance summaries in PropFlow are not finalized accounting ledgers, tax filings, invoices, owner statements, or payout instructions. CSV/PDF exports remain disabled until backend export generation is added, and receipt upload stays placeholder-safe unless private receipt storage is explicitly connected. Real records require the Supabase environment variables to be configured and migrations applied; frontend code uses the Supabase anon client and does not use or expose a service-role key.

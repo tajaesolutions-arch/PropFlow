@@ -2,7 +2,7 @@ import React from 'react';
 import { X } from 'lucide-react';
 
 import { useApp } from '../lib/AppContext.jsx';
-import { currencies, inviteRoleOptions, roleLabels, roles } from '../data/constants.js';
+import { currencies, expenseCategories, expensePaymentStatuses, inviteRoleOptions, roleLabels, roles } from '../data/constants.js';
 
 const CreateActionContext = React.createContext(null);
 
@@ -69,7 +69,7 @@ const actionMeta = {
   },
   expense: {
     title: 'Add expense',
-    description: 'Capture expense details. Saving will be connected when finance tables are ready.',
+    description: 'Create a real manual expense record for this workspace. Exports and accounting automation remain disabled.',
   },
   report: {
     title: 'Add report',
@@ -164,6 +164,8 @@ const reportTypeOptions = [
   ['booking_summary', 'Booking summary'],
 ];
 
+const expenseCurrencyOptions = ['USD', 'JMD', 'CAD', 'GBP', 'EUR'];
+
 const reportStatusOptions = [
   ['draft', 'Draft / internal'],
   ['released', 'Released to owner'],
@@ -251,7 +253,7 @@ const createActionAllowedRoles = {
   owner: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
   guest: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
   invite: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
-  expense: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT],
+  expense: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
   report: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT],
 };
 
@@ -1854,18 +1856,33 @@ function InviteForm({ app, close, submitting, setSubmitting, setError, notifySuc
 }
 
 function ExpenseForm({ app, close, submitting, setSubmitting, setError, notifySuccess }) {
-  const properties = app.data.properties || [];
+  const properties = (app.data.properties || []).filter((property) => property.status !== 'archived');
+  const bookings = app.data.bookings || [];
+  const cleaningTasks = app.data.cleaningTasks || [];
+  const maintenanceWorkOrders = app.data.maintenanceWorkOrders || [];
+  const contacts = app.data.contacts || [];
   const initialPropertyId = firstPropertyId(properties);
 
   const [form, setForm] = React.useState({
     property_id: initialPropertyId,
-    title: '',
     category: 'maintenance',
+    description: '',
+    vendor_name: '',
+    expense_date: today(),
     amount: '',
     currency: propertyCurrency(properties, app.currentWorkspace, initialPropertyId),
-    expense_date: today(),
+    payment_status: 'unpaid',
+    booking_id: '',
+    cleaning_task_id: '',
+    maintenance_work_order_id: '',
+    contact_id: '',
     notes: '',
   });
+
+  const filteredBookings = bookings.filter((booking) => !form.property_id || booking.property_id === form.property_id || booking.propertyId === form.property_id);
+  const filteredCleaningTasks = cleaningTasks.filter((task) => !form.property_id || task.property_id === form.property_id || task.propertyId === form.property_id);
+  const filteredMaintenance = maintenanceWorkOrders.filter((workOrder) => !form.property_id || workOrder.property_id === form.property_id || workOrder.propertyId === form.property_id);
+  const vendorContacts = contacts.filter((contact) => ['vendor', 'cleaner', 'maintenance', 'other'].includes(contact.contact_type || contact.contactType));
 
   const set = (key) => (event) => {
     setForm((current) => {
@@ -1873,17 +1890,73 @@ function ExpenseForm({ app, close, submitting, setSubmitting, setError, notifySu
 
       if (key === 'property_id') {
         next.currency = propertyCurrency(properties, app.currentWorkspace, event.target.value);
+        next.booking_id = '';
+        next.cleaning_task_id = '';
+        next.maintenance_work_order_id = '';
       }
 
       return next;
     });
   };
 
-  const submit = (event) => {
+  const submit = async (event) => {
     event.preventDefault();
-    setError(
-      'Expense saving is not connected yet. No expense, payment, or accounting record was created.',
-    );
+    if (submitting) return;
+
+    setError('');
+
+    if (!app.currentWorkspace?.id) {
+      setError('Create or select a workspace before saving an expense.');
+      return;
+    }
+
+    const amount = cleanNumber(form.amount);
+    if (!form.description.trim()) {
+      setError('Expense description is required.');
+      return;
+    }
+    if (!form.category) {
+      setError('Expense category is required.');
+      return;
+    }
+    if (!form.expense_date) {
+      setError('Expense date is required.');
+      return;
+    }
+    if (amount === null || amount < 0) {
+      setError('Expense amount must be 0 or more.');
+      return;
+    }
+    if (!form.currency) {
+      setError('Currency is required.');
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      await app.createExpense({
+        property_id: form.property_id || null,
+        category: form.category,
+        description: form.description,
+        vendor_name: form.vendor_name,
+        expense_date: form.expense_date,
+        amount,
+        currency: form.currency,
+        payment_status: form.payment_status,
+        booking_id: form.booking_id || null,
+        cleaning_task_id: form.cleaning_task_id || null,
+        maintenance_work_order_id: form.maintenance_work_order_id || null,
+        contact_id: form.contact_id || null,
+        notes: form.notes,
+      });
+      notifySuccess('Expense saved.');
+      close();
+    } catch (error) {
+      setError(error?.message || 'Expense could not be saved.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -1891,7 +1964,9 @@ function ExpenseForm({ app, close, submitting, setSubmitting, setError, notifySu
       <div className="modal-body">
         <WorkspaceBlockedNotice app={app} />
 
-        <EmptyDependencyNotice message="Expense saving is not connected yet. This placeholder collects details for planning only and will not create accounting data." />
+        <div className="helper">
+          Receipt upload will be connected in a later file-storage pass. CSV/PDF exports, tax filings, accounting automation, Stripe, and online payments remain disabled.
+        </div>
 
         <div className="form-grid">
           <label>
@@ -1903,44 +1978,90 @@ function ExpenseForm({ app, close, submitting, setSubmitting, setError, notifySu
           </label>
 
           <label>
-            Expense title
-            <input value={form.title} onChange={set('title')} required />
-          </label>
-
-          <label>
             Category
-            <select value={form.category} onChange={set('category')}>
-              <option value="maintenance">Maintenance</option>
-              <option value="cleaning">Cleaning</option>
-              <option value="supplies">Supplies</option>
-              <option value="utilities">Utilities</option>
-              <option value="platform_fee">Platform fee</option>
-              <option value="taxes">Taxes</option>
-              <option value="other">Other</option>
+            <select value={form.category} onChange={set('category')} required>
+              {expenseCategories
+                .filter(([value]) => value !== 'owner_payout' || activeWorkspaceRoles(app).some((role) => [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER].includes(role)))
+                .map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
             </select>
           </label>
 
-          <label>
-            Amount
-            <input
-              type="text"
-              inputMode="decimal"
-              value={form.amount}
-              onChange={set('amount')}
-              data-comma-format="true"
-            />
+          <label className="full">
+            Description
+            <input value={form.description} onChange={set('description')} required />
           </label>
 
           <label>
-            Currency
-            <select value={form.currency} onChange={set('currency')}>
-              <OptionList options={currencies} />
-            </select>
+            Vendor name
+            <input value={form.vendor_name} onChange={set('vendor_name')} />
           </label>
 
           <label>
             Expense date
-            <input type="date" value={form.expense_date} onChange={set('expense_date')} />
+            <input type="date" value={form.expense_date} onChange={set('expense_date')} required />
+          </label>
+
+          <label>
+            Amount
+            <input type="text" inputMode="decimal" value={form.amount} onChange={set('amount')} data-comma-format="true" required />
+          </label>
+
+          <label>
+            Currency
+            <select value={form.currency} onChange={set('currency')} required>
+              <OptionList options={expenseCurrencyOptions} />
+            </select>
+          </label>
+
+          <label>
+            Payment status
+            <select value={form.payment_status} onChange={set('payment_status')}>
+              {expensePaymentStatuses.map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Related booking
+            <select value={form.booking_id} onChange={set('booking_id')}>
+              <option value="">No booking link</option>
+              {filteredBookings.map((booking) => (
+                <option key={booking.id} value={booking.id}>{booking.guestName || booking.guest_name || 'Booking'} · {booking.checkIn || booking.check_in || 'date not set'}</option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Related cleaning task
+            <select value={form.cleaning_task_id} onChange={set('cleaning_task_id')}>
+              <option value="">No cleaning link</option>
+              {filteredCleaningTasks.map((task) => (
+                <option key={task.id} value={task.id}>{task.property || 'Cleaning task'} · {task.scheduledFor || task.scheduled_for || 'date not set'}</option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Related maintenance work order
+            <select value={form.maintenance_work_order_id} onChange={set('maintenance_work_order_id')}>
+              <option value="">No maintenance link</option>
+              {filteredMaintenance.map((workOrder) => (
+                <option key={workOrder.id} value={workOrder.id}>{workOrder.title || 'Work order'} · {workOrder.status || 'reported'}</option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Vendor/contact link
+            <select value={form.contact_id} onChange={set('contact_id')}>
+              <option value="">No contact link</option>
+              {vendorContacts.map((contact) => (
+                <option key={contact.id} value={contact.id}>{contact.name || contact.fullName || contact.full_name}</option>
+              ))}
+            </select>
           </label>
 
           <label className="full">
@@ -1954,8 +2075,8 @@ function ExpenseForm({ app, close, submitting, setSubmitting, setError, notifySu
         <button type="button" onClick={close} disabled={submitting} data-skip-create-action="true">
           Cancel
         </button>
-        <button className="primary" type="submit" disabled={submitting} data-skip-create-action="true">
-          Saving not connected
+        <button className="primary" type="submit" disabled={submitting || !app.currentWorkspace?.id} data-skip-create-action="true">
+          {submitting ? 'Saving…' : 'Save expense'}
         </button>
       </footer>
     </form>

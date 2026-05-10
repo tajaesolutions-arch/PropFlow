@@ -93,3 +93,54 @@
     justify-content: center;
   }
 }
+
+.expense-filter-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.5fr) repeat(6, minmax(130px, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.expense-filter-grid label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.expense-search {
+  position: relative;
+}
+
+.expense-search svg {
+  position: absolute;
+  left: 10px;
+  bottom: 12px;
+  color: var(--muted);
+}
+
+.expense-search input {
+  padding-left: 34px;
+}
+
+.table-action {
+  min-height: 32px;
+  padding: 6px 10px;
+}
+
+@media (max-width: 1200px) {
+  .expense-filter-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .expense-search {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 720px) {
+  .expense-filter-grid {
+    grid-template-columns: 1fr;
+  }
+}

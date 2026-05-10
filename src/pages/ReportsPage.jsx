@@ -221,7 +221,7 @@ function canOwnerSeeReport(report, assignedPropertyIds, currentUser) {
   return false;
 }
 
-function buildMonthlyRows({ bookings, cleaning, maintenance, currency }) {
+function buildMonthlyRows({ bookings, cleaning, maintenance, expenses, currency }) {
   const monthMap = new Map();
 
   const ensureMonth = (key) => {
@@ -231,6 +231,7 @@ function buildMonthlyRows({ bookings, cleaning, maintenance, currency }) {
       revenue: 0,
       cleaningCosts: 0,
       maintenanceCosts: 0,
+      manualExpenses: 0,
       expenses: 0,
       netProfit: 0,
       currency,
@@ -261,28 +262,37 @@ function buildMonthlyRows({ bookings, cleaning, maintenance, currency }) {
     ensureMonth(key).maintenanceCosts += getMaintenanceCost(workOrder);
   });
 
+  expenses.forEach((expense) => {
+    const key = getMonthKey(expense.expense_date || expense.expenseDate);
+    if (!key) return;
+
+    ensureMonth(key).manualExpenses += toNumber(expense.amount);
+  });
+
   return Array.from(monthMap.values())
     .map((row) => ({
       ...row,
-      expenses: row.cleaningCosts + row.maintenanceCosts,
-      netProfit: row.revenue - row.cleaningCosts - row.maintenanceCosts,
+      expenses: row.cleaningCosts + row.maintenanceCosts + row.manualExpenses,
+      netProfit: row.revenue - row.cleaningCosts - row.maintenanceCosts - row.manualExpenses,
     }))
     .sort((a, b) => b.month.localeCompare(a.month));
 }
 
-function buildPropertyRows({ properties, bookings, cleaning, maintenance, currency }) {
+function buildPropertyRows({ properties, bookings, cleaning, maintenance, expenses, currency }) {
   return properties
     .filter((property) => property.status !== 'archived')
     .map((property) => {
       const propertyBookings = bookings.filter((booking) => getPropertyId(booking) === property.id);
       const propertyCleaning = cleaning.filter((task) => getPropertyId(task) === property.id);
       const propertyMaintenance = maintenance.filter((item) => getPropertyId(item) === property.id);
+      const propertyExpenses = expenses.filter((expense) => getPropertyId(expense) === property.id);
 
       const revenue = propertyBookings.reduce((sum, booking) => sum + getBookingAmount(booking), 0);
       const ownerPayout = propertyBookings.reduce((sum, booking) => sum + getOwnerPayout(booking), 0);
       const cleaningCosts = propertyCleaning.reduce((sum, task) => sum + getCleaningCost(task), 0);
       const maintenanceCosts = propertyMaintenance.reduce((sum, item) => sum + getMaintenanceCost(item), 0);
-      const expenses = cleaningCosts + maintenanceCosts;
+      const manualExpenses = propertyExpenses.reduce((sum, expense) => sum + toNumber(expense.amount), 0);
+      const expenses = cleaningCosts + maintenanceCosts + manualExpenses;
       const netProfit = revenue - expenses;
       const bookedNights = propertyBookings.reduce((sum, booking) => sum + getBookingNights(booking), 0);
       const occupancy = Math.min((bookedNights / 30) * 100, 100);
@@ -293,6 +303,7 @@ function buildPropertyRows({ properties, bookings, cleaning, maintenance, curren
         revenue,
         ownerPayout,
         expenses,
+        manualExpenses,
         netProfit,
         occupancy,
         bookings: propertyBookings.length,
@@ -403,6 +414,7 @@ export function ReportsPage() {
   const rawBookings = data.bookings || [];
   const rawMaintenance = data.maintenanceWorkOrders || [];
   const rawCleaning = data.cleaningTasks || [];
+  const rawExpenses = data.expenses || [];
   const allProperties = data.properties || [];
   const ownerContacts = (data.contacts || []).filter((contact) => contact.contact_type === 'owner');
   const members = data.members || [];
@@ -444,11 +456,17 @@ export function ReportsPage() {
     .filter((task) => !ownerView || assignedPropertyIds.has(getPropertyId(task)))
     .filter((task) => isInDateRange(getCleaningDate(task), filters.start, filters.end));
 
+  const expenses = rawExpenses
+    .filter((expense) => expense.expense_status !== 'archived')
+    .filter((expense) => !ownerView || assignedPropertyIds.has(getPropertyId(expense)))
+    .filter((expense) => isInDateRange(expense.expense_date || expense.expenseDate, filters.start, filters.end));
+
   const grossRevenue = bookings.reduce((sum, booking) => sum + getBookingAmount(booking), 0);
   const ownerPayouts = bookings.reduce((sum, booking) => sum + getOwnerPayout(booking), 0);
   const maintenanceCosts = maintenance.reduce((sum, item) => sum + getMaintenanceCost(item), 0);
   const cleaningCosts = cleaning.reduce((sum, task) => sum + getCleaningCost(task), 0);
-  const totalExpenses = maintenanceCosts + cleaningCosts;
+  const manualExpenses = expenses.reduce((sum, expense) => sum + toNumber(expense.amount), 0);
+  const totalExpenses = maintenanceCosts + cleaningCosts + manualExpenses;
   const netProfit = grossRevenue - totalExpenses;
 
   const bookedNights = bookings.reduce((sum, booking) => sum + getBookingNights(booking), 0);
@@ -463,6 +481,7 @@ export function ReportsPage() {
     bookings,
     cleaning,
     maintenance,
+    expenses,
     currency,
   })
     .filter((row) => filters.propertyId === 'all' || row.id === filters.propertyId)
@@ -472,6 +491,7 @@ export function ReportsPage() {
     bookings,
     cleaning,
     maintenance,
+    expenses,
     currency,
   });
 

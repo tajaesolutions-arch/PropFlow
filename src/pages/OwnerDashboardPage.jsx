@@ -160,13 +160,14 @@ function statusTone(value) {
   return 'info';
 }
 
-function buildOwnerPropertyRows({ properties, bookings, maintenanceWorkOrders, cleaningTasks, currency }) {
+function buildOwnerPropertyRows({ properties, bookings, maintenanceWorkOrders, cleaningTasks, expenses, currency }) {
   return properties.map((property) => {
     const propertyBookings = bookings.filter((booking) => getPropertyId(booking) === property.id);
     const propertyMaintenance = maintenanceWorkOrders.filter(
       (workOrder) => getPropertyId(workOrder) === property.id,
     );
     const propertyCleaning = cleaningTasks.filter((task) => getPropertyId(task) === property.id);
+    const propertyExpenses = expenses.filter((expense) => getPropertyId(expense) === property.id);
 
     const revenue = propertyBookings.reduce((sum, booking) => sum + getBookingAmount(booking), 0);
     const ownerPayout = propertyBookings.reduce((sum, booking) => sum + getOwnerPayout(booking), 0);
@@ -175,7 +176,8 @@ function buildOwnerPropertyRows({ properties, bookings, maintenanceWorkOrders, c
       0,
     );
     const cleaningCost = propertyCleaning.reduce((sum, task) => sum + getCleaningCost(task), 0);
-    const expenses = maintenanceCost + cleaningCost;
+    const manualExpenses = propertyExpenses.reduce((sum, expense) => sum + toNumber(expense.amount), 0);
+    const expenses = maintenanceCost + cleaningCost + manualExpenses;
     const netProfit = revenue - expenses;
     const openMaintenance = propertyMaintenance.filter(
       (workOrder) => !closedStatuses.has(workOrder.status),
@@ -192,6 +194,7 @@ function buildOwnerPropertyRows({ properties, bookings, maintenanceWorkOrders, c
       netProfit,
       maintenanceCost,
       cleaningCost,
+      manualExpenses,
       openMaintenance,
       bookings: propertyBookings.length,
       bookedNights,
@@ -273,6 +276,10 @@ export function OwnerDashboardPage() {
     assignedPropertyIds.has(getPropertyId(workOrder)),
   );
 
+  const assignedExpenses = (data.expenses || []).filter(
+    (expense) => assignedPropertyIds.has(getPropertyId(expense)) && expense.expense_status !== 'archived',
+  );
+
   const assignedReports = (data.ownerReports || []).filter((report) =>
     canOwnerSeeReport(report, assignedPropertyIds, currentUser),
   );
@@ -282,6 +289,7 @@ export function OwnerDashboardPage() {
     bookings: assignedBookings,
     maintenanceWorkOrders: assignedMaintenance,
     cleaningTasks: assignedCleaningTasks,
+    expenses: assignedExpenses,
     currency,
   }).sort((a, b) => b.revenue - a.revenue);
 

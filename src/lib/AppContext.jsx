@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
-import { currencies, inviteRoleOptions, propertyStatuses, propertyTypes, rentalTypes, roles } from '../data/constants.js';
+import { currencies, expenseCategories, expensePaymentStatuses, expenseStatuses, inviteRoleOptions, propertyStatuses, propertyTypes, rentalTypes, roles } from '../data/constants.js';
 import { resolvePrimaryRole } from './auth.js';
 import { isSupabaseConfigured, supabase } from './supabase.js';
 
@@ -104,6 +104,7 @@ const emptyData = {
   fileUploads: [],
   invites: [],
   members: [],
+  expenses: [],
 };
 
 function firstResult(data) {
@@ -333,6 +334,29 @@ function normalizeFileUpload(row) {
   };
 }
 
+function normalizeExpense(row, properties = []) {
+  if (!row) return row;
+
+  const property = properties.find((item) => item.id === row.property_id);
+
+  return {
+    ...row,
+    property: property?.name || row.property || 'Workspace-level expense',
+    propertyId: row.property_id,
+    bookingId: row.booking_id,
+    maintenanceWorkOrderId: row.maintenance_work_order_id,
+    cleaningTaskId: row.cleaning_task_id,
+    contactId: row.contact_id,
+    vendorName: row.vendor_name,
+    expenseDate: row.expense_date,
+    paymentStatus: row.payment_status,
+    expenseStatus: row.expense_status,
+    receiptFileId: row.receipt_file_id,
+    createdBy: row.created_by,
+    archivedAt: row.archived_at,
+  };
+}
+
 function requireSupabase() {
   if (!supabase) {
     throw new Error(
@@ -477,6 +501,7 @@ const workspaceActionRoles = {
   guestContact: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
   invite: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
   report: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT],
+  expense: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
 };
 
 function getActiveWorkspaceRoles(currentUser, memberships, currentWorkspace) {
@@ -600,6 +625,38 @@ function cleanNonNegativeNumber(value, label) {
   if (numericValue !== null && numericValue < 0) {
     throw new Error(`${label} must be 0 or more.`);
   }
+
+  return numericValue;
+}
+
+const expenseCategoryValues = expenseCategories.map(([value]) => value);
+const expensePaymentStatusValues = expensePaymentStatuses.map(([value]) => value);
+const expenseStatusValues = expenseStatuses.map(([value]) => value);
+const sensitiveHostExpenseCategories = ['owner_payout', 'property_tax', 'insurance'];
+
+function getRecordPropertyId(record) {
+  return record?.property_id || record?.propertyId || null;
+}
+
+function requireWorkspaceScopedRecord(records, recordId, label, propertyId = null) {
+  if (!recordId) return null;
+
+  const record = asArray(records).find((item) => item.id === recordId);
+  if (!record) throw new Error(`Selected ${label} must belong to this workspace.`);
+
+  const recordPropertyId = getRecordPropertyId(record);
+  if (propertyId && recordPropertyId && recordPropertyId !== propertyId) {
+    throw new Error(`Selected ${label} must match the selected property.`);
+  }
+
+  return record;
+}
+
+function cleanExpenseAmount(value) {
+  const numericValue = cleanNumber(value);
+
+  if (numericValue === null) throw new Error('Expense amount is required.');
+  if (numericValue < 0) throw new Error('Expense amount must be 0 or more.');
 
   return numericValue;
 }
@@ -748,6 +805,17 @@ export function AppProvider({ children }) {
           .eq('workspace_id', workspaceId)
           .order('created_at', { ascending: false }),
         normalize: (rows) => rows.map(normalizeReport),
+      },
+      {
+        label: 'expenses',
+        key: 'expenses',
+        query: supabase
+          .from('expenses')
+          .select('id, workspace_id, property_id, booking_id, maintenance_work_order_id, cleaning_task_id, contact_id, category, description, vendor_name, expense_date, amount, currency, payment_status, expense_status, receipt_file_id, notes, created_by, created_at, updated_at, archived_at')
+          .eq('workspace_id', workspaceId)
+          .order('expense_date', { ascending: false })
+          .order('created_at', { ascending: false }),
+        normalize: (rows) => rows.map((row) => normalizeExpense(row, properties)),
       },
     ];
 
@@ -2223,11 +2291,155 @@ export function AppProvider({ children }) {
 
   const createOwnerReport = createReport;
 
-  const createExpense = async () => {
-    throw new Error(
-      'Expense saving requires a dedicated expenses table. Create that table first, then connect this action.',
-    );
+  const buildExpensePayload = (payload, { partial = false } = {}) => {
+    const allowed = [
+      'property_id',
+      'booking_id',
+      'maintenance_work_order_id',
+      'cleaning_task_id',
+      'contact_id',
+      'category',
+      'description',
+      'vendor_name',
+      'expense_date',
+      'amount',
+      'currency',
+      'payment_status',
+      'expense_status',
+      'notes',
+      'archived_at',
+    ];
+
+    const expensePayload = stripUnsupportedPayloadKeys(payload || {}, allowed);
+    const propertyId = expensePayload.property_id || null;
+    let property = null;
+
+    if (propertyId) {
+      property = requireWorkspaceProperty(data.properties, propertyId);
+      expensePayload.property_id = propertyId;
+    } else if ('property_id' in expensePayload) {
+      expensePayload.property_id = null;
+    }
+
+    if ('booking_id' in expensePayload) {
+      expensePayload.booking_id = expensePayload.booking_id || null;
+      requireWorkspaceScopedRecord(data.bookings, expensePayload.booking_id, 'booking', propertyId);
+    }
+
+    if ('cleaning_task_id' in expensePayload) {
+      expensePayload.cleaning_task_id = expensePayload.cleaning_task_id || null;
+      requireWorkspaceScopedRecord(data.cleaningTasks, expensePayload.cleaning_task_id, 'cleaning task', propertyId);
+    }
+
+    if ('maintenance_work_order_id' in expensePayload) {
+      expensePayload.maintenance_work_order_id = expensePayload.maintenance_work_order_id || null;
+      requireWorkspaceScopedRecord(data.maintenanceWorkOrders, expensePayload.maintenance_work_order_id, 'maintenance work order', propertyId);
+    }
+
+    if ('contact_id' in expensePayload) {
+      expensePayload.contact_id = expensePayload.contact_id || null;
+      requireWorkspaceScopedRecord(data.contacts, expensePayload.contact_id, 'contact');
+    }
+
+    if (!partial || 'description' in expensePayload) {
+      expensePayload.description = cleanText(expensePayload.description);
+      if (!expensePayload.description) throw new Error('Expense description is required.');
+    }
+
+    if (!partial || 'category' in expensePayload) {
+      expensePayload.category = expensePayload.category || 'other';
+      requireAllowedValue(expensePayload.category, expenseCategoryValues, 'expense category');
+
+      const activeRoles = getActiveWorkspaceRoles(currentUser, memberships, currentWorkspace);
+      if (activeRoles.includes(roles.HOST) && !activeRoles.some((role) => [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER].includes(role)) && sensitiveHostExpenseCategories.includes(expensePayload.category)) {
+        throw new Error('Your role cannot create or edit this sensitive expense category.');
+      }
+    }
+
+    if (!partial || 'expense_date' in expensePayload) {
+      expensePayload.expense_date = cleanDateOnly(expensePayload.expense_date, 'Expense date');
+    }
+
+    if (!partial || 'amount' in expensePayload) {
+      expensePayload.amount = cleanExpenseAmount(expensePayload.amount);
+    }
+
+    if (!partial || 'currency' in expensePayload) {
+      expensePayload.currency = expensePayload.currency || property?.currency || currentWorkspace.defaultCurrency || 'USD';
+      requireAllowedValue(expensePayload.currency, workspaceCreationCurrencies, 'currency');
+    }
+
+    if (!partial || 'payment_status' in expensePayload) {
+      expensePayload.payment_status = expensePayload.payment_status || 'unpaid';
+      requireAllowedValue(expensePayload.payment_status, expensePaymentStatusValues, 'payment status');
+    }
+
+    if (!partial || 'expense_status' in expensePayload) {
+      expensePayload.expense_status = expensePayload.expense_status || 'active';
+      requireAllowedValue(expensePayload.expense_status, expenseStatusValues, 'expense status');
+    }
+
+    if ('vendor_name' in expensePayload) expensePayload.vendor_name = cleanText(expensePayload.vendor_name);
+    if ('notes' in expensePayload) expensePayload.notes = cleanText(expensePayload.notes);
+
+    return expensePayload;
   };
+
+  const createExpense = async (payload) => {
+    const client = requireSupabase();
+    requireWorkspaceSession(currentWorkspace, session);
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'expense');
+
+    const expensePayload = buildExpensePayload(payload, { partial: false });
+    expensePayload.workspace_id = currentWorkspace.id;
+    expensePayload.created_by = session.user.id;
+
+    const { data: row, error: insertError } = await client
+      .from('expenses')
+      .insert(expensePayload)
+      .select('*')
+      .single();
+
+    if (insertError) throw new Error(formatSupabaseError(insertError, 'Expense could not be saved.'));
+
+    await refreshWorkspaceData();
+
+    return normalizeExpense(row, data.properties);
+  };
+
+  const updateExpense = async (expenseId, payload) => {
+    const client = requireSupabase();
+    requireWorkspaceSession(currentWorkspace, session);
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'expense');
+
+    const existingExpense = asArray(data.expenses).find((expense) => expense.id === expenseId);
+    if (!existingExpense) throw new Error('Expense was not found in the current workspace.');
+    if (existingExpense.expense_status === 'archived' && payload?.expense_status !== 'active' && !('archived_at' in (payload || {}))) {
+      throw new Error('Archived expenses must be restored before editing details.');
+    }
+
+    const updatePayload = buildExpensePayload(payload, { partial: true });
+
+    const { data: row, error: updateError } = await client
+      .from('expenses')
+      .update(updatePayload)
+      .eq('id', expenseId)
+      .eq('workspace_id', currentWorkspace.id)
+      .select('*')
+      .single();
+
+    if (updateError) throw new Error(formatSupabaseError(updateError, 'Expense could not be updated.'));
+
+    await refreshWorkspaceData();
+
+    return normalizeExpense(row, data.properties);
+  };
+
+  const archiveExpense = async (expenseId, archived = true) =>
+    updateExpense(expenseId, {
+      archived_at: archived ? new Date().toISOString() : null,
+      expense_status: archived ? 'archived' : 'active',
+    });
 
   const createWorkspaceExpense = createExpense;
 
@@ -2389,6 +2601,8 @@ export function AppProvider({ children }) {
       createReport,
       createOwnerReport,
       createExpense,
+      updateExpense,
+      archiveExpense,
       createWorkspaceExpense,
       uploadWorkspaceFile,
       markNotificationRead,

@@ -146,7 +146,7 @@ function matchesSearch(values, query) {
   return values.filter(Boolean).join(' ').toLowerCase().includes(normalizedQuery);
 }
 
-function buildPropertyFinanceRows({ properties, bookings, cleaningTasks, maintenanceWorkOrders, currency }) {
+function buildPropertyFinanceRows({ properties, bookings, cleaningTasks, maintenanceWorkOrders, expenses, currency }) {
   return properties
     .filter((property) => property.status !== 'archived')
     .map((property) => {
@@ -165,9 +165,12 @@ function buildPropertyFinanceRows({ properties, bookings, cleaningTasks, mainten
         (sum, workOrder) => sum + getMaintenanceCost(workOrder),
         0,
       );
+      const manualExpenses = expenses
+        .filter((expense) => getPropertyId(expense) === property.id)
+        .reduce((sum, expense) => sum + toNumber(expense.amount), 0);
 
-      const expenses = cleaningCosts + maintenanceCosts + platformFees;
-      const netProfit = revenue - expenses;
+      const expenseTotal = cleaningCosts + maintenanceCosts + platformFees + manualExpenses;
+      const netProfit = revenue - expenseTotal;
 
       return {
         ...property,
@@ -178,7 +181,8 @@ function buildPropertyFinanceRows({ properties, bookings, cleaningTasks, mainten
         platformFees,
         cleaningCosts,
         maintenanceCosts,
-        expenses,
+        expenses: expenseTotal,
+        manualExpenses,
         netProfit,
         bookings: propertyBookings.length,
         openMaintenance: propertyMaintenance.filter((workOrder) => !closedStatuses.has(workOrder.status)).length,
@@ -186,7 +190,7 @@ function buildPropertyFinanceRows({ properties, bookings, cleaningTasks, mainten
     });
 }
 
-function buildRecentTransactions({ bookings, maintenanceWorkOrders, cleaningTasks, properties, currency }) {
+function buildRecentTransactions({ bookings, maintenanceWorkOrders, cleaningTasks, expenses, properties, currency }) {
   return [
     ...bookings.map((booking) => ({
       id: `booking-${booking.id}`,
@@ -208,12 +212,21 @@ function buildRecentTransactions({ bookings, maintenanceWorkOrders, cleaningTask
     })),
     ...cleaningTasks.map((task) => ({
       id: `cleaning-${task.id}`,
-      type: 'Cleaning cost',
+      type: 'Cleaning cost estimate',
       property: getPropertyName(task, properties),
       date: getCleaningDate(task),
       amount: -getCleaningCost(task),
       currency,
       status: task.status || 'scheduled',
+    })),
+    ...expenses.map((expense) => ({
+      id: `expense-${expense.id}`,
+      type: 'Manual expense',
+      property: getPropertyName(expense, properties),
+      date: expense.expense_date || expense.expenseDate || expense.created_at,
+      amount: -toNumber(expense.amount),
+      currency: expense.currency || currency,
+      status: expense.payment_status || expense.paymentStatus || expense.expense_status || 'unpaid',
     })),
   ].sort((a, b) => {
     const dateA = getDateValue(a.date);
@@ -261,6 +274,10 @@ export function AccountantDashboardPage() {
     isInDateRange(getMaintenanceDate(workOrder), filters.start, filters.end),
   );
 
+  const expenses = (data.expenses || [])
+    .filter((expense) => expense.expense_status !== 'archived')
+    .filter((expense) => isInDateRange(expense.expense_date || expense.expenseDate, filters.start, filters.end));
+
   const reports = data.ownerReports || [];
 
   const propertyRows = buildPropertyFinanceRows({
@@ -268,6 +285,7 @@ export function AccountantDashboardPage() {
     bookings,
     cleaningTasks,
     maintenanceWorkOrders,
+    expenses,
     currency,
   })
     .filter((row) =>
@@ -296,13 +314,15 @@ export function AccountantDashboardPage() {
     0,
   );
 
-  const totalExpenses = cleaningCosts + maintenanceCosts + taxesFees;
+  const manualExpenses = expenses.reduce((sum, expense) => sum + toNumber(expense.amount), 0);
+  const totalExpenses = cleaningCosts + maintenanceCosts + taxesFees + manualExpenses;
   const netProfit = grossRevenue - totalExpenses;
 
   const allTransactions = buildRecentTransactions({
     bookings,
     maintenanceWorkOrders,
     cleaningTasks,
+    expenses,
     properties,
     currency,
   });
@@ -338,14 +358,14 @@ export function AccountantDashboardPage() {
             <h3>Read-only finance access</h3>
             <p>
               Accountant / Bookkeeper access is finance-focused and read-only. This dashboard avoids operational
-              editing and shows derived summaries from existing bookings, cleaning tasks, maintenance work orders, and reports.
+              editing and shows derived summaries from existing bookings, cleaning tasks, maintenance work orders, manual expenses, and reports.
             </p>
           </div>
           <ShieldCheck size={22} className="muted" />
         </div>
 
         <div className="helper">
-          These values are operational finance previews, not finalized accounting ledgers, invoices, tax filings, or exported statements. Dedicated accounting records and backend-generated exports should be connected in a later phase.
+          These values are operational finance previews, not finalized accounting ledgers, invoices, tax filings, or exported statements. Manual expenses and operational cost estimates are shown as operational finance previews and may need accountant review before final reporting. Dedicated accounting records and backend-generated exports should be connected in a later phase.
         </div>
       </section>
 
@@ -378,7 +398,7 @@ export function AccountantDashboardPage() {
         <StatCard label="Cleaning costs" value={formatCurrency(cleaningCosts, currency)} icon={CalendarCheck} />
         <StatCard label="Maintenance costs" value={formatCurrency(maintenanceCosts, currency)} icon={Wrench} />
         <StatCard label="Taxes / platform fees" value={formatCurrency(taxesFees, currency)} icon={Receipt} />
-        <StatCard label="Cleaning fees collected" value={formatCurrency(cleaningFees, currency)} icon={ClipboardList} />
+        <StatCard label="Manual expenses" value={formatCurrency(manualExpenses, currency)} icon={Receipt} />
       </section>
 
       <section className="card accountant-dashboard-toolbar finance-actions-toolbar">
@@ -464,7 +484,7 @@ export function AccountantDashboardPage() {
           <div className="card-header">
             <div>
               <h3>Property finance summary</h3>
-              <p>Derived revenue, expenses, net profit, owner payout, and maintenance exposure by property.</p>
+              <p>Derived revenue, manual expenses, operational cost estimates, net profit, owner payout, and maintenance exposure by property.</p>
             </div>
             <Building2 size={20} className="muted" />
           </div>
@@ -511,6 +531,11 @@ export function AccountantDashboardPage() {
                 render: (row) => formatCurrency(row.maintenanceCosts, row.currency),
               },
               {
+                key: 'manualExpenses',
+                label: 'Manual expenses',
+                render: (row) => formatCurrency(row.manualExpenses, row.currency),
+              },
+              {
                 key: 'openMaintenance',
                 label: 'Open repairs',
                 render: (row) =>
@@ -537,7 +562,7 @@ export function AccountantDashboardPage() {
           <div className="card-header">
             <div>
               <h3>Recent finance activity</h3>
-              <p>Revenue and cost previews pulled from bookings, cleaning, and maintenance.</p>
+              <p>Revenue, manual expenses, and cost previews pulled from bookings, cleaning, and maintenance.</p>
             </div>
             <Receipt size={20} className="muted" />
           </div>
