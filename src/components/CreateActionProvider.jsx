@@ -133,6 +133,8 @@ const cleaningStatusOptions = [
   ['in_progress', 'In progress'],
   ['needs_inspection', 'Needs inspection'],
   ['completed', 'Completed'],
+  ['guest_ready', 'Guest ready'],
+  ['missed', 'Missed'],
 ];
 
 const priorityOptions = [
@@ -334,7 +336,11 @@ function memberHasRole(member, role) {
 }
 
 function ownerMembers(members) {
-  return members.filter((member) => memberHasRole(member, roles.OWNER));
+  return members.filter((member) => member.status === 'active' && memberHasRole(member, roles.OWNER));
+}
+
+function cleanerMembers(members) {
+  return members.filter((member) => member.status === 'active' && memberHasRole(member, roles.CLEANER));
 }
 
 function BookingOptions({ bookings, properties, emptyLabel = 'No related booking' }) {
@@ -1048,6 +1054,7 @@ function BookingForm({ app, close, submitting, setSubmitting, setError, notifySu
 function CleaningForm({ app, close, submitting, setSubmitting, setError, notifySuccess }) {
   const properties = app.data.properties || [];
   const members = app.data.members || [];
+  const cleaners = cleanerMembers(members);
   const bookings = app.data.bookings || [];
   const initialPropertyId = firstPropertyId(properties);
 
@@ -1063,12 +1070,22 @@ function CleaningForm({ app, close, submitting, setSubmitting, setError, notifyS
     cleaner_notes: '',
   });
 
+  const selectedCleanerIds = new Set(cleaners.map((member) => member.user_id || member.userId || member.id).filter(Boolean));
+  const propertyBookings = bookings.filter((booking) => bookingPropertyId(booking) === form.property_id);
+
   const set = (key) => (event) => {
-    setForm((current) => ({ ...current, [key]: event.target.value }));
+    setForm((current) => ({
+      ...current,
+      [key]: event.target.value,
+      ...(key === 'property_id' ? { booking_id: '' } : {}),
+    }));
   };
 
   const submit = async (event) => {
     event.preventDefault();
+
+    if (submitting) return;
+
     setError('');
 
     if (!app.currentWorkspace?.id) {
@@ -1096,6 +1113,17 @@ function CleaningForm({ app, close, submitting, setSubmitting, setError, notifyS
       return;
     }
 
+    if (form.assigned_cleaner_id && !selectedCleanerIds.has(form.assigned_cleaner_id)) {
+      setError('Assigned cleaner must be an active cleaner in this workspace.');
+      return;
+    }
+
+    const scheduledTimestamp = new Date(`${form.scheduled_for}T${form.scheduled_time || '11:00'}:00`);
+    if (Number.isNaN(scheduledTimestamp.getTime())) {
+      setError('Select a valid scheduled date and time.');
+      return;
+    }
+
     const linkedBooking = form.booking_id ? findBooking(bookings, form.booking_id) : null;
 
     if (form.booking_id && (!linkedBooking || bookingPropertyId(linkedBooking) !== form.property_id)) {
@@ -1116,7 +1144,7 @@ function CleaningForm({ app, close, submitting, setSubmitting, setError, notifyS
         status: form.status,
         assigned_cleaner_id: form.assigned_cleaner_id || null,
         booking_id: form.booking_id || null,
-        scheduled_for: `${form.scheduled_for}T${form.scheduled_time || '11:00'}:00`,
+        scheduled_for: scheduledTimestamp.toISOString(),
         checklist_items: toLines(form.checklist_items),
         supplies_used: form.supplies_used.trim() || null,
         cleaner_notes: form.cleaner_notes.trim() || null,
@@ -1152,7 +1180,7 @@ function CleaningForm({ app, close, submitting, setSubmitting, setError, notifyS
           <label>
             Assigned cleaner
             <select value={form.assigned_cleaner_id} onChange={set('assigned_cleaner_id')}>
-              <MemberOptions members={members} fallbackLabel="Unassigned cleaner" />
+              <MemberOptions members={cleaners} fallbackLabel="Unassigned cleaner" />
             </select>
           </label>
 
@@ -1168,13 +1196,13 @@ function CleaningForm({ app, close, submitting, setSubmitting, setError, notifyS
 
           <label>
             Cleaning time
-            <input type="time" value={form.scheduled_time} onChange={set('scheduled_time')} required />
+            <input type="time" value={form.scheduled_time} onChange={set('scheduled_time')} />
           </label>
 
           <label>
             Related booking
             <select value={form.booking_id} onChange={set('booking_id')}>
-              <BookingOptions bookings={bookings} properties={properties} />
+              <BookingOptions bookings={propertyBookings} properties={properties} />
             </select>
           </label>
 
