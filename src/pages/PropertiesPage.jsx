@@ -29,7 +29,6 @@ import {
   rentalTypes,
   roles,
 } from '../data/constants.js';
-import { hasAnyRole } from '../lib/auth.js';
 
 const blankPropertyForm = {
   name: '',
@@ -50,6 +49,15 @@ const blankPropertyForm = {
 };
 
 const calendarAccessRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
+
+function hasAnyActiveWorkspaceRole(memberships = [], currentWorkspace, allowedRoles = []) {
+  const activeMembership = memberships.find(
+    (membership) => membership.workspace_id === currentWorkspace?.id && membership.status === 'active',
+  );
+  const activeRoles = Array.isArray(activeMembership?.roles) ? activeMembership.roles : [];
+
+  return allowedRoles.some((role) => activeRoles.includes(role));
+}
 
 function cleanNumber(value) {
   if (value === '' || value === null || value === undefined) return null;
@@ -72,12 +80,12 @@ function getOwnerId(property) {
   return property.assignedOwnerId || property.assigned_owner_id || property.ownerId || property.owner_id || '';
 }
 
-function isOwnerRole(currentUser) {
-  return Boolean(currentUser?.roles?.includes(roles.OWNER));
+function isOwnerRole(currentUser, memberships = [], currentWorkspace = null) {
+  return hasAnyActiveWorkspaceRole(memberships, currentWorkspace, [roles.OWNER]);
 }
 
-function canOwnerSeeProperty(property, currentUser) {
-  if (!isOwnerRole(currentUser)) return true;
+function canOwnerSeeProperty(property, currentUser, memberships = [], currentWorkspace = null) {
+  if (!isOwnerRole(currentUser, memberships, currentWorkspace)) return true;
   return getOwnerId(property) === currentUser?.id;
 }
 
@@ -480,6 +488,7 @@ export function PropertiesPage() {
     archiveProperty,
     currentUser,
     currentWorkspace,
+    memberships,
   } = useApp();
 
   const [editingProperty, setEditingProperty] = React.useState(null);
@@ -491,13 +500,15 @@ export function PropertiesPage() {
   const [submitError, setSubmitError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
 
-  const canEdit = hasAnyRole(currentUser, propertyEditorRoles);
-  const canOpenCalendar = hasAnyRole(currentUser, calendarAccessRoles);
-  const ownerView = isOwnerRole(currentUser);
+  const canEdit = hasAnyActiveWorkspaceRole(memberships, currentWorkspace, propertyEditorRoles);
+  const canOpenCalendar = hasAnyActiveWorkspaceRole(memberships, currentWorkspace, calendarAccessRoles);
+  const ownerView = isOwnerRole(currentUser, memberships, currentWorkspace);
   const workspaceCurrency = currentWorkspace?.defaultCurrency || currentWorkspace?.default_currency || 'USD';
 
   const allProperties = data.properties || [];
-  const properties = allProperties.filter((property) => canOwnerSeeProperty(property, currentUser));
+  const properties = allProperties.filter((property) =>
+    canOwnerSeeProperty(property, currentUser, memberships, currentWorkspace),
+  );
   const activeProperties = properties.filter((property) => property.status !== 'archived');
   const archivedProperties = properties.filter((property) => property.status === 'archived');
 
