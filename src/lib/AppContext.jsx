@@ -446,6 +446,26 @@ function requireAllowedValue(value, allowedValues, label) {
   }
 }
 
+function cleanDateOnly(value, label) {
+  const dateValue = String(value || '').slice(0, 10);
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+    throw new Error(`${label} is required.`);
+  }
+
+  return dateValue;
+}
+
+function cleanPositiveInteger(value, label) {
+  const numericValue = Number(value || 1);
+
+  if (!Number.isInteger(numericValue) || numericValue < 1) {
+    throw new Error(`${label} must be at least 1.`);
+  }
+
+  return numericValue;
+}
+
 function findActiveWorkspaceMember(members, workspaceId, userId) {
   if (!userId) return null;
 
@@ -1300,13 +1320,24 @@ export function AppProvider({ children }) {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'booking');
-    requireWorkspaceProperty(data.properties, payload.property_id);
+    const selectedProperty = requireWorkspaceProperty(data.properties, payload.property_id);
+    const checkIn = cleanDateOnly(payload.check_in, 'Check-in date');
+    const checkOut = cleanDateOnly(payload.check_out, 'Check-out date');
+    const guestCount = cleanPositiveInteger(payload.guest_count, 'Guest count');
 
     if (!cleanText(payload.guest_name)) throw new Error('Guest name is required.');
-    if (!payload.check_in || !payload.check_out) throw new Error('Check-in and check-out dates are required.');
-    if (payload.check_out <= payload.check_in) throw new Error('Check-out must be after check-in.');
-    requireAllowedValue(payload.status || 'confirmed', ['pending', 'confirmed', 'checked_in', 'checked_out', 'completed'], 'booking status');
-    requireAllowedValue(payload.payment_status || 'unpaid', ['unpaid', 'partially_paid', 'paid'], 'payment status');
+    if (checkOut <= checkIn) throw new Error('Check-out must be after check-in.');
+    requireAllowedValue(payload.source || 'manual', ['manual', 'direct', 'airbnb', 'booking_com', 'vrbo', 'ical', 'csv', 'other'], 'booking source');
+    requireAllowedValue(payload.status || 'confirmed', ['pending', 'confirmed', 'checked_in', 'checked_out', 'completed', 'cancelled'], 'booking status');
+    requireAllowedValue(payload.payment_status || 'unpaid', ['unpaid', 'partially_paid', 'paid', 'refunded', 'failed'], 'payment status');
+    requireAllowedValue(payload.currency || selectedProperty.currency || currentWorkspace.defaultCurrency || currentWorkspace.default_currency || 'USD', currencies, 'currency');
+
+    const bookingNumbers = {
+      total_amount: cleanNonNegativeNumber(payload.total_amount, 'Total amount'),
+      cleaning_fee: cleanNonNegativeNumber(payload.cleaning_fee, 'Cleaning fee'),
+      taxes_fees: cleanNonNegativeNumber(payload.taxes_fees, 'Taxes / fees'),
+      owner_payout: cleanNonNegativeNumber(payload.owner_payout, 'Owner payout'),
+    };
 
     let contact = null;
 
@@ -1323,21 +1354,21 @@ export function AppProvider({ children }) {
     const bookingPayload = {
       workspace_id: currentWorkspace.id,
       property_id: payload.property_id,
-      contact_id: contact?.id || payload.contact_id || null,
+      contact_id: contact?.id || null,
       guest_name: cleanText(payload.guest_name),
       guest_email: cleanEmail(payload.guest_email),
       guest_phone: cleanText(payload.guest_phone),
-      check_in: payload.check_in,
-      check_out: payload.check_out,
-      guest_count: Number(payload.guest_count || 1),
+      check_in: checkIn,
+      check_out: checkOut,
+      guest_count: guestCount,
       source: payload.source || 'manual',
       status: payload.status || 'confirmed',
       payment_status: payload.payment_status || 'unpaid',
-      currency: payload.currency || currentWorkspace.defaultCurrency || 'USD',
-      total_amount: cleanNumber(payload.total_amount),
-      cleaning_fee: cleanNumber(payload.cleaning_fee),
-      taxes_fees: cleanNumber(payload.taxes_fees),
-      owner_payout: cleanNumber(payload.owner_payout),
+      currency: payload.currency || selectedProperty.currency || currentWorkspace.defaultCurrency || currentWorkspace.default_currency || 'USD',
+      total_amount: bookingNumbers.total_amount,
+      cleaning_fee: bookingNumbers.cleaning_fee,
+      taxes_fees: bookingNumbers.taxes_fees,
+      owner_payout: bookingNumbers.owner_payout,
       notes: cleanText(payload.notes),
       auto_create_cleaning: payload.auto_create_cleaning ?? true,
       created_by: session.user.id,
@@ -1359,6 +1390,13 @@ export function AppProvider({ children }) {
   const updateBooking = async (bookingId, payload) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'booking');
+
+    const existingBooking = asArray(data.bookings).find((booking) => booking.id === bookingId);
+
+    if (!existingBooking) {
+      throw new Error('Select an existing booking in this workspace.');
+    }
 
     const allowed = [
       'property_id',
@@ -1384,8 +1422,29 @@ export function AppProvider({ children }) {
 
     const updatePayload = stripUnsupportedPayloadKeys(payload, allowed);
 
+    if ('property_id' in updatePayload) requireWorkspaceProperty(data.properties, updatePayload.property_id);
+    if (updatePayload.contact_id && !asArray(data.contacts).some((contact) => contact.id === updatePayload.contact_id)) {
+      throw new Error('Selected guest contact must belong to this workspace.');
+    }
+    if ('guest_name' in updatePayload && !cleanText(updatePayload.guest_name)) throw new Error('Guest name is required.');
+
+    const nextCheckIn = updatePayload.check_in ? cleanDateOnly(updatePayload.check_in, 'Check-in date') : existingBooking.check_in;
+    const nextCheckOut = updatePayload.check_out ? cleanDateOnly(updatePayload.check_out, 'Check-out date') : existingBooking.check_out;
+
+    if (nextCheckIn && nextCheckOut && nextCheckOut <= nextCheckIn) {
+      throw new Error('Check-out must be after check-in.');
+    }
+
+    if ('check_in' in updatePayload) updatePayload.check_in = nextCheckIn;
+    if ('check_out' in updatePayload) updatePayload.check_out = nextCheckOut;
+    if ('guest_count' in updatePayload) updatePayload.guest_count = cleanPositiveInteger(updatePayload.guest_count, 'Guest count');
+    if ('source' in updatePayload) requireAllowedValue(updatePayload.source, ['manual', 'direct', 'airbnb', 'booking_com', 'vrbo', 'ical', 'csv', 'other'], 'booking source');
+    if ('status' in updatePayload) requireAllowedValue(updatePayload.status, ['pending', 'confirmed', 'checked_in', 'checked_out', 'completed', 'cancelled'], 'booking status');
+    if ('payment_status' in updatePayload) requireAllowedValue(updatePayload.payment_status, ['unpaid', 'partially_paid', 'paid', 'refunded', 'failed'], 'payment status');
+    if ('currency' in updatePayload) requireAllowedValue(updatePayload.currency, currencies, 'currency');
+
     ['total_amount', 'cleaning_fee', 'taxes_fees', 'owner_payout'].forEach((key) => {
-      if (key in updatePayload) updatePayload[key] = cleanNumber(updatePayload[key]);
+      if (key in updatePayload) updatePayload[key] = cleanNonNegativeNumber(updatePayload[key], key.replaceAll('_', ' '));
     });
 
     if (updatePayload.status === 'cancelled' && !updatePayload.cancelled_at) {

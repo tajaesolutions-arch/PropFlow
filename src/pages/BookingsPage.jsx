@@ -22,8 +22,7 @@ import { EmptyState } from '../components/EmptyState.jsx';
 import { StatCard } from '../components/StatCard.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
 import { useApp } from '../lib/AppContext.jsx';
-import { hasAnyRole } from '../lib/auth.js';
-import { currencies, taskManagerRoles } from '../data/constants.js';
+import { currencies, roles, taskManagerRoles } from '../data/constants.js';
 import { formatCurrency, formatDate, formatPercent } from '../lib/formatters.js';
 import { navigate } from '../routes/AppRouter.jsx';
 
@@ -80,13 +79,36 @@ const emptyLease = {
 function cleanNumber(value) {
   if (value === '' || value === null || value === undefined) return null;
 
-  const numericValue = Number(value);
+  const cleanValue = String(value)
+    .replace(/,/g, '')
+    .replace(/[^\d.-]/g, '')
+    .trim();
+
+  if (!cleanValue || cleanValue === '-' || cleanValue === '.' || cleanValue === '-.') return null;
+
+  const numericValue = Number(cleanValue);
   return Number.isFinite(numericValue) ? numericValue : null;
 }
 
 function toNumber(value) {
   const numericValue = Number(value);
   return Number.isFinite(numericValue) ? numericValue : 0;
+}
+
+function activeWorkspaceRoles(memberships = [], currentWorkspace = null) {
+  const activeMembership = memberships.find(
+    (membership) => membership.workspace_id === currentWorkspace?.id && membership.status !== 'revoked',
+  );
+
+  return activeMembership?.roles || [];
+}
+
+function hasWorkspaceRole(roleList, allowedRoles) {
+  return allowedRoles.some((role) => roleList.includes(role));
+}
+
+function isAllowedValue(value, allowedValues) {
+  return allowedValues.includes(value);
 }
 
 function normalizeLabel(value) {
@@ -226,16 +248,23 @@ function toLeaseForm(row, properties = [], workspace = null) {
 
 function cleanBookingPayload(form) {
   return {
-    ...form,
+    property_id: form.property_id,
     guest_name: form.guest_name.trim(),
     guest_email: form.guest_email.trim() || null,
     guest_phone: form.guest_phone.trim() || null,
+    check_in: form.check_in,
+    check_out: form.check_out,
     guest_count: Number(form.guest_count || 1),
+    source: form.source,
+    status: form.status,
+    payment_status: form.payment_status,
+    currency: form.currency,
     total_amount: cleanNumber(form.total_amount),
     cleaning_fee: cleanNumber(form.cleaning_fee),
     taxes_fees: cleanNumber(form.taxes_fees),
     owner_payout: cleanNumber(form.owner_payout),
     notes: form.notes.trim() || null,
+    auto_create_cleaning: Boolean(form.auto_create_cleaning),
   };
 }
 
@@ -374,12 +403,33 @@ function BookingForm({
     if (!form.status) errors.push('Booking status is required.');
     if (!form.payment_status) errors.push('Payment status is required.');
     if (!form.currency) errors.push('Currency is required.');
+    if (form.property_id && !properties.some((property) => property.id === form.property_id)) {
+      errors.push('Select an existing property in this workspace.');
+    }
+    if (form.source && !isAllowedValue(form.source, bookingSources)) errors.push('Select a valid booking source.');
+    if (form.status && !isAllowedValue(form.status, bookingStatuses)) errors.push('Select a valid booking status.');
+    if (form.payment_status && !isAllowedValue(form.payment_status, paymentStatuses)) errors.push('Select a valid payment status.');
+    if (form.currency && !currencies.includes(form.currency)) errors.push('Select a valid currency.');
+
+    const guestCount = Number(form.guest_count || 1);
+    if (!Number.isInteger(guestCount) || guestCount < 1) errors.push('Guest count must be at least 1.');
+
+    const invalidAmount = [
+      ['total_amount', 'Total amount'],
+      ['cleaning_fee', 'Cleaning fee'],
+      ['taxes_fees', 'Taxes / fees'],
+      ['owner_payout', 'Owner payout'],
+    ].find(([key]) => form[key] !== '' && (cleanNumber(form[key]) === null || cleanNumber(form[key]) < 0));
+
+    if (invalidAmount) errors.push(`${invalidAmount[1]} must be 0 or more.`);
 
     return errors;
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+
+    if (submitting) return;
 
     const errors = validate();
     setValidationErrors(errors);
@@ -489,22 +539,22 @@ function BookingForm({
 
             <label>
               Total amount
-              <input type="number" min="0" step="0.01" value={form.total_amount} onChange={set('total_amount')} />
+              <input type="text" inputMode="decimal" value={form.total_amount} onChange={set('total_amount')} />
             </label>
 
             <label>
               Cleaning fee
-              <input type="number" min="0" step="0.01" value={form.cleaning_fee} onChange={set('cleaning_fee')} />
+              <input type="text" inputMode="decimal" value={form.cleaning_fee} onChange={set('cleaning_fee')} />
             </label>
 
             <label>
               Taxes / fees
-              <input type="number" min="0" step="0.01" value={form.taxes_fees} onChange={set('taxes_fees')} />
+              <input type="text" inputMode="decimal" value={form.taxes_fees} onChange={set('taxes_fees')} />
             </label>
 
             <label>
               Owner payout
-              <input type="number" min="0" step="0.01" value={form.owner_payout} onChange={set('owner_payout')} />
+              <input type="text" inputMode="decimal" value={form.owner_payout} onChange={set('owner_payout')} />
             </label>
 
             <label className="inline-check full">
@@ -718,7 +768,7 @@ export function BookingsPage() {
   const {
     data,
     session,
-    currentUser,
+    memberships,
     currentWorkspace,
     createBooking,
     updateBooking,
@@ -731,7 +781,25 @@ export function BookingsPage() {
   const leases = data.leases || [];
   const cleaningTasks = data.cleaningTasks || [];
 
-  const canManage = hasAnyRole(currentUser, taskManagerRoles);
+  const workspaceRoles = activeWorkspaceRoles(memberships, currentWorkspace);
+  const canManage = hasWorkspaceRole(workspaceRoles, taskManagerRoles);
+  const canViewBookingTotals = hasWorkspaceRole(workspaceRoles, [
+    roles.OWNER_ADMIN,
+    roles.PROPERTY_MANAGER,
+    roles.HOST,
+    roles.ACCOUNTANT,
+  ]);
+  const canViewDetailedFinancials = hasWorkspaceRole(workspaceRoles, [
+    roles.OWNER_ADMIN,
+    roles.PROPERTY_MANAGER,
+    roles.ACCOUNTANT,
+  ]);
+  const canViewOwnerPayout = hasWorkspaceRole(workspaceRoles, [
+    roles.OWNER_ADMIN,
+    roles.PROPERTY_MANAGER,
+    roles.ACCOUNTANT,
+    roles.OWNER,
+  ]);
   const workspaceCurrency = currentWorkspace?.defaultCurrency || currentWorkspace?.default_currency || 'USD';
 
   const [activeTab, setActiveTab] = React.useState('bookings');
@@ -884,6 +952,94 @@ export function BookingsPage() {
   };
 
   const hasRecords = bookings.length || leases.length;
+  const bookingColumns = [
+    {
+      key: 'guest',
+      label: 'Guest',
+      render: (booking) => (
+        <span>
+          <strong>{booking.guest_name || booking.guestName || 'Guest'}</strong>
+          <small>{booking.guest_email || booking.guestEmail || booking.guest_phone || booking.guestPhone || 'No contact'}</small>
+        </span>
+      ),
+    },
+    {
+      key: 'property',
+      label: 'Property',
+      render: (booking) => getPropertyName(booking, properties),
+    },
+    {
+      key: 'dates',
+      label: 'Dates',
+      render: (booking) => `${formatDate(booking.check_in || booking.checkIn)} → ${formatDate(booking.check_out || booking.checkOut)}`,
+    },
+    {
+      key: 'source',
+      label: 'Source',
+      render: (booking) => normalizeLabel(booking.source),
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      render: (booking) => <StatusBadge>{booking.status || 'confirmed'}</StatusBadge>,
+    },
+    {
+      key: 'payment',
+      label: 'Payment',
+      render: (booking) => <StatusBadge>{booking.payment_status || booking.paymentStatus || 'unpaid'}</StatusBadge>,
+    },
+    canViewBookingTotals
+      ? {
+          key: 'amount',
+          label: 'Amount',
+          render: (booking) => formatCurrency(bookingAmount(booking), booking.currency || workspaceCurrency),
+        }
+      : null,
+    canViewOwnerPayout
+      ? {
+          key: 'owner_payout',
+          label: 'Owner payout',
+          render: (booking) => formatCurrency(toNumber(booking.owner_payout ?? booking.ownerPayout), booking.currency || workspaceCurrency),
+        }
+      : null,
+    canViewDetailedFinancials
+      ? {
+          key: 'fees',
+          label: 'Fees',
+          render: (booking) => {
+            const cleaningFee = toNumber(booking.cleaning_fee ?? booking.cleaningFee);
+            const taxesFees = toNumber(booking.taxes_fees ?? booking.taxesFees);
+            return formatCurrency(cleaningFee + taxesFees, booking.currency || workspaceCurrency);
+          },
+        }
+      : null,
+    {
+      key: 'actions',
+      label: 'Actions',
+      render: (booking) => (
+        <div className="action-row">
+          {canManage && (
+            <button
+              type="button"
+              onClick={() => {
+                setSubmitError('');
+                setEditingBooking(booking);
+              }}
+              data-skip-create-action="true"
+            >
+              <Edit3 size={16} />
+              Edit
+            </button>
+          )}
+
+          <button type="button" onClick={() => navigate('/calendar')} data-skip-create-action="true">
+            <Eye size={16} />
+            Calendar
+          </button>
+        </div>
+      ),
+    },
+  ].filter(Boolean);
 
   return (
     <AppLayout
@@ -906,8 +1062,8 @@ export function BookingsPage() {
 
         <StatCard
           label="Booking revenue"
-          value={formatCurrency(bookingRevenue, workspaceCurrency)}
-          subtitle="From active short-term bookings"
+          value={canViewBookingTotals ? formatCurrency(bookingRevenue, workspaceCurrency) : 'Restricted'}
+          subtitle={canViewBookingTotals ? 'From active short-term bookings' : 'Financial totals are limited by workspace role'}
           icon={DollarSign}
         />
 
@@ -920,8 +1076,8 @@ export function BookingsPage() {
 
         <StatCard
           label="Paid rate"
-          value={formatPercent(paidRate)}
-          subtitle={`${paidBookings.length} of ${bookings.length} bookings paid`}
+          value={canViewBookingTotals ? formatPercent(paidRate) : 'Restricted'}
+          subtitle={canViewBookingTotals ? `${paidBookings.length} of ${bookings.length} bookings paid` : 'Payment visibility is role-limited'}
           icon={CheckCircle2}
         />
       </section>
@@ -1071,8 +1227,12 @@ export function BookingsPage() {
         <EmptyState
           eyebrow="Bookings"
           icon={CalendarPlus}
-          title="Add your first booking or lease"
-          description="Use bookings for short-term reservations and leases for long-term rental tenants. Records are workspace-scoped and connected to properties."
+          title={properties.length ? 'Add your first booking or lease' : 'Add a property before creating bookings'}
+          description={
+            properties.length
+              ? 'Use bookings for short-term reservations and leases for long-term rental tenants. Records are workspace-scoped and connected to properties.'
+              : 'Bookings must be tied to a real property in the selected workspace. Add a property first, then return here to create the reservation.'
+          }
           action={
             canManage ? (
               <button type="button" className="primary" data-create-action="booking">
@@ -1111,74 +1271,7 @@ export function BookingsPage() {
           <DataTable
             rows={filteredBookings}
             empty="No bookings match these filters."
-            columns={[
-              {
-                key: 'guest',
-                label: 'Guest',
-                render: (booking) => (
-                  <span>
-                    <strong>{booking.guest_name || booking.guestName || 'Guest'}</strong>
-                    <small>{booking.guest_email || booking.guestEmail || booking.guest_phone || booking.guestPhone || 'No contact'}</small>
-                  </span>
-                ),
-              },
-              {
-                key: 'property',
-                label: 'Property',
-                render: (booking) => getPropertyName(booking, properties),
-              },
-              {
-                key: 'dates',
-                label: 'Dates',
-                render: (booking) => `${formatDate(booking.check_in || booking.checkIn)} → ${formatDate(booking.check_out || booking.checkOut)}`,
-              },
-              {
-                key: 'source',
-                label: 'Source',
-                render: (booking) => normalizeLabel(booking.source),
-              },
-              {
-                key: 'status',
-                label: 'Status',
-                render: (booking) => <StatusBadge>{booking.status || 'confirmed'}</StatusBadge>,
-              },
-              {
-                key: 'payment',
-                label: 'Payment',
-                render: (booking) => <StatusBadge>{booking.payment_status || booking.paymentStatus || 'unpaid'}</StatusBadge>,
-              },
-              {
-                key: 'amount',
-                label: 'Amount',
-                render: (booking) => formatCurrency(bookingAmount(booking), booking.currency || workspaceCurrency),
-              },
-              {
-                key: 'actions',
-                label: 'Actions',
-                render: (booking) => (
-                  <div className="action-row">
-                    {canManage && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSubmitError('');
-                          setEditingBooking(booking);
-                        }}
-                        data-skip-create-action="true"
-                      >
-                        <Edit3 size={16} />
-                        Edit
-                      </button>
-                    )}
-
-                    <button type="button" onClick={() => navigate('/calendar')} data-skip-create-action="true">
-                      <Eye size={16} />
-                      Calendar
-                    </button>
-                  </div>
-                ),
-              },
-            ]}
+            columns={bookingColumns}
           />
         </section>
       )}

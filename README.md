@@ -332,6 +332,10 @@ RLS is enabled on `contacts`, `bookings`, and `leases`.
 
 `supabase/migrations/202605100001_rls_create_action_alignment.sql` aligns server-side RLS with the current create-action modal and AppContext save rules. The audit keeps schema changes non-destructive, does not add broad `USING (true)` customer-data policies, and tightens workspace/property linkage for invites, assignments, contacts, bookings, leases, cleaning tasks, maintenance work orders, supplies, file uploads, activity logs, notifications, and report exports. Customer invites and workspace memberships remain limited to valid customer roles; `propflow_admin` remains excluded from customer workspace roles and must be controlled only by trusted platform/admin operations.
 
+### 2026-05-10 bookings module hardening
+
+Bookings are workspace-scoped and property-scoped from the shared **Add Booking** create-action modal through AppContext and Supabase RLS. Real booking records require `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and the Supabase migrations applied; frontend code uses the anon client only and does not expose or require a service-role key.
+
 ### Double-booking rules
 
 Database triggers block unsafe overlaps before insert/update:
