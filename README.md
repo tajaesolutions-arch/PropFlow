@@ -81,11 +81,13 @@ VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
 VITE_APP_ENV=
 VITE_APP_URL=
+VITE_SUPABASE_STORAGE_CONFIGURED=false
 ```
 
 Serverless/API variables used only by Vercel functions when those endpoints are enabled:
 
 ```bash
+APP_URL=
 SUPABASE_URL=
 SUPABASE_ANON_KEY=
 STRIPE_SECRET_KEY=
@@ -93,13 +95,18 @@ STRIPE_WEBHOOK_SECRET=
 STRIPE_PRICE_STARTER=
 STRIPE_PRICE_PRO=
 STRIPE_PRICE_BUSINESS=
+RESEND_API_KEY=
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_MESSAGING_SERVICE_SID=
+TWILIO_WHATSAPP_FROM=
 ```
 
 Do **not** expose Supabase service-role keys, Stripe secrets, Twilio tokens, or Resend API keys in any `VITE_*` variable or frontend code. Stripe checkout, portal, and webhook endpoints currently return setup/provider-not-configured responses until a full server-side billing implementation is deliberately added.
 
 ### Supabase migrations and founder admin bootstrap
 
-Apply every file in `supabase/migrations/` in timestamp order, including the latest production-readiness patch:
+Apply every file in `supabase/migrations/` in ascending filename order, including the latest production-readiness patch. The full validation kit is in `DEPLOYMENT_CHECKLIST.md`, `SUPABASE_RUNTIME_TEST_PLAN.md`, `VERCEL_RUNTIME_TEST_PLAN.md`, and `MIGRATION_MANIFEST.md`.
 
 ```text
 supabase/migrations/202605050001_propflow_schema.sql
@@ -112,7 +119,23 @@ supabase/migrations/202605060005_notification_provider_foundation.sql
 supabase/migrations/202605060006_reports_export_foundation.sql
 supabase/migrations/202605060007_direct_booking_foundation.sql
 supabase/migrations/202605100001_rls_create_action_alignment.sql
-...
+supabase/migrations/202605100002_create_workspace_with_owner_rpc.sql
+supabase/migrations/202605100003_properties_rls_alignment.sql
+supabase/migrations/202605100004_bookings_rls_alignment.sql
+supabase/migrations/202605100005_cleaning_tasks_rls_alignment.sql
+supabase/migrations/202605100006_maintenance_work_orders_rls_alignment.sql
+supabase/migrations/202605100007_contacts_owners_guests_rls_alignment.sql
+supabase/migrations/202605100008_reports_owner_reports_rls_alignment.sql
+supabase/migrations/202605100009_expenses_finance_foundation.sql
+supabase/migrations/202605100010_supplies_inventory_rls_alignment.sql
+supabase/migrations/202605100012_files_documents_media_foundation.sql
+supabase/migrations/202605100013_team_invites_roles_rls_alignment.sql
+supabase/migrations/202605100014_notifications_foundation.sql
+supabase/migrations/202605100015_billing_subscription_foundation.sql
+supabase/migrations/202605100016_direct_booking_foundation.sql
+supabase/migrations/202605100017_leases_long_term_rentals_foundation.sql
+supabase/migrations/202605100018_ical_calendar_import_foundation.sql
+supabase/migrations/202605100019_platform_admin_foundation.sql
 supabase/migrations/202605100020_production_readiness_rls_patch.sql
 ```
 
@@ -133,8 +156,8 @@ Create the Supabase Storage bucket named `workspace-files` as **private**. Apply
 ### Vercel deployment notes
 
 - Deploy the Vite app and `/api/*` serverless functions together.
-- Set frontend env vars in both Preview and Production.
-- Set server-only Stripe/Supabase variables only when implementing the real backend flow; missing provider env vars should return safe setup-required/provider-not-configured responses.
+- Set frontend env vars in both Preview and Production, including `VITE_SUPABASE_STORAGE_CONFIGURED=true` only after the private `workspace-files` bucket exists.
+- Set server-only Supabase/API CORS variables for deployed API routes and keep Stripe/Resend/Twilio secrets blank until implementing those providers; missing provider env vars should return safe setup-required/provider-not-configured responses.
 - Re-run `npm install`, `npm run build`, and `git diff --check` before promoting a deployment.
 - If Supabase reports a missing table/RPC immediately after migration, wait for PostgREST schema cache refresh and reload before weakening RLS or adding direct frontend inserts.
 
@@ -181,8 +204,9 @@ Create `.env.local` only when connecting to Supabase:
 ```bash
 VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
-VITE_APP_ENV=
-VITE_APP_URL=
+VITE_APP_ENV=local
+VITE_APP_URL=http://localhost:5173
+VITE_SUPABASE_STORAGE_CONFIGURED=false
 ```
 
 Run locally:
@@ -201,13 +225,14 @@ npm run build
 
 ## Vercel deployment readiness
 
-Set these exact Vercel environment variables for Preview and Production deployments:
+Set these exact frontend Vercel environment variables for Preview and Production deployments:
 
 ```bash
 VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
-VITE_APP_ENV=
-VITE_APP_URL=
+VITE_APP_ENV=preview|production
+VITE_APP_URL=https://your-propflow-domain.example
+VITE_SUPABASE_STORAGE_CONFIGURED=true|false
 ```
 
 No server-only Supabase service role key is required by this front-end build. Do **not** expose a Supabase service role key in Vite variables.
@@ -219,22 +244,17 @@ Expected behavior without Vercel env vars:
 - Protected routes redirect to `/login` because no real Supabase Auth session can exist.
 - Database-backed actions return clear configuration errors instead of crashing the app.
 
-## Required Supabase migration
+## Required Supabase migrations
 
-Apply the current Phase 1 hosted-project migrations in this timestamp order:
+Apply every file in `supabase/migrations/` in ascending filename order before running the app against a Supabase project. See `MIGRATION_MANIFEST.md` for purpose and runtime tests for every migration, and use `DEPLOYMENT_CHECKLIST.md` plus `SUPABASE_RUNTIME_TEST_PLAN.md` for the real hosted-project validation pass.
 
-```text
-1. supabase/migrations/202605050001_propflow_schema.sql
-2. supabase/migrations/202605100001_rls_create_action_alignment.sql
-3. supabase/migrations/202605100002_create_workspace_with_owner_rpc.sql
-4. Later timestamped module alignment migrations, including contacts/owners/guests RLS alignment when present.
-```
+Important runtime notes:
 
-Apply the migrations in timestamp order before running the app against a Supabase project. The `202605100002_create_workspace_with_owner_rpc.sql` RPC migration must be applied after `202605100001_rls_create_action_alignment.sql`. If your checkout also contains older development migrations, keep timestamp ordering and ensure the final `202605100002_create_workspace_with_owner_rpc.sql` function definition is applied last for workspace creation. If you see `Could not find the table 'public.workspaces' in the schema cache`, the base migration has not been applied to that project, was applied to a different project, or Supabase needs its API schema cache refreshed after the SQL runs.
+- The final `202605100002_create_workspace_with_owner_rpc.sql` RPC migration must be applied after `202605100001_rls_create_action_alignment.sql`.
+- If you see `Could not find the table 'public.workspaces' in the schema cache`, the base migration has not been applied to that project, was applied to a different project, or Supabase needs its API schema cache refreshed after the SQL runs.
+- After applying DDL/function migrations, wait briefly and refresh PostgREST schema cache before changing policies or adding direct inserts.
 
-After applying DDL migrations, Supabase PostgREST may need a short schema-cache refresh before new RPC calls are visible. If workspace creation reports that `create_workspace_with_owner` cannot be found immediately after deployment, wait briefly, reload the app, and retry before changing policies or adding direct inserts.
-
-The migration creates or repairs these app-required objects without dropping customer data:
+The migrations create or repair these app-required objects without dropping customer data:
 
 - `profiles`
 - `workspaces`
@@ -242,14 +262,16 @@ The migration creates or repairs these app-required objects without dropping cus
 - `workspace_invites`
 - `properties`
 - `property_assignments`
+- `contacts`, owners, guests, bookings, leases, expenses, supplies, reports, direct booking, and iCal import tables
 - `cleaning_tasks`
 - `maintenance_work_orders`
 - `file_uploads`
 - `activity_logs`
-- `notifications`
-- private Storage bucket `workspace-files`
+- `notifications` and provider-safe delivery logs
+- private Storage bucket expectation and policies for `workspace-files`
 - RLS helper functions and table/storage policies
 - secure `public.create_workspace_with_owner(...)` RPC for initial workspace creation
+- platform admin RPCs gated by `profiles.is_propflow_admin`
 
 ## Exact Supabase migration instructions
 
@@ -261,7 +283,7 @@ Use this path when the hosted app is already connected to a Supabase project or 
 2. Go to **SQL Editor** → **New query**.
 3. Copy the full contents of `supabase/migrations/202605050001_propflow_schema.sql`.
 4. Paste the full SQL into the editor and click **Run**. The file is idempotent and uses `CREATE TABLE IF NOT EXISTS`, non-destructive `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, and policy/trigger replacement so it can be run again if needed.
-5. Open additional **New query** tabs and apply the remaining migration files in timestamp order, including `supabase/migrations/202605100001_rls_create_action_alignment.sql` followed by `supabase/migrations/202605100002_create_workspace_with_owner_rpc.sql`. The final RPC migration creates the hardened `SECURITY DEFINER` workspace creation function used by the app and grants execute only to authenticated users.
+5. Open additional **New query** tabs and apply every remaining migration file in ascending filename order as listed above and in `MIGRATION_MANIFEST.md`, including `supabase/migrations/202605100001_rls_create_action_alignment.sql` followed by `supabase/migrations/202605100002_create_workspace_with_owner_rpc.sql`. The final RPC migration creates the hardened `SECURITY DEFINER` workspace creation function used by the app and grants execute only to authenticated users.
 6. In **Table Editor**, confirm the `public.workspaces` table exists along with the other Phase 1 tables listed above. In **Database** → **Functions**, confirm `public.create_workspace_with_owner` exists and is executable by authenticated users.
 7. If the app still reports a schema-cache error immediately after running the SQL, wait briefly and reload the app; Supabase PostgREST schema cache refresh can lag right after DDL.
 
@@ -306,13 +328,14 @@ Use this quick checklist before debugging onboarding as an application bug:
 
 Workspace creation now uses `public.create_workspace_with_owner(...)` from frontend code instead of direct client inserts into `public.workspaces` and `public.workspace_members`. Apply `supabase/migrations/202605100002_create_workspace_with_owner_rpc.sql` after `supabase/migrations/202605100001_rls_create_action_alignment.sql` so strict RLS can remain in place without blocking first-workspace setup.
 
-The only required frontend environment variables remain:
+The required frontend environment variables are:
 
 ```bash
 VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
 VITE_APP_ENV=
 VITE_APP_URL=
+VITE_SUPABASE_STORAGE_CONFIGURED=true|false
 ```
 
 Do **not** use or expose a Supabase service-role key in frontend code.
@@ -324,7 +347,7 @@ Do **not** use or expose a Supabase service-role key in frontend code.
 - Owners and guests created from **Add Owner** / **Add Guest** are contact records unless the person is also invited as a workspace login user.
 - Owner portal access is controlled through workspace member invites and the `property_owner` role; `properties.assigned_owner_id` points to an invited workspace member/profile, not an owner CRM contact.
 - **Add Owner** and **Add Guest** use the shared create-action modal and save through the shared AppContext contact action.
-- Real records require `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and the Supabase migrations applied in timestamp order.
+- Real records require `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and the Supabase migrations applied in ascending filename order.
 - The frontend uses the Supabase anon key only. Do **not** expose a Supabase service-role key in Vite/frontend environment variables.
 
 ## Role and permission notes
@@ -356,7 +379,7 @@ Property write access is limited to `workspace_owner` and `property_manager`. Cl
 - Owner CRM contacts are not the same as owner login users; owner portal access requires a workspace member invite with the `property_owner` role.
 - Email sending is not wired yet. PropFlow creates copyable invite links only, and workspace owners must send those links manually until a backend email provider is connected.
 - Custom permissions are future work. MVP access uses fixed workspace roles and RLS policies.
-- Real team records require `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and all Supabase migrations applied in timestamp order. Frontend code uses the anon key only and must never expose a service-role key.
+- Real team records require `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and all Supabase migrations applied in ascending filename order. Frontend code uses the anon key only and must never expose a service-role key.
 
 ## Manual test checklist
 
@@ -689,11 +712,13 @@ VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
 VITE_APP_ENV=local|preview|staging|production
 VITE_APP_URL=https://your-propflow-domain.example
+VITE_SUPABASE_STORAGE_CONFIGURED=true|false
 ```
 
 Server-only values must be configured only in Vercel Project Settings or a local server runtime, never in frontend `VITE_*` variables:
 
 ```bash
+APP_URL=https://your-propflow-domain.example
 SUPABASE_URL=
 SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY= # only if a future trusted server endpoint truly requires it; never frontend
@@ -718,7 +743,7 @@ Before sending production traffic to PropFlow, confirm every item below in the t
 - [ ] Supabase migrations were applied in order by filename.
 - [ ] Founder PropFlow Admin profile was bootstrapped with the platform-only admin flag.
 - [ ] RLS policies were verified with real role-based users, not only frontend hiding.
-- [ ] Vercel frontend env vars are configured: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_APP_ENV`, `VITE_APP_URL`.
+- [ ] Vercel frontend env vars are configured: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_APP_ENV`, `VITE_APP_URL`, `VITE_SUPABASE_STORAGE_CONFIGURED`.
 - [ ] Vercel server env vars are configured for API stubs/providers as needed and contain no frontend prefixes.
 - [ ] Private Supabase Storage bucket `workspace-files` exists and is not public.
 - [ ] Public direct booking pages were tested with safe public fields only.
@@ -779,8 +804,8 @@ Recommended Vercel settings:
 - Install command: `npm install`.
 - Build command: `npm run build`.
 - Output directory: `dist`.
-- Required frontend env vars: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_APP_ENV`, `VITE_APP_URL`.
-- Server env vars for current API routes/stubs: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, Stripe keys/prices for future billing, and Resend/Twilio keys for future notifications. Keep all server secrets unprefixed by `VITE_`.
+- Required frontend env vars: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_APP_ENV`, `VITE_APP_URL`, `VITE_SUPABASE_STORAGE_CONFIGURED`.
+- Server env vars for current API routes/stubs: `APP_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, Stripe keys/prices for future billing, and Resend/Twilio keys for future notifications. Keep all server secrets unprefixed by `VITE_`.
 
 Redeploy process:
 
