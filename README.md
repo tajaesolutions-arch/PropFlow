@@ -700,7 +700,7 @@ PropFlow includes an MVP foundation for manual long-term rental and lease tracki
 - External iCal URLs are treated as sensitive operational data and are restricted by RLS to calendar-import manager roles; Owner, Cleaner, Maintenance, and public direct-booking views do not receive raw feed URLs.
 - Imported iCal events are stored as calendar blocks by default (`booking_block`, `unavailable_block`, `owner_block`, `maintenance_block`, or `unknown`) and appear on the internal Calendar alongside bookings, leases, cleaning, and maintenance.
 - Managers can review feed status, recent sync runs, imported events, and conflicts. Conflicts are created for invalid dates, duplicate/unsupported imported data foundations, and overlaps with internal bookings, direct booking requests, or leases.
-- A server-side Vercel API route (`/api/sync-ical-feed`) performs CORS-safe feed fetching with authenticated user JWT/RLS, a 2 MB response limit, timeout protection, plain-text parsing, and no frontend service-role key exposure.
+- A server-side Vercel API route `/api/import-ical-feed` (with `/api/sync-ical-feed` kept as a compatibility alias) performs CORS-safe feed fetching with authenticated user JWT/RLS, a 2 MB response limit, timeout protection, plain-text parsing, and no frontend service-role key exposure.
 - Auto-create bookings and cleaning tasks are disabled by default. Managers may manually convert an imported block to an unpaid internal booking; this does not create guest contacts, mark payment as paid, or auto-create cleaning.
 - Public direct booking availability uses imported calendar blocks as unavailable date ranges without exposing feed provider details, URLs, event descriptions, guest names, or raw event data.
 - This foundation does **not** add Airbnb, Vrbo, Booking.com, Google, or Outlook API integrations; it only supports iCal URL import.
@@ -934,3 +934,13 @@ Known future TODOs:
 - Stored generated PDFs.
 - AI report summaries.
 - Accountant-grade financial automation.
+
+### Calendar + iCal MVP foundation alignment
+
+PropFlow now keeps a workspace-scoped calendar foundation that combines internal bookings, check-in/check-out markers, cleaning task dates, maintenance due dates, and imported iCal blocks from the existing `calendar_import_feeds` and `calendar_import_events` tables. The shared `src/lib/calendarImports.js` helper normalizes iCal providers, validates HTTPS feed URLs, parses ICS dates/events, maps imported records, deduplicates imports, builds unified calendar event objects, and returns event tone classes for the custom calendar UI.
+
+Supported one-way iCal providers for the MVP foundation are Airbnb iCal, Booking.com iCal, Vrbo iCal, Google iCal, and Other iCal. Managers add feeds manually; manual imports are user-triggered through the authenticated serverless endpoint at `/api/import-ical-feed`, which aliases the existing sync implementation. The endpoint validates the Supabase session, relies on RLS-scoped feed access, fetches feeds server-side, requires HTTPS URLs, blocks localhost/private/internal hostnames and resolved private IPs, limits feed size/event counts, parses events, upserts imported calendar events, updates feed sync status, and returns summary counts only. It does not log full feed contents or expose service-role keys to frontend code.
+
+Calendar visibility remains role-safe: Workspace Owners/Company Admins, Property Managers, and Hosts can manage iCal feeds and imported events for their workspace; assigned Property Owners can view imported blocks for assigned properties without seeing feed URLs; cleaners and maintenance users continue to see their assigned cleaning/work-order schedules and booking context through existing task-scoped RLS; suspended/revoked users are excluded by active workspace-membership checks. No policy grants global `USING (true)` access to customer calendar data.
+
+Known future TODOs: automatic scheduled iCal sync, two-way channel manager sync, full Airbnb/Booking.com/Vrbo API integrations, Google Calendar OAuth, automated reminders, conflict detection UX expansion, and advanced availability rules. None of those future integrations are added in this MVP foundation.

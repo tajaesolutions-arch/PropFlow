@@ -4601,11 +4601,15 @@ export function AppProvider({ children }) {
     try {
       url = new URL(text);
     } catch {
-      throw new Error('Feed URL must be a valid http:// or https:// URL.');
+      throw new Error('Feed URL must be a valid https:// URL.');
     }
 
-    if (!['http:', 'https:'].includes(url.protocol)) {
-      throw new Error('Feed URL must start with http:// or https://.');
+    if (url.protocol !== 'https:') {
+      throw new Error('Feed URL must start with https://.');
+    }
+
+    if (url.username || url.password) {
+      throw new Error('Feed URL must not include embedded credentials.');
     }
 
     return url.toString();
@@ -4615,7 +4619,7 @@ export function AppProvider({ children }) {
     const client = requireSupabase();
     requireCalendarImportManager();
     const selectedProperty = requireWorkspaceProperty(data.properties, payload.property_id || payload.propertyId);
-    const providerType = payload.provider_type || payload.providerType || 'manual_ical';
+    const providerType = payload.provider_type || payload.providerType || 'other_ical';
     const status = payload.status || 'active';
     const importAs = payload.import_as || payload.importAs || 'booking_block';
     const name = cleanText(payload.name);
@@ -4645,6 +4649,7 @@ export function AppProvider({ children }) {
 
     if (error) throw new Error(formatSupabaseError(error, 'Calendar import feed could not be created.'));
 
+    await writeActivityLog('ical_feed_added', { feedId: row.id, propertyId: row.property_id, providerType: row.provider_type });
     await refreshWorkspaceData();
     return normalizeCalendarImportFeed(row, data.properties);
   };
@@ -4728,6 +4733,7 @@ export function AppProvider({ children }) {
     if (error) throw new Error(formatSupabaseError(error, 'Calendar import feed archive status could not be updated.'));
 
     if (archived) {
+      await writeActivityLog('ical_feed_archived', { feedId: row.id, propertyId: row.property_id, providerType: row.provider_type });
       await notifyWorkspaceManagers({
         event_type: 'ical_feed_archived',
         title: 'iCal feed archived',
@@ -4754,7 +4760,7 @@ export function AppProvider({ children }) {
     const accessToken = session?.access_token;
     if (!accessToken) throw new Error('Your session expired. Sign in again before syncing.');
 
-    const response = await fetch('/api/sync-ical-feed', {
+    const response = await fetch('/api/import-ical-feed', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -4765,6 +4771,8 @@ export function AppProvider({ children }) {
 
     const result = await response.json().catch(() => ({}));
     await refreshWorkspaceData();
+
+    await writeActivityLog(response.ok ? 'ical_import_run' : 'ical_import_failed', { feedId, status: result.status || result.code, eventsCreated: result.eventsCreated, eventsUpdated: result.eventsUpdated, conflictsFound: result.conflictsFound });
 
     if (!response.ok) {
       await notifyWorkspaceManagers({

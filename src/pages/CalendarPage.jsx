@@ -13,13 +13,14 @@ import { AppLayout } from '../components/layout/AppLayout.jsx';
 import { EmptyState } from '../components/EmptyState.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
 import { useApp } from '../lib/AppContext.jsx';
+import { getCalendarEventTone } from '../lib/calendarImports.js';
 import { currencies, roles } from '../data/constants.js';
 import { navigate } from '../routes/AppRouter.jsx';
 
 const bookingStatuses = ['pending', 'confirmed', 'checked_in', 'checked_out', 'completed', 'cancelled'];
 const cleaningStatuses = ['scheduled', 'in_progress', 'completed', 'missed', 'needs_inspection', 'guest_ready', 'cancelled'];
 const priorities = ['low', 'medium', 'high', 'urgent'];
-const sources = ['manual', 'direct', 'airbnb', 'booking_com', 'vrbo', 'ical', 'airbnb_ical', 'vrbo_ical', 'booking_com_ical', 'google_calendar_ical', 'outlook_ical', 'manual_ical', 'other_ical', 'csv', 'other'];
+const sources = ['manual', 'direct', 'airbnb', 'booking_com', 'vrbo', 'ical', 'airbnb_ical', 'booking_ical', 'booking_com_ical', 'vrbo_ical', 'google_ical', 'google_calendar_ical', 'other_ical', 'csv', 'other'];
 const views = ['month', 'week', 'day', 'agenda'];
 
 function isValidDate(value) {
@@ -86,15 +87,12 @@ function buildDays(anchor, view) {
 
 function eventTone(type) {
   return {
-    booking: 'event-booking',
     checkin: 'event-info',
     checkout: 'event-warning',
-    cleaning: 'event-cleaning',
-    maintenance: 'event-error',
     lease: 'event-lease',
     imported: 'event-imported',
     ical: 'event-imported',
-  }[type] || 'event-info';
+  }[type] || getCalendarEventTone(type);
 }
 
 function eventStatusTone(event) {

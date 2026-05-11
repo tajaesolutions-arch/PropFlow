@@ -40,6 +40,7 @@ import {
   rentalTypes,
   roles,
   taskManagerRoles,
+  calendarImportProviderTypes,
 } from '../data/constants.js';
 import { FEATURE_KEYS, canUseFeature, getUpgradeMessage, getWorkspacePlan } from '../lib/planLimits.js';
 import { navigate } from '../routes/AppRouter.jsx';
@@ -561,6 +562,9 @@ export function PropertyDetailPage({ propertyId }) {
     currentUser,
     memberships,
     currentWorkspace,
+    createCalendarImportFeed,
+    archiveCalendarImportFeed,
+    syncCalendarImportFeed,
   } = useApp();
 
   const property = (data.properties || []).find((item) => item.id === propertyId);
@@ -572,6 +576,8 @@ export function PropertyDetailPage({ propertyId }) {
   const [submitError, setSubmitError] = React.useState('');
   const [saving, setSaving] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
+  const [feedForm, setFeedForm] = React.useState({ name: '', providerType: 'airbnb_ical', feedUrl: '' });
+  const [feedBusyId, setFeedBusyId] = React.useState('');
 
   if (!property) {
     return (
@@ -727,6 +733,65 @@ export function PropertyDetailPage({ propertyId }) {
     }
   };
 
+
+  const submitCalendarFeed = async (event) => {
+    event.preventDefault();
+    if (!canManageCalendarImports) return;
+
+    setSaving(true);
+    setMessage('');
+
+    try {
+      await createCalendarImportFeed({
+        propertyId: property.id,
+        name: feedForm.name,
+        providerType: feedForm.providerType,
+        feedUrl: feedForm.feedUrl,
+        status: 'active',
+        importAs: 'booking_block',
+      });
+      setFeedForm({ name: '', providerType: 'airbnb_ical', feedUrl: '' });
+      setMessage('iCal feed added. Use manual import when you are ready to pull blocks.');
+      clearMessageSoon();
+    } catch (error) {
+      setMessage(error.message || 'iCal feed could not be added.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const runCalendarImport = async (feedId) => {
+    if (!canManageCalendarImports) return;
+    setFeedBusyId(feedId);
+    setMessage('');
+
+    try {
+      const result = await syncCalendarImportFeed(feedId);
+      setMessage(`Manual import complete: ${result.eventsCreated || 0} created, ${result.eventsUpdated || 0} updated.`);
+      clearMessageSoon();
+    } catch (error) {
+      setMessage(error.message || 'Manual iCal import failed.');
+    } finally {
+      setFeedBusyId('');
+    }
+  };
+
+  const archiveCalendarFeed = async (feedId) => {
+    if (!canManageCalendarImports) return;
+    setFeedBusyId(feedId);
+    setMessage('');
+
+    try {
+      await archiveCalendarImportFeed(feedId, true);
+      setMessage('iCal feed archived. Imported event history remains preserved.');
+      clearMessageSoon();
+    } catch (error) {
+      setMessage(error.message || 'iCal feed could not be archived.');
+    } finally {
+      setFeedBusyId('');
+    }
+  };
+
   const viewFile = async (file) => {
     setMessage('');
     try {
@@ -875,12 +940,60 @@ export function PropertyDetailPage({ propertyId }) {
             <span><strong>{calendarImportConflicts.length}</strong><small>Open conflicts</small></span>
           </div>
 
-          <div className="property-direct-booking-actions">
-            <button type="button" className="primary" onClick={() => navigate('/calendar-imports')} data-skip-create-action="true">
-              Manage imports
+          <form className="property-ical-form" onSubmit={submitCalendarFeed}>
+            <label>
+              Feed name
+              <input
+                value={feedForm.name}
+                onChange={(event) => setFeedForm((current) => ({ ...current, name: event.target.value }))}
+                placeholder="Airbnb calendar"
+                required
+              />
+            </label>
+            <label>
+              Provider
+              <select value={feedForm.providerType} onChange={(event) => setFeedForm((current) => ({ ...current, providerType: event.target.value }))}>
+                {calendarImportProviderTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </label>
+            <label className="wide">
+              HTTPS iCal URL
+              <input
+                value={feedForm.feedUrl}
+                onChange={(event) => setFeedForm((current) => ({ ...current, feedUrl: event.target.value }))}
+                placeholder="https://example.com/calendar.ics"
+                required
+              />
+            </label>
+            <button type="submit" className="primary" disabled={saving} data-skip-create-action="true">
+              {saving ? 'Saving…' : 'Save feed'}
             </button>
+          </form>
+
+          <div className="calendar-feed-list">
+            {calendarImportFeeds.length ? calendarImportFeeds.map((feed) => (
+              <article key={feed.id} className="calendar-feed-row">
+                <div>
+                  <strong>{feed.name}</strong>
+                  <small>{formatLabel(feed.providerType || feed.provider_type)} · Last sync: {feed.lastSyncAt || feed.last_sync_at ? formatDate(feed.lastSyncAt || feed.last_sync_at) : 'Not synced yet'}</small>
+                  {(feed.lastError || feed.last_error) && <small className="error-text">{feed.lastError || feed.last_error}</small>}
+                </div>
+                <StatusBadge tone={statusTone(feed.lastSyncStatus || feed.last_sync_status || feed.status)}>{feed.lastSyncStatus || feed.last_sync_status || feed.status}</StatusBadge>
+                <button type="button" onClick={() => runCalendarImport(feed.id)} disabled={feedBusyId === feed.id} data-skip-create-action="true">
+                  {feedBusyId === feed.id ? 'Importing…' : 'Manual import'}
+                </button>
+                <button type="button" onClick={() => archiveCalendarFeed(feed.id)} disabled={feedBusyId === feed.id} data-skip-create-action="true">
+                  Archive
+                </button>
+              </article>
+            )) : (
+              <p className="helper">No external feeds yet. Save an HTTPS iCal feed to enable manual imports for this property.</p>
+            )}
+          </div>
+
+          <div className="property-direct-booking-actions">
             <button type="button" onClick={() => navigate('/calendar-imports')} data-skip-create-action="true">
-              Add feed
+              Open full import center
             </button>
           </div>
         </section>

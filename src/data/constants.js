@@ -131,10 +131,8 @@ export const billingPlanDetails = [
 export const calendarImportProviderTypes = [
   ['airbnb_ical', 'Airbnb iCal'],
   ['vrbo_ical', 'Vrbo iCal'],
-  ['booking_com_ical', 'Booking.com iCal'],
-  ['google_calendar_ical', 'Google Calendar iCal'],
-  ['outlook_ical', 'Outlook iCal'],
-  ['manual_ical', 'Manual iCal'],
+  ['booking_ical', 'Booking.com iCal'],
+  ['google_ical', 'Google Calendar iCal'],
   ['other_ical', 'Other iCal'],
 ];
 
