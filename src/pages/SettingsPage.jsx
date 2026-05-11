@@ -24,6 +24,7 @@ import { StatusBadge } from '../components/StatusBadge.jsx';
 import { useApp } from '../lib/AppContext.jsx';
 import { currencies, inviteRoleOptions, invitePermissionLevels, propertyAssignmentRoleOptions, propertyScopedInviteRoles, roleLabels, roles } from '../data/constants.js';
 import { hasAnyRole } from '../lib/auth.js';
+import { getBillingStatus } from '../lib/billingStatus.js';
 import { navigate } from '../routes/AppRouter.jsx';
 
 const defaultInvite = {
@@ -275,6 +276,8 @@ export function SettingsPage() {
   const workspaceName = getWorkspaceName(currentWorkspace);
   const workspaceCode = getWorkspaceCode(currentWorkspace);
   const workspaceCurrency = getWorkspaceCurrency(currentWorkspace);
+  const billingStatus = getBillingStatus(data.subscription, currentUser);
+  const billingPlan = data.subscription?.plan || currentWorkspace?.subscription_plan || currentWorkspace?.plan || 'starter';
 
   const clearMessageSoon = () => {
     window.setTimeout(() => {
@@ -661,21 +664,50 @@ export function SettingsPage() {
 
         <SettingCard
           icon={CreditCard}
-          title="Subscription / billing"
-          description="Stripe subscription controls and grace-period enforcement."
+          title="Billing & Subscription"
+          description="Workspace subscription status, plan visibility, and safe billing recovery placeholders."
         >
           {canOpenBilling ? (
-            <button type="button" onClick={() => navigate('/billing')} data-skip-create-action="true">
-              Open billing page
-            </button>
+            <div className="settings-billing-summary">
+              <div>
+                <span>Current plan</span>
+                <strong>{billingPlan}</strong>
+              </div>
+              <div>
+                <span>Subscription status</span>
+                <StatusBadge tone={billingStatus.tone}>{billingStatus.label}</StatusBadge>
+              </div>
+              <p>{billingStatus.userMessage}</p>
+              {billingStatus.isInGracePeriod && (
+                <div className="helper warning-helper">
+                  Payment needs attention. Access will be restricted after the grace period if unresolved.
+                </div>
+              )}
+              {billingStatus.isRestricted && (
+                <div className="helper error-helper">
+                  Workspace access is in billing recovery mode. Owners can still review account recovery controls.
+                </div>
+              )}
+              <div className="settings-billing-actions">
+                <button type="button" onClick={() => navigate('/billing')} data-skip-create-action="true">
+                  Manage billing — Coming soon
+                </button>
+                <button type="button" onClick={() => navigate('/billing')} data-skip-create-action="true">
+                  Update payment method — Coming soon
+                </button>
+                <button type="button" onClick={() => navigate('/pricing')} data-skip-create-action="true">
+                  Choose plan — Coming soon
+                </button>
+              </div>
+            </div>
           ) : (
             <div className="helper">
-              Billing controls are available to Workspace Owners and Accountants. Property Managers and Hosts can continue using workspace settings without billing access.
+              Billing controls are available to Workspace Owners / Company Admins and Accountants. Property Managers may see general workspace settings, while Hosts, Owners, Cleaners, and Maintenance do not see payment controls.
             </div>
           )}
 
           <div className="helper">
-            Billing page should connect Stripe checkout, billing portal, subscription status, failed-payment warnings, and grace-period access.
+            Stripe billing is not connected yet. This section is prepared for subscription management. Backend/RLS billing enforcement must remain workspace-scoped before live payments are enabled.
           </div>
         </SettingCard>
 

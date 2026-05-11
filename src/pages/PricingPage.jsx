@@ -66,7 +66,7 @@ function PricingCard({ plan }) {
       </ul>
 
       <button className="primary" type="button" onClick={() => navigate('/signup')}>
-        Create account
+        Start setup
         <ArrowRight size={16} />
       </button>
 
@@ -93,7 +93,7 @@ export function PricingPage() {
           </button>
 
           <button className="primary" type="button" onClick={() => navigate('/signup')}>
-            Create account
+            Start setup
           </button>
         </div>
       </nav>
@@ -109,7 +109,7 @@ export function PricingPage() {
 
           <div className="hero-actions">
             <button className="primary large" type="button" onClick={() => navigate('/signup')}>
-              Create account
+              Start setup
               <ArrowRight size={18} />
             </button>
 
@@ -272,7 +272,7 @@ export function PricingPage() {
 
           <div className="action-row">
             <button className="primary large" type="button" onClick={() => navigate('/signup')}>
-              Create account
+              Start setup
               <ArrowRight size={18} />
             </button>
 

@@ -27,6 +27,7 @@ import { roles } from '../data/constants.js';
 import { canAccessPlatformAdmin } from '../lib/auth.js';
 import { useApp } from '../lib/AppContext.jsx';
 import { appEnvironment } from '../lib/supabase.js';
+import { getBillingStatus } from '../lib/billingStatus.js';
 
 const sensitiveStatuses = new Set(['suspended', 'restricted', 'denied']);
 
@@ -69,7 +70,7 @@ function planLabel(row) {
 }
 
 function subscriptionStatus(row) {
-  return row?.subscription_status || 'no_subscription';
+  return getBillingStatus({ status: row?.subscription_status, grace_period_ends_at: row?.grace_period_ends_at }).label;
 }
 
 function trialGrace(row) {
@@ -198,8 +199,9 @@ function WorkspaceDetailDrawer({ detail, onClose, onStatus, onNote, busy }) {
         <div className="admin-detail-grid">
           <div><span>Status</span><StatusBadge tone={statusTone(workspace.account_status)}>{workspace.account_status || workspace.status}</StatusBadge></div>
           <div><span>Review</span><StatusBadge tone={statusTone(workspace.platform_review_status)}>{workspace.platform_review_status}</StatusBadge></div>
-          <div><span>Subscription</span><StatusBadge tone={statusTone(detail.subscription?.status)}>{detail.subscription?.status || 'no_subscription'}</StatusBadge></div>
+          <div><span>Subscription</span><StatusBadge tone={getBillingStatus(detail.subscription).tone}>{getBillingStatus(detail.subscription).label}</StatusBadge></div>
           <div><span>Plan</span><strong>{detail.subscription?.plan || '—'}</strong></div>
+          <div><span>Stripe actions</span><strong>Placeholder only</strong></div>
         </div>
 
         <div className="admin-control-grid compact-controls">
@@ -441,7 +443,7 @@ export function AdminDashboardPage() {
           { key: 'status', label: 'Status', render: (row) => <StatusBadge tone={statusTone(workspaceStatus(row))}>{workspaceStatus(row)}</StatusBadge> },
           { key: 'platform_review_status', label: 'Review', render: (row) => <StatusBadge tone={statusTone(row.platform_review_status)}>{row.platform_review_status || 'not_reviewed'}</StatusBadge> },
           { key: 'plan', label: 'Plan', render: planLabel },
-          { key: 'subscription_status', label: 'Subscription', render: (row) => <StatusBadge tone={statusTone(subscriptionStatus(row))}>{subscriptionStatus(row)}</StatusBadge> },
+          { key: 'subscription_status', label: 'Subscription', render: (row) => { const status = getBillingStatus({ status: row.subscription_status, grace_period_ends_at: row.grace_period_ends_at }); return <StatusBadge tone={status.tone}>{status.label}</StatusBadge>; } },
           { key: 'trial', label: 'Trial/grace', render: trialGrace },
           { key: 'members', label: 'Members', render: (row) => numberValue(row.member_count) },
           { key: 'properties', label: 'Properties', render: (row) => numberValue(row.property_count) },
