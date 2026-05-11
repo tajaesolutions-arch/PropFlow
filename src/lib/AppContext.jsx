@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from '
 
 import { billingAccessRoles, billingEventTypes, billingManageRoles, billingPlans, calendarImportedEventStatuses, calendarImportedEventTypes, calendarImportConflictTypes, calendarImportProviderTypes, calendarImportStatuses, calendarImportSyncStatuses, currencies, deliveryStatuses, directBookingConfirmationModes, directBookingPageStatuses, directBookingPaymentModes, expenseCategories, expensePaymentStatuses, expenseStatuses, invitePermissionLevels, inviteRoleOptions, leasePaymentStatuses, leaseStatuses, leaseTypes, notificationChannels, notificationEventTypes, notificationPreferenceGroups, notificationStatuses, propertyAssignmentRoleOptions, propertyScopedInviteRoles, propertyStatuses, propertyTypes, rentalTypes, rentFrequencies, roles } from '../data/constants.js';
 import { canAccessPlatformAdmin, resolvePrimaryRole } from './auth.js';
+import { logActivity } from './activityLogs.js';
 import { isSupabaseConfigured, supabase } from './supabase.js';
 
 const AppContext = createContext(null);
@@ -104,6 +105,7 @@ const emptyData = {
   notificationDeliveryLogs: [],
   notificationProviderSettings: [],
   unreadNotificationCount: 0,
+  activityLogs: [],
   ownerReports: [],
   fileUploads: [],
   invites: [],
@@ -658,6 +660,18 @@ function normalizeNotificationDeliveryLog(row) {
     sentAt: row.sent_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+function normalizeActivityLog(row) {
+  if (!row) return row;
+
+  return {
+    ...row,
+    workspaceId: row.workspace_id,
+    actorUserId: row.actor_user_id,
+    createdAt: row.created_at,
+    metadata: row.metadata && typeof row.metadata === 'object' ? row.metadata : {},
   };
 }
 
@@ -1507,6 +1521,17 @@ export function AppProvider({ children }) {
         normalize: (rows) => rows.map(normalizeNotificationDeliveryLog),
       },
       {
+        label: 'activity logs',
+        key: 'activityLogs',
+        query: supabase
+          .from('activity_logs')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .order('created_at', { ascending: false })
+          .limit(50),
+        normalize: (rows) => rows.map(normalizeActivityLog),
+      },
+      {
         label: 'owner reports',
         key: 'ownerReports',
         query: supabase
@@ -2135,6 +2160,7 @@ export function AppProvider({ children }) {
 
     if (insertError) throw new Error(formatSupabaseError(insertError, 'Property could not be saved.'));
 
+    await writeActivityLog('property_created', { property_id: row.id, property_name: row.name, status: row.status });
     await refreshWorkspaceData();
 
     return normalizeProperty(row);
@@ -2208,6 +2234,12 @@ export function AppProvider({ children }) {
 
     if (updateError) throw new Error(formatSupabaseError(updateError, 'Property could not be updated.'));
 
+    await writeActivityLog(updatePayload.status === 'archived' || updatePayload.archived_at ? 'property_archived' : 'property_updated', {
+      property_id: row.id,
+      property_name: row.name,
+      status: row.status,
+      changed_fields: Object.keys(updatePayload),
+    });
     await refreshWorkspaceData();
 
     return normalizeProperty(row);
@@ -2388,6 +2420,7 @@ export function AppProvider({ children }) {
 
     if (insertError) throw new Error(formatSupabaseError(insertError, 'Booking could not be saved.'));
 
+    await writeActivityLog('booking_created', { booking_id: row.id, property_id: row.property_id, guest_name: row.guest_name, check_in: row.check_in, check_out: row.check_out, status: row.status });
     await refreshWorkspaceData();
 
     return normalizeBooking(row, data.properties);
@@ -2467,6 +2500,13 @@ export function AppProvider({ children }) {
 
     if (updateError) throw new Error(formatSupabaseError(updateError, 'Booking could not be updated.'));
 
+    await writeActivityLog(row.status === 'cancelled' && existingBooking.status !== 'cancelled' ? 'booking_cancelled' : 'booking_updated', {
+      booking_id: row.id,
+      property_id: row.property_id,
+      guest_name: row.guest_name,
+      status: row.status,
+      changed_fields: Object.keys(updatePayload),
+    });
     await refreshWorkspaceData();
 
     return normalizeBooking(row, data.properties);
@@ -3022,6 +3062,8 @@ export function AppProvider({ children }) {
 
     if (insertError) throw new Error(formatSupabaseError(insertError, 'Cleaning task could not be saved.'));
 
+    await writeActivityLog('cleaning_task_created', { cleaning_task_id: row.id, property_id: row.property_id, booking_id: row.booking_id, assigned_cleaner_id: row.assigned_cleaner_id, scheduled_for: row.scheduled_for, status: row.status });
+
     if (row.assigned_cleaner_id) {
       await safeCreateNotification({
         recipient_user_id: row.assigned_cleaner_id,
@@ -3132,6 +3174,22 @@ export function AppProvider({ children }) {
 
     if (updateError) throw new Error(formatSupabaseError(updateError, 'Cleaning task could not be updated.'));
 
+    const cleaningAction = row.issue_reported && !currentTask.issue_reported
+      ? 'cleaning_issue_reported'
+      : row.status === 'in_progress' && currentTask.status !== 'in_progress'
+        ? 'cleaning_task_started'
+        : ['completed', 'guest_ready'].includes(row.status) && currentTask.status !== row.status
+          ? 'cleaning_task_completed'
+          : 'cleaning_task_updated';
+    await writeActivityLog(cleaningAction, {
+      cleaning_task_id: row.id,
+      property_id: row.property_id,
+      booking_id: row.booking_id,
+      assigned_cleaner_id: row.assigned_cleaner_id,
+      status: row.status,
+      changed_fields: Object.keys(updatePayload),
+    });
+
     if (['completed', 'guest_ready'].includes(row.status) && currentTask.status !== row.status) {
       await notifyWorkspaceManagers({
         event_type: 'cleaning_task_completed',
@@ -3223,6 +3281,8 @@ export function AppProvider({ children }) {
     if (insertError) {
       throw new Error(formatSupabaseError(insertError, 'Maintenance work order could not be saved.'));
     }
+
+    await writeActivityLog('maintenance_work_order_created', { maintenance_work_order_id: row.id, property_id: row.property_id, assigned_maintenance_id: row.assigned_maintenance_id, title: row.title, priority: row.priority, status: row.status });
 
     if (row.assigned_maintenance_id) {
       await safeCreateNotification({
@@ -3322,6 +3382,16 @@ export function AppProvider({ children }) {
     if (updateError) {
       throw new Error(formatSupabaseError(updateError, 'Maintenance work order could not be updated.'));
     }
+
+    await writeActivityLog(row.status === 'completed' && currentWorkOrder.status !== 'completed' ? 'maintenance_work_order_completed' : 'maintenance_work_order_updated', {
+      maintenance_work_order_id: row.id,
+      property_id: row.property_id,
+      assigned_maintenance_id: row.assigned_maintenance_id,
+      title: row.title,
+      priority: row.priority,
+      status: row.status,
+      changed_fields: Object.keys(updatePayload),
+    });
 
     if (row.status === 'completed' && currentWorkOrder.status !== 'completed') {
       await notifyWorkspaceManagers({
@@ -3463,20 +3533,14 @@ export function AppProvider({ children }) {
       archived_at: archived ? new Date().toISOString() : null,
     });
 
-  const writeActivityLog = async (action, metadata = {}, workspaceId = currentWorkspace?.id) => {
-    if (!supabase || !workspaceId || !session?.user?.id) return;
-
-    try {
-      await supabase.from('activity_logs').insert({
-        workspace_id: workspaceId,
-        actor_user_id: session.user.id,
-        action,
-        metadata,
-      });
-    } catch (logError) {
-      console.warn('[PropFlow] Activity log write skipped', logError);
-    }
-  };
+  const writeActivityLog = async (action, metadata = {}, workspaceId = currentWorkspace?.id) =>
+    logActivity({
+      supabase,
+      workspaceId,
+      actorUserId: session?.user?.id,
+      action,
+      metadata,
+    });
 
   const createInvite = async (payload) => {
     const client = requireSupabase();
@@ -3561,7 +3625,7 @@ export function AppProvider({ children }) {
 
     if (insertError) throw new Error(formatSupabaseError(insertError, 'Invite could not be created.'));
 
-    await writeActivityLog('workspace_invite.created', { invite_id: row.id, email, roles: roleList });
+    await writeActivityLog('team_invite_created', { invite_id: row.id, email, roles: roleList });
     await notifyWorkspaceManagers({
       event_type: 'team_invite_created',
       title: 'Team invite created',
@@ -3611,7 +3675,7 @@ export function AppProvider({ children }) {
 
     if (updateError) throw new Error(formatSupabaseError(updateError, 'Member status could not be updated.'));
 
-    await writeActivityLog(`workspace_member.${nextStatus}`, { member_id: memberId, user_id: member.user_id });
+    await writeActivityLog(nextStatus === 'suspended' ? 'team_member_suspended' : `team_member_${nextStatus}`, { member_id: memberId, user_id: member.user_id, status: nextStatus });
     await refreshWorkspaceData();
 
     return normalizeMember(row);
@@ -3770,6 +3834,7 @@ export function AppProvider({ children }) {
       throw new Error(formatSupabaseError(insertError, 'Report could not be saved. Confirm the owner_reports columns exist.'));
     }
 
+    await writeActivityLog('owner_report_created', { report_id: row.id, report_type: row.report_type, title: row.title, property_id: row.property_id, owner_id: row.owner_id, start_date: row.start_date, end_date: row.end_date, status: row.status });
     await refreshWorkspaceData();
 
     return normalizeReport(row);
@@ -4957,6 +5022,9 @@ export function AppProvider({ children }) {
       throw new Error(formatSupabaseError(updateError, 'Notification could not be updated.'));
     }
 
+    if (read) {
+      await writeActivityLog('notification_marked_read', { notification_id: row.id, event_type: row.event_type || row.type, status: row.status });
+    }
     await refreshWorkspaceData();
 
     return normalizeNotification(row);
@@ -4982,6 +5050,9 @@ export function AppProvider({ children }) {
       throw new Error(formatSupabaseError(updateError, 'Notification archive status could not be updated.'));
     }
 
+    if (archived) {
+      await writeActivityLog('notification_archived', { notification_id: row.id, event_type: row.event_type || row.type, status: row.status });
+    }
     await refreshWorkspaceData();
 
     return normalizeNotification(row);
@@ -5003,6 +5074,7 @@ export function AppProvider({ children }) {
       throw new Error(formatSupabaseError(updateError, 'Notifications could not be marked as read.'));
     }
 
+    await writeActivityLog('notification_marked_read', { bulk: true });
     await refreshWorkspaceData();
 
     return true;
