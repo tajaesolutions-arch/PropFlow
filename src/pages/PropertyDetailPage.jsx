@@ -40,6 +40,7 @@ import {
   roles,
   taskManagerRoles,
 } from '../data/constants.js';
+import { FEATURE_KEYS, canUseFeature, getUpgradeMessage, getWorkspacePlan } from '../lib/planLimits.js';
 import { navigate } from '../routes/AppRouter.jsx';
 
 const closedStatuses = new Set(['completed', 'cancelled', 'guest_ready']);
@@ -619,6 +620,8 @@ export function PropertyDetailPage({ propertyId }) {
   const canEdit = hasAnyActiveWorkspaceRole(memberships, currentWorkspace, propertyEditorRoles);
   const canManageDirectBooking = hasAnyActiveWorkspaceRole(memberships, currentWorkspace, taskManagerRoles);
   const canManageCalendarImports = hasAnyActiveWorkspaceRole(memberships, currentWorkspace, taskManagerRoles);
+  const workspacePlan = getWorkspacePlan(data.subscription, currentWorkspace);
+  const directBookingAccess = canUseFeature(currentWorkspace, FEATURE_KEYS.DIRECT_BOOKING_PAGES, data.subscription);
   const directBookingPage = (data.directBookingPages || []).find((page) => (page.propertyId || page.property_id) === property.id);
   const directBookingUrl = directBookingPage?.slug ? `${window.location.origin}/book/${directBookingPage.slug}` : '';
   const canCreateOperationalRecords = hasAnyActiveWorkspaceRole(memberships, currentWorkspace, taskManagerRoles);
@@ -827,7 +830,11 @@ export function PropertyDetailPage({ propertyId }) {
             <Globe2 size={20} className="muted" />
           </div>
 
-          {directBookingPage ? (
+          {!directBookingAccess.allowed ? (
+            <div className="helper warning-helper">
+              Existing direct booking data is preserved, but creating or publishing pages is locked on {workspacePlan.label}. {directBookingAccess.message || getUpgradeMessage(FEATURE_KEYS.DIRECT_BOOKING_PAGES, workspacePlan.key)}
+            </div>
+          ) : directBookingPage ? (
             <div className="property-direct-booking-actions">
               <StatusBadge>{directBookingPage.status}</StatusBadge>
               <code>{directBookingUrl}</code>

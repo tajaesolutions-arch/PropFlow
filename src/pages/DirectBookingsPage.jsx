@@ -9,6 +9,7 @@ import { StatusBadge } from '../components/StatusBadge.jsx';
 import { useApp } from '../lib/AppContext.jsx';
 import { directBookingConfirmationModes, directBookingPageStatuses, directBookingPaymentModes, directBookingRequestStatuses, roles } from '../data/constants.js';
 import { formatCurrency, formatDate } from '../lib/formatters.js';
+import { FEATURE_KEYS, canUseFeature, getUpgradeMessage, getWorkspacePlan } from '../lib/planLimits.js';
 import { navigate } from '../routes/AppRouter.jsx';
 
 const managerRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
@@ -143,6 +144,9 @@ export function DirectBookingsPage() {
   const pages = data.directBookingPages || [];
   const requests = data.directBookingRequests || [];
   const canManage = hasManagerRole(memberships, currentWorkspace);
+  const workspacePlan = getWorkspacePlan(data.subscription, currentWorkspace);
+  const directBookingAccess = canUseFeature(currentWorkspace, FEATURE_KEYS.DIRECT_BOOKING_PAGES, data.subscription);
+  const directBookingLocked = !directBookingAccess.allowed;
   const [filters, setFilters] = React.useState({ query: '', status: '', propertyId: '', pageStatus: '', start: '', end: '' });
   const [form, setForm] = React.useState(toPageForm(null, properties, currentWorkspace));
   const [saving, setSaving] = React.useState(false);
@@ -176,6 +180,11 @@ export function DirectBookingsPage() {
 
   async function savePage(event) {
     event.preventDefault();
+    if (directBookingLocked) {
+      setError(directBookingAccess.message || getUpgradeMessage(FEATURE_KEYS.DIRECT_BOOKING_PAGES, workspacePlan.key));
+      return;
+    }
+
     setSaving(true);
     setError('');
     setMessage('');
@@ -286,10 +295,12 @@ export function DirectBookingsPage() {
             <h2>{form.id ? 'Edit direct booking page' : 'Create direct booking page'}</h2>
             <p>Manual approval is the safe default. Payment placeholders do not collect card details or call SaaS billing checkout.</p>
           </div>
-          <button type="button" onClick={() => setForm(toPageForm(null, properties, currentWorkspace))}><Plus size={16} /> New page</button>
+          <button type="button" onClick={() => setForm(toPageForm(null, properties, currentWorkspace))} disabled={directBookingLocked} title={directBookingLocked ? getUpgradeMessage(FEATURE_KEYS.DIRECT_BOOKING_PAGES, workspacePlan.key) : undefined}><Plus size={16} /> New page</button>
         </div>
 
-        {!properties.length ? (
+        {directBookingLocked ? (
+          <EmptyState compact eyebrow="Locked feature" icon={LockIcon} title="Direct booking pages require Pro or Business" description={directBookingAccess.message || getUpgradeMessage(FEATURE_KEYS.DIRECT_BOOKING_PAGES, workspacePlan.key)} />
+        ) : !properties.length ? (
           <EmptyState compact eyebrow="Dependency" icon={Home} title="Create a property first" description="Direct booking pages are linked one-to-one with existing workspace properties." />
         ) : (
           <form className="modal-form direct-booking-form" onSubmit={savePage}>
@@ -354,7 +365,7 @@ export function DirectBookingsPage() {
             </div>
 
             <div className="modal-actions">
-              <button type="submit" className="primary" disabled={saving}>{saving ? 'Saving…' : 'Save direct booking page'}</button>
+              <button type="submit" className="primary" disabled={saving || directBookingLocked}>{saving ? 'Saving…' : 'Save direct booking page'}</button>
               {form.slug && <button type="button" onClick={() => navigator.clipboard?.writeText(publicUrl(form.slug))}><Copy size={16} /> Copy public link</button>}
             </div>
           </form>

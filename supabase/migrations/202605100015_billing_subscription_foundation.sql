@@ -141,13 +141,30 @@ create table if not exists public.billing_plan_limits (
   max_properties integer,
   max_team_members integer,
   max_file_storage_mb integer,
+  max_owner_reports_per_month integer,
   includes_owner_reports boolean default true,
   includes_inventory boolean default true,
   includes_accountant_dashboard boolean default false,
   includes_direct_booking boolean default false,
+  includes_advanced_reports boolean default false,
+  includes_ai_tools text not null default 'false' check (includes_ai_tools in ('false','true','coming_soon')),
+  includes_priority_support boolean default false,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+
+alter table public.billing_plan_limits add column if not exists max_file_storage_mb integer;
+alter table public.billing_plan_limits add column if not exists max_owner_reports_per_month integer;
+alter table public.billing_plan_limits add column if not exists includes_owner_reports boolean default true;
+alter table public.billing_plan_limits add column if not exists includes_inventory boolean default true;
+alter table public.billing_plan_limits add column if not exists includes_accountant_dashboard boolean default false;
+alter table public.billing_plan_limits add column if not exists includes_direct_booking boolean default false;
+alter table public.billing_plan_limits add column if not exists includes_advanced_reports boolean default false;
+alter table public.billing_plan_limits add column if not exists includes_ai_tools text not null default 'false';
+alter table public.billing_plan_limits add column if not exists includes_priority_support boolean default false;
+alter table public.billing_plan_limits drop constraint if exists billing_plan_limits_ai_tools_check;
+alter table public.billing_plan_limits add constraint billing_plan_limits_ai_tools_check
+  check (includes_ai_tools in ('false','true','coming_soon'));
 
 alter table public.billing_plan_limits drop constraint if exists billing_plan_limits_plan_check;
 alter table public.billing_plan_limits add constraint billing_plan_limits_plan_check
@@ -158,20 +175,24 @@ create trigger billing_plan_limits_updated_at
 before update on public.billing_plan_limits
 for each row execute function public.set_updated_at();
 
-insert into public.billing_plan_limits (plan, max_properties, max_team_members, max_file_storage_mb, includes_owner_reports, includes_inventory, includes_accountant_dashboard, includes_direct_booking)
+insert into public.billing_plan_limits (plan, max_properties, max_team_members, max_file_storage_mb, max_owner_reports_per_month, includes_owner_reports, includes_inventory, includes_accountant_dashboard, includes_direct_booking, includes_advanced_reports, includes_ai_tools, includes_priority_support)
 values
-  ('starter', 3, 3, 1024, true, false, false, false),
-  ('pro', 15, 10, 10240, true, true, false, false),
-  ('business', 50, 30, 51200, true, true, true, true),
-  ('enterprise', null, null, null, true, true, true, true)
+  ('starter', 3, 3, 1024, 5, true, false, false, false, false, 'false', false),
+  ('pro', 15, 10, 10240, 25, true, true, false, true, true, 'false', false),
+  ('business', null, null, 51200, null, true, true, true, true, true, 'coming_soon', true),
+  ('enterprise', null, null, null, null, true, true, true, true, true, 'coming_soon', true)
 on conflict (plan) do update set
   max_properties = excluded.max_properties,
   max_team_members = excluded.max_team_members,
   max_file_storage_mb = excluded.max_file_storage_mb,
+  max_owner_reports_per_month = excluded.max_owner_reports_per_month,
   includes_owner_reports = excluded.includes_owner_reports,
   includes_inventory = excluded.includes_inventory,
   includes_accountant_dashboard = excluded.includes_accountant_dashboard,
-  includes_direct_booking = excluded.includes_direct_booking;
+  includes_direct_booking = excluded.includes_direct_booking,
+  includes_advanced_reports = excluded.includes_advanced_reports,
+  includes_ai_tools = excluded.includes_ai_tools,
+  includes_priority_support = excluded.includes_priority_support;
 
 create or replace function public.can_view_billing(target_workspace_id uuid)
 returns boolean

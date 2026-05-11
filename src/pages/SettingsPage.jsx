@@ -25,6 +25,7 @@ import { useApp } from '../lib/AppContext.jsx';
 import { currencies, inviteRoleOptions, invitePermissionLevels, propertyAssignmentRoleOptions, propertyScopedInviteRoles, roleLabels, roles } from '../data/constants.js';
 import { hasAnyRole } from '../lib/auth.js';
 import { getBillingStatus } from '../lib/billingStatus.js';
+import { FEATURE_KEYS, buildWorkspaceUsage, formatLimit, getUpgradeMessage, getUsageLimitState, getWorkspacePlan } from '../lib/planLimits.js';
 import { navigate } from '../routes/AppRouter.jsx';
 
 const defaultInvite = {
@@ -282,7 +283,13 @@ export function SettingsPage() {
   const workspaceCode = getWorkspaceCode(currentWorkspace);
   const workspaceCurrency = getWorkspaceCurrency(currentWorkspace);
   const billingStatus = getBillingStatus(data.subscription, currentUser);
-  const billingPlan = data.subscription?.plan || currentWorkspace?.subscription_plan || currentWorkspace?.plan || 'starter';
+  const workspacePlan = getWorkspacePlan(data.subscription, currentWorkspace);
+  const billingPlan = workspacePlan.key;
+  const usage = buildWorkspaceUsage({ properties: data.properties, members, ownerReports: data.ownerReports });
+  const propertyUsage = getUsageLimitState({ plan: workspacePlan, limitKey: 'maxProperties', currentCount: usage.properties });
+  const teamUsage = getUsageLimitState({ plan: workspacePlan, limitKey: 'maxTeamMembers', currentCount: usage.teamMembers });
+  const ownerReportUsage = getUsageLimitState({ plan: workspacePlan, limitKey: 'maxOwnerReportsPerMonth', currentCount: usage.ownerReportsThisMonth });
+  const teamLimitReached = teamUsage.reached;
   const hasStripeCustomer = Boolean(data.subscription?.stripeCustomerId || data.subscription?.stripe_customer_id);
   const hasSubscriptionRecord = Boolean(data.subscription?.id);
 
@@ -333,6 +340,11 @@ export function SettingsPage() {
 
     if (!currentWorkspace?.id) {
       setMessage('Select a workspace before creating invites.');
+      return;
+    }
+
+    if (teamLimitReached) {
+      setMessage(getUpgradeMessage(FEATURE_KEYS.TEAM_MEMBERS, workspacePlan.key));
       return;
     }
 
@@ -709,7 +721,7 @@ export function SettingsPage() {
             <div className="settings-billing-summary">
               <div>
                 <span>Current plan</span>
-                <strong>{billingPlan}</strong>
+                <strong>{workspacePlan.label}</strong>
               </div>
               <div>
                 <span>Subscription status</span>
@@ -731,6 +743,25 @@ export function SettingsPage() {
                   {hasSubscriptionRecord ? 'Choose a plan first to connect this workspace to Stripe Customer Portal.' : 'Choose a plan first.'}
                 </div>
               )}
+
+              <div className="settings-status-list">
+                <span>
+                  <strong>Properties</strong>
+                  <StatusBadge tone={propertyUsage.reached ? 'warning' : 'info'}>{propertyUsage.label}</StatusBadge>
+                </span>
+                <span>
+                  <strong>Team members</strong>
+                  <StatusBadge tone={teamUsage.reached ? 'warning' : 'info'}>{teamUsage.label}</StatusBadge>
+                </span>
+                <span>
+                  <strong>Owner reports / month</strong>
+                  <StatusBadge tone={ownerReportUsage.reached ? 'warning' : 'info'}>{ownerReportUsage.label}</StatusBadge>
+                </span>
+              </div>
+
+              <div className="helper">
+                {workspacePlan.label} limits: {formatLimit(workspacePlan.maxProperties)} properties, {formatLimit(workspacePlan.maxTeamMembers)} team members, {formatLimit(workspacePlan.maxOwnerReportsPerMonth)} owner reports/month. Usage is counted from currently loaded workspace records.
+              </div>
               {canManageBilling ? (
                 <div className="settings-billing-actions">
                   {hasStripeCustomer ? (
@@ -932,8 +963,14 @@ export function SettingsPage() {
               </label>
             </div>
 
+            {teamLimitReached && (
+              <div className="helper warning-helper">
+                Team member limit reached ({teamUsage.label}) on {workspacePlan.label}. {getUpgradeMessage(FEATURE_KEYS.TEAM_MEMBERS, workspacePlan.key)}
+              </div>
+            )}
+
             <div className="settings-form-actions">
-              <button type="submit" className="primary" disabled={busy} data-skip-create-action="true">
+              <button type="submit" className="primary" disabled={busy || teamLimitReached} data-skip-create-action="true" title={teamLimitReached ? getUpgradeMessage(FEATURE_KEYS.TEAM_MEMBERS, workspacePlan.key) : undefined}>
                 <Send size={16} />
                 {busy ? 'Creating invite…' : 'Create invite'}
               </button>

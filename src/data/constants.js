@@ -91,7 +91,7 @@ export const billingPlanDetails = [
     priceMonthly: 49,
     audience: 'Solo hosts',
     description: 'For small portfolios starting with role-safe operations.',
-    features: ['14-day trial', 'Up to 3 properties', 'Core operations', 'In-app notifications'],
+    features: ['14-day trial', 'Up to 3 properties', 'Up to 3 team members', '5 owner reports/month', 'Core operations', 'Direct booking locked'],
   },
   {
     key: 'pro',
@@ -102,7 +102,7 @@ export const billingPlanDetails = [
     audience: 'Growing teams',
     description: 'For operators managing multiple properties and team workflows.',
     featured: true,
-    features: ['14-day trial', 'Up to 15 properties', 'Owner reports', 'Inventory tracking'],
+    features: ['14-day trial', 'Up to 15 properties', 'Up to 10 team members', '25 owner reports/month', 'Direct booking pages', 'Advanced reports'],
   },
   {
     key: 'business',
@@ -112,7 +112,7 @@ export const billingPlanDetails = [
     priceMonthly: 299,
     audience: 'Management companies',
     description: 'For larger teams that need finance visibility and direct booking readiness.',
-    features: ['14-day trial', 'Up to 50 properties', 'Accountant dashboard', 'Direct booking readiness'],
+    features: ['14-day trial', 'Unlimited properties', 'Unlimited team members', 'Unlimited owner reports', 'Direct booking pages', 'AI tools preview'],
   },
   {
     key: 'enterprise',

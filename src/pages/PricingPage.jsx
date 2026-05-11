@@ -13,6 +13,7 @@ import {
 import { billingPlanDetails, roles } from '../data/constants.js';
 import { hasAnyRole } from '../lib/auth.js';
 import { useApp } from '../lib/AppContext.jsx';
+import { PLAN_LIMITS, formatLimit } from '../lib/planLimits.js';
 import { navigate } from '../routes/AppRouter.jsx';
 
 const plans = billingPlanDetails.map((plan) => ({
@@ -66,6 +67,17 @@ function PricingCard({ plan, canManageBilling = false, hasStripeCustomer = false
           </li>
         ))}
       </ul>
+
+      {PLAN_LIMITS[plan.key] && (
+        <div className="settings-status-list">
+          <span><strong>Properties</strong><small>{formatLimit(PLAN_LIMITS[plan.key].maxProperties)}</small></span>
+          <span><strong>Team</strong><small>{formatLimit(PLAN_LIMITS[plan.key].maxTeamMembers)}</small></span>
+          <span><strong>Owner reports</strong><small>{formatLimit(PLAN_LIMITS[plan.key].maxOwnerReportsPerMonth)} / month</small></span>
+          <span><strong>Direct booking</strong><small>{PLAN_LIMITS[plan.key].directBookingPages ? 'Included' : 'Upgrade required'}</small></span>
+          <span><strong>Advanced reports</strong><small>{PLAN_LIMITS[plan.key].advancedReports ? 'Included' : 'Locked'}</small></span>
+          <span><strong>AI tools</strong><small>{PLAN_LIMITS[plan.key].aiTools === 'coming_soon' ? 'Business preview / coming soon' : 'Coming soon'}</small></span>
+        </div>
+      )}
 
       <button
         className="primary"
