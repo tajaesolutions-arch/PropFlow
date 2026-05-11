@@ -28,9 +28,9 @@ export function TopBar({
   subtitle = 'Workspace-scoped operational command center',
   setMobileOpen,
 }) {
-  const { data, markNotificationRead, archiveNotification } = useApp();
+  const { data, currentUser, markNotificationRead, archiveNotification } = useApp();
   const [dateRange, setDateRange] = React.useState(getInitialDateRange);
-  const notifications = React.useMemo(() => (Array.isArray(data?.notifications) ? data.notifications.filter((item) => !isArchivedNotification(item)) : []), [data?.notifications]);
+  const notifications = React.useMemo(() => (Array.isArray(data?.notifications) ? data.notifications.filter((item) => !isArchivedNotification(item) && (item.recipient_user_id || item.recipientUserId) === currentUser?.id) : []), [data?.notifications, currentUser?.id]);
   const recentNotifications = React.useMemo(() => notifications.slice(0, 5), [notifications]);
   const [notificationOpen, setNotificationOpen] = React.useState(false);
   const unreadNotifications = Number.isFinite(data?.unreadNotificationCount)
