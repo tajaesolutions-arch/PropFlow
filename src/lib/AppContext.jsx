@@ -4962,12 +4962,12 @@ export function AppProvider({ children }) {
         body: JSON.stringify(payload),
       });
     } catch {
-      throw new Error('Stripe checkout is not configured yet.');
+      throw new Error('Stripe billing is not configured yet.');
     }
 
     const body = await response.json().catch(() => ({}));
     if (!response.ok || body?.code === 'provider_not_configured') {
-      throw new Error(body?.message || 'Stripe checkout is not configured yet.');
+      throw new Error(body?.message || 'Stripe billing is not configured yet.');
     }
 
     return body;
@@ -5002,27 +5002,21 @@ export function AppProvider({ children }) {
     }
   };
 
-  const openBillingPortal = async () => {
-    requireBillingRole(billingAccessRoles, 'Only Workspace Owners and Accountants can open billing recovery.');
-    await writeBillingEvent('billing_portal_opened', 'Billing portal requested from Billing page.', { action: 'portal' });
+  const openBillingPortal = async (action = 'manage_billing') => {
+    requireBillingRole([roles.OWNER_ADMIN], 'Only Workspace Owners can manage Stripe billing.');
 
     try {
-      const result = await callBillingEndpoint('/api/create-billing-portal-session', { workspaceId: currentWorkspace.id });
+      const result = await callBillingEndpoint('/api/create-stripe-customer-portal-session', {
+        workspaceId: currentWorkspace.id,
+        returnUrl: `${window.location.origin}/settings?tab=billing`,
+        action,
+      });
       if (result?.url) {
         window.location.assign(result.url);
         return result;
       }
-      throw new Error('Stripe billing portal is not configured yet.');
+      throw new Error('Stripe billing is not configured yet.');
     } catch (portalError) {
-      await writeBillingEvent('provider_not_configured', 'Stripe billing portal is not configured yet.', { action: 'portal' });
-      await notifyBillingRoles({
-        event_type: 'billing_provider_not_configured',
-        title: 'Stripe billing portal not configured',
-        body: 'Billing portal recovery was requested, but the secure Stripe backend endpoint is not configured yet.',
-        priority: 'normal',
-        action_url: '/billing',
-        channels: ['in_app'],
-      });
       await refreshWorkspaceData();
       throw portalError;
     }

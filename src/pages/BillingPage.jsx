@@ -122,7 +122,7 @@ export function BillingPage() {
           <div>
             <h3>Stripe provider status</h3>
             <p>
-              Billing records are workspace-scoped. Live checkout and portal redirects are only available when the secure server-side Stripe endpoints are configured.
+              Billing records are workspace-scoped. Live checkout and Customer Portal redirects are only available when the secure server-side Stripe endpoints are configured.
             </p>
           </div>
           <StatusBadge tone={data?.billingTablesReady ? 'warning' : 'error'}>
@@ -200,7 +200,7 @@ export function BillingPage() {
           )}
 
           <div className="form-actions compact">
-            {canViewBilling && <button type="button" onClick={() => runAction('portal', openBillingPortal)} disabled={Boolean(busyAction)} data-skip-create-action="true">Manage billing — Coming soon</button>}
+            {canManageBilling && <button type="button" onClick={() => runAction('portal', () => openBillingPortal('billing_page_manage'))} disabled={Boolean(busyAction)} data-skip-create-action="true">Manage billing in Stripe</button>}
             <button type="button" onClick={() => runAction('refresh', refreshBillingStatus)} disabled={Boolean(busyAction)} data-skip-create-action="true"><RefreshCw size={16} /> Refresh billing</button>
           </div>
         </section>

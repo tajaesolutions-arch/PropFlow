@@ -26,7 +26,7 @@ const faqs = [
   {
     question: 'Is Stripe billing live?',
     answer:
-      'Not yet. Pricing is public, but live checkout should stay disabled until secure backend checkout sessions, billing portal sessions, webhooks, and subscription enforcement are connected.',
+      'Stripe Checkout and Customer Portal use secure backend endpoints when server-side Stripe env vars are configured. Plan changes happen in Stripe Customer Portal when enabled in the Stripe Dashboard.',
   },
   {
     question: 'Is there a permanent free plan?',
@@ -45,7 +45,7 @@ const faqs = [
   },
 ];
 
-function PricingCard({ plan, canManageBilling = false, billingBusyPlan = '', onChoosePlan }) {
+function PricingCard({ plan, canManageBilling = false, hasStripeCustomer = false, billingBusyPlan = '', onChoosePlan }) {
   return (
     <article className={`pricing-card ${plan.featured ? 'featured' : ''}`}>
       {plan.featured && <span className="pricing-popular-badge">Recommended</span>}
@@ -73,13 +73,13 @@ function PricingCard({ plan, canManageBilling = false, billingBusyPlan = '', onC
         onClick={() => (canManageBilling && plan.key !== 'enterprise' ? onChoosePlan(plan.key) : navigate('/signup'))}
         disabled={Boolean(billingBusyPlan) || plan.key === 'enterprise'}
       >
-        {plan.key === 'enterprise' ? 'Contact sales soon' : canManageBilling ? (billingBusyPlan === plan.key ? 'Opening Stripe…' : 'Choose plan') : 'Start setup'}
+        {plan.key === 'enterprise' ? 'Contact sales soon' : canManageBilling ? (billingBusyPlan === plan.key ? (hasStripeCustomer ? 'Opening portal…' : 'Opening Stripe…') : (hasStripeCustomer ? 'Manage plan' : 'Choose plan')) : 'Start setup'}
         <ArrowRight size={16} />
       </button>
 
       <small className="todo">
         {canManageBilling
-          ? 'Checkout opens through PropFlow’s secure server-side Stripe endpoint. No frontend Stripe secrets are used.'
+          ? hasStripeCustomer ? 'Existing subscriptions are managed in Stripe Customer Portal when your Stripe Dashboard allows plan changes.' : 'Checkout opens through PropFlow’s secure server-side Stripe endpoint. No frontend Stripe secrets are used.'
           : 'Create an account or sign in as a Workspace Owner to choose a plan through Stripe Checkout.'}
       </small>
     </article>
@@ -87,20 +87,29 @@ function PricingCard({ plan, canManageBilling = false, billingBusyPlan = '', onC
 }
 
 export function PricingPage() {
-  const { currentUser, currentWorkspace, startCheckout } = useApp();
+  const { currentUser, currentWorkspace, data, startCheckout, openBillingPortal } = useApp();
   const [billingMessage, setBillingMessage] = React.useState('');
   const [billingBusyPlan, setBillingBusyPlan] = React.useState('');
   const canManageBilling = Boolean(currentWorkspace?.id && hasAnyRole(currentUser, [roles.OWNER_ADMIN]));
+  const hasStripeCustomer = Boolean(data?.subscription?.stripeCustomerId || data?.subscription?.stripe_customer_id);
 
   const handleChoosePlan = async (plan) => {
     setBillingMessage('');
     setBillingBusyPlan(plan);
 
     try {
-      await startCheckout(plan);
+      if (hasStripeCustomer) {
+        await openBillingPortal('pricing_manage_plan');
+      } else {
+        await startCheckout(plan);
+      }
     } catch (error) {
       const text = String(error?.message || '').toLowerCase();
-      setBillingMessage(text.includes('configured') ? 'Stripe billing is not configured yet.' : (error?.message || 'Checkout could not be started.'));
+      if (text.includes('choose a plan') || text.includes('stripe customer')) {
+        setBillingMessage('No Stripe customer is connected to this workspace yet. Choose a plan first.');
+      } else {
+        setBillingMessage(text.includes('configured') ? 'Stripe billing is not configured yet.' : (error?.message || 'Billing action could not be started.'));
+      }
       setBillingBusyPlan('');
     }
   };
@@ -167,7 +176,7 @@ export function PricingPage() {
             <CreditCard size={20} />
             <span>
               <strong>Stripe-ready structure</strong>
-              <small>Checkout, portal, webhooks, and grace period still need backend wiring.</small>
+              <small>Checkout, Customer Portal, webhooks, and grace period use secure backend wiring.</small>
             </span>
           </div>
         </aside>
@@ -185,6 +194,7 @@ export function PricingPage() {
             key={plan.key}
             plan={plan}
             canManageBilling={canManageBilling}
+            hasStripeCustomer={hasStripeCustomer}
             billingBusyPlan={billingBusyPlan}
             onChoosePlan={handleChoosePlan}
           />
@@ -237,7 +247,7 @@ export function PricingPage() {
                 <h3>Billing setup status</h3>
                 <p>
                   Pricing is shown publicly, but live billing should stay disabled until Stripe
-                  checkout, billing portal, webhooks, subscription tables, and access restrictions
+                  checkout, Customer Portal, webhooks, subscription tables, and access restrictions
                   are connected securely.
                 </p>
               </div>
