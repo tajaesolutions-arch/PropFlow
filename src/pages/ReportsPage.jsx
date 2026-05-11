@@ -23,6 +23,7 @@ import { useApp } from '../lib/AppContext.jsx';
 import { hasAnyRole } from '../lib/auth.js';
 import { roles } from '../data/constants.js';
 import { formatCurrency, formatDate, formatPercent } from '../lib/formatters.js';
+import { FEATURE_KEYS, getUpgradeMessage, getUsageLimitState, getWorkspacePlan, countOwnerReportsThisMonth, canUseFeature } from '../lib/planLimits.js';
 import { navigate } from '../routes/AppRouter.jsx';
 
 const reportManagerRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
@@ -410,6 +411,8 @@ export function ReportsPage() {
   const currency = currentWorkspace?.defaultCurrency || currentWorkspace?.default_currency || 'USD';
   const canManageReports = hasAnyRole(currentUser, reportManagerRoles);
   const ownerView = isOwnerRole(currentUser);
+  const workspacePlan = getWorkspacePlan(data.subscription, currentWorkspace);
+  const advancedReportsAccess = canUseFeature(currentWorkspace, FEATURE_KEYS.ADVANCED_REPORTS, data.subscription);
 
   const rawBookings = data.bookings || [];
   const rawLeases = data.leases || [];
@@ -512,6 +515,12 @@ export function ReportsPage() {
     .filter((report) => isInDateRange(getReportDate(report), filters.start, filters.end))
     .filter((report) => matchesReportSearch(report, filters.query, properties, ownerContacts, members));
 
+  const ownerReportUsage = getUsageLimitState({
+    plan: workspacePlan,
+    limitKey: 'maxOwnerReportsPerMonth',
+    currentCount: countOwnerReportsThisMonth(ownerReports),
+  });
+  const ownerReportLimitReached = ownerReportUsage.reached;
   const exportHistory = [];
   const reportStatuses = [...new Set(ownerReports.map((report) => String(report.status || '').toLowerCase()).filter(Boolean))];
 
@@ -600,7 +609,7 @@ export function ReportsPage() {
 
         <div className="reports-toolbar-actions">
           {canManageReports && (
-            <button type="button" className="primary" disabled={!currentWorkspace?.id || !properties.length}>
+            <button type="button" className="primary" disabled={!currentWorkspace?.id || !properties.length || ownerReportLimitReached}>
               <Plus size={16} />
               Add Report
             </button>
@@ -610,7 +619,26 @@ export function ReportsPage() {
           <DisabledExportButton label="Monthly CSV disabled" />
           <DisabledExportButton label="PDF disabled" icon={FileText} />
         </div>
+
+        {ownerReportLimitReached && (
+          <div className="helper warning-helper">
+            Owner report monthly limit reached ({ownerReportUsage.label}) on {workspacePlan.label}. {getUpgradeMessage(FEATURE_KEYS.OWNER_REPORTS, workspacePlan.key)}
+          </div>
+        )}
       </section>
+
+      {!advancedReportsAccess.allowed && !ownerView && (
+        <section className="card finance-safety-notice">
+          <div className="card-header">
+            <div>
+              <p className="eyebrow">Locked feature</p>
+              <h3>Advanced reports require Pro or Business</h3>
+              <p>{advancedReportsAccess.message || getUpgradeMessage(FEATURE_KEYS.ADVANCED_REPORTS, workspacePlan.key)}</p>
+            </div>
+            <StatusBadge tone="warning">Upgrade required</StatusBadge>
+          </div>
+        </section>
+      )}
 
       <section className="card">
         <div className="reports-filters">
@@ -727,7 +755,9 @@ export function ReportsPage() {
       </section>
 
       <section className="reports-type-grid">
-        {visibleReportTypes.map((report) => (
+        {visibleReportTypes.map((report) => {
+          const advancedLocked = !advancedReportsAccess.allowed && ['Finance', 'Operations', 'Maintenance', 'Cleaning', 'Portfolio'].includes(report.category);
+          return (
           <article className="card report-type-card" key={report.id}>
             <div className="report-type-icon">
               <FileText size={20} />
@@ -739,16 +769,19 @@ export function ReportsPage() {
               <p>{report.description}</p>
             </div>
 
+            {advancedLocked && <StatusBadge tone="warning">Advanced report locked</StatusBadge>}
+
             <div className="report-type-actions">
-              <DisabledExportButton label="CSV disabled" />
-              <DisabledExportButton label="PDF disabled" icon={FileText} />
+              <DisabledExportButton label={advancedLocked ? 'CSV locked' : 'CSV disabled'} />
+              <DisabledExportButton label={advancedLocked ? 'PDF locked' : 'PDF disabled'} icon={FileText} />
             </div>
 
             <div className="helper">
               CSV and PDF exports are not active yet. Report export will be connected after finance records are safely stored.
             </div>
           </article>
-        ))}
+          );
+        })}
       </section>
 
       <section className="card">

@@ -2157,6 +2157,8 @@ export function AppProvider({ children }) {
     requireAllowedValue(propertyPayload.rental_type, rentalTypes, 'rental type');
     requireAllowedValue(propertyPayload.currency, currencies, 'currency');
     requireAllowedValue(propertyPayload.status, propertyStatuses, 'property status');
+    // TODO(plan-enforcement): enforce maxProperties with a database transaction/RLS-safe RPC before insert.
+    // The current UI gate is MVP polish only and must not be treated as production-grade limit enforcement.
     assertAssignedOwnerIsWorkspaceMember(memberships, currentWorkspace.id, propertyPayload.assigned_owner_id);
     propertyPayload.nightly_rate = cleanNonNegativeNumber(propertyPayload.nightly_rate, 'Nightly rate');
     propertyPayload.monthly_rent = cleanNonNegativeNumber(propertyPayload.monthly_rent, 'Monthly rent');
@@ -2529,6 +2531,8 @@ export function AppProvider({ children }) {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'directBooking');
+    // TODO(plan-enforcement): enforce direct_booking_pages entitlement server-side before create/update/publish.
+    // Frontend gating preserves UX but cannot be the final source of subscription authorization.
 
     const propertyId = payload.property_id || payload.propertyId;
     const property = requireWorkspaceProperty(data.properties, propertyId);
@@ -3558,6 +3562,8 @@ export function AppProvider({ children }) {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'invite');
+    // TODO(plan-enforcement): enforce maxTeamMembers in a database-backed invite/member creation path.
+    // The Settings UI blocks obvious over-limit invites, but concurrent/server-side checks are still required.
 
     const email = cleanEmail(payload.email);
     const rawInviteRoles = Array.isArray(payload.roles || payload.role) ? payload.roles || payload.role : [payload.roles || payload.role];

@@ -20,6 +20,7 @@ import { StatCard } from '../components/StatCard.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
 import { useApp } from '../lib/AppContext.jsx';
 import { formatCurrency } from '../lib/formatters.js';
+import { FEATURE_KEYS, getUpgradeMessage, getUsageLimitState, getWorkspacePlan } from '../lib/planLimits.js';
 import { navigate } from '../routes/AppRouter.jsx';
 import {
   currencies,
@@ -511,6 +512,13 @@ export function PropertiesPage() {
   );
   const activeProperties = properties.filter((property) => property.status !== 'archived');
   const archivedProperties = properties.filter((property) => property.status === 'archived');
+  const workspacePlan = getWorkspacePlan(data.subscription, currentWorkspace);
+  const propertyLimitState = getUsageLimitState({
+    plan: workspacePlan,
+    limitKey: 'maxProperties',
+    currentCount: Array.isArray(allProperties) ? allProperties.filter((property) => property.status !== 'archived').length : null,
+  });
+  const propertyLimitReached = !ownerView && propertyLimitState.reached;
 
   const shortTermProperties = activeProperties.filter((property) =>
     ['short_term', 'both'].includes(getField(property, 'rentalType', 'rental_type')),
@@ -651,7 +659,14 @@ export function PropertiesPage() {
 
         <div className="properties-toolbar-actions">
           {canEdit && (
-            <button type="button" className="primary" data-create-action="property">
+            <button
+              type="button"
+              className="primary"
+              data-create-action={propertyLimitReached ? undefined : 'property'}
+              data-skip-create-action={propertyLimitReached ? 'true' : undefined}
+              disabled={propertyLimitReached}
+              title={propertyLimitReached ? getUpgradeMessage(FEATURE_KEYS.PROPERTIES, workspacePlan.key) : undefined}
+            >
               <Plus size={16} />
               Add Property
             </button>
@@ -663,6 +678,15 @@ export function PropertiesPage() {
             </button>
           )}
         </div>
+
+        {canEdit && (propertyLimitReached || propertyLimitState.available) && (
+          <div className={propertyLimitReached ? 'helper warning-helper' : 'helper'}>
+            Plan usage: {propertyLimitState.label} active properties on {workspacePlan.label}.{' '}
+            {propertyLimitReached
+              ? getUpgradeMessage(FEATURE_KEYS.PROPERTIES, workspacePlan.key)
+              : propertyLimitState.unlimited ? 'This plan supports unlimited active properties.' : `${propertyLimitState.remaining} property slots remaining.`}
+          </div>
+        )}
       </section>
 
       <section className="card">
