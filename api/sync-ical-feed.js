@@ -1,8 +1,12 @@
+import { lookup } from 'node:dns/promises';
+import net from 'node:net';
+
 import { createClient } from '@supabase/supabase-js';
 
 const MAX_ICAL_BYTES = 2 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 15000;
 const MAX_EVENTS_PER_SYNC = 500;
+const MAX_FEED_REDIRECTS = 5;
 
 const syncStatuses = new Set(['success', 'partial_success', 'failed', 'skipped', 'provider_not_configured']);
 const activeFeedStatuses = new Set(['active']);
@@ -159,6 +163,147 @@ function parseIcalEvents(icalText) {
     .slice(0, MAX_EVENTS_PER_SYNC);
 }
 
+
+function parseIpv4Address(address) {
+  const parts = String(address || '').split('.');
+  if (parts.length !== 4) return null;
+
+  const octets = parts.map((part) => {
+    if (!/^\d{1,3}$/.test(part)) return Number.NaN;
+    const value = Number(part);
+    return value >= 0 && value <= 255 ? value : Number.NaN;
+  });
+
+  return octets.some(Number.isNaN) ? null : octets;
+}
+
+function normalizeIpAddress(address) {
+  const raw = String(address || '').trim().toLowerCase();
+  const ipv4Mapped = raw.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/);
+  return ipv4Mapped ? ipv4Mapped[1] : raw;
+}
+
+function parseIpv6Address(address) {
+  const raw = String(address || '').toLowerCase().split('%')[0];
+  if (!raw.includes(':')) return null;
+
+  const [head = '', tail = '', extra] = raw.split('::');
+  if (extra !== undefined) return null;
+
+  const parsePart = (part) => (part ? part.split(':').map((piece) => (/^[0-9a-f]{1,4}$/.test(piece) ? parseInt(piece, 16) : Number.NaN)) : []);
+  const headParts = parsePart(head);
+  const tailParts = parsePart(tail);
+  if ([...headParts, ...tailParts].some((part) => Number.isNaN(part) || part < 0 || part > 0xffff)) return null;
+
+  const missing = raw.includes('::') ? 8 - headParts.length - tailParts.length : 0;
+  if (missing < 0) return null;
+
+  const parts = raw.includes('::') ? [...headParts, ...Array(missing).fill(0), ...tailParts] : headParts;
+  return parts.length === 8 ? parts : null;
+}
+
+function getIpv4AddressFromMappedIpv6(address) {
+  const parts = parseIpv6Address(address);
+  if (!parts) return null;
+
+  const isMapped = parts.slice(0, 5).every((part) => part === 0) && (parts[5] === 0xffff || parts[5] === 0);
+  if (!isMapped) return null;
+
+  const [high, low] = parts.slice(6);
+  return `${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`;
+}
+
+function isBlockedIpv4Address(address) {
+  const octets = parseIpv4Address(address);
+  if (!octets) return true;
+
+  const [a, b] = octets;
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 0) ||
+    (a === 192 && b === 2) ||
+    (a === 192 && b === 88) ||
+    (a === 192 && b === 168) ||
+    (a === 198 && (b === 18 || b === 19 || b === 51)) ||
+    (a === 203 && b === 0) ||
+    a >= 224
+  );
+}
+
+function isBlockedIpv6Address(address) {
+  const normalized = normalizeIpAddress(address);
+  if (net.isIP(normalized) === 4) return isBlockedIpv4Address(normalized);
+
+  const mappedIpv4 = getIpv4AddressFromMappedIpv6(normalized);
+  if (mappedIpv4 && isBlockedIpv4Address(mappedIpv4)) return true;
+
+  const parts = parseIpv6Address(normalized);
+  if (!parts) return true;
+
+  const [firstWord] = parts;
+  const isUnspecified = parts.every((part) => part === 0);
+  const isLoopback = parts.slice(0, 7).every((part) => part === 0) && parts[7] === 1;
+
+  return (
+    isUnspecified ||
+    isLoopback ||
+    (firstWord & 0xfe00) === 0xfc00 ||
+    (firstWord & 0xffc0) === 0xfe80 ||
+    (firstWord & 0xff00) === 0xff00
+  );
+}
+
+function isBlockedIpAddress(address) {
+  const normalized = normalizeIpAddress(address);
+  const family = net.isIP(normalized);
+  if (family === 4) return isBlockedIpv4Address(normalized);
+  if (family === 6) return isBlockedIpv6Address(normalized);
+  return true;
+}
+
+async function assertPublicHttpFeedUrl(feedUrl) {
+  let parsed;
+  try {
+    parsed = new URL(feedUrl);
+  } catch {
+    throw new Error('Feed URL must be a valid HTTP or HTTPS URL.');
+  }
+
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error('Feed URL must use HTTP or HTTPS.');
+  }
+
+  const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (!hostname || hostname === 'localhost' || hostname.endsWith('.localhost')) {
+    throw new Error('Feed URL host is not allowed.');
+  }
+
+  const directIpFamily = net.isIP(hostname);
+  if (directIpFamily) {
+    if (isBlockedIpAddress(hostname)) throw new Error('Feed URL host resolves to a private or reserved address.');
+    return parsed;
+  }
+
+  let addresses;
+  try {
+    addresses = await lookup(hostname, { all: true, verbatim: true });
+  } catch {
+    throw new Error('Feed URL host could not be resolved.');
+  }
+  if (!addresses.length) throw new Error('Feed URL host could not be resolved.');
+
+  if (addresses.some((address) => isBlockedIpAddress(address.address))) {
+    throw new Error('Feed URL host resolves to a private or reserved address.');
+  }
+
+  return parsed;
+}
+
 function looksLikeIcalendar(contentType, body) {
   const type = String(contentType || '').toLowerCase();
   const sample = String(body || '').slice(0, 5000).toUpperCase();
@@ -166,41 +311,56 @@ function looksLikeIcalendar(contentType, body) {
 }
 
 async function fetchIcal(url) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  let currentUrl = url;
 
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        Accept: 'text/calendar, application/calendar, text/plain;q=0.9, */*;q=0.5',
-        'User-Agent': 'PropFlow-iCal-Importer/1.0',
-      },
-    });
+  for (let redirectCount = 0; redirectCount <= MAX_FEED_REDIRECTS; redirectCount += 1) {
+    const parsedUrl = await assertPublicHttpFeedUrl(currentUrl);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
-    if (!response.ok) throw new Error(`Feed fetch failed with HTTP ${response.status}.`);
+    try {
+      const response = await fetch(parsedUrl, {
+        signal: controller.signal,
+        redirect: 'manual',
+        headers: {
+          Accept: 'text/calendar, application/calendar, text/plain;q=0.9, */*;q=0.5',
+          'User-Agent': 'PropFlow-iCal-Importer/1.0',
+        },
+      });
 
-    const reader = response.body?.getReader();
-    if (!reader) {
-      const text = await response.text();
-      if (Buffer.byteLength(text, 'utf8') > MAX_ICAL_BYTES) throw new Error('iCal feed exceeds the 2 MB sync limit.');
-      return { body: text, contentType: response.headers.get('content-type') || '' };
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location');
+        if (!location) throw new Error('Feed redirect did not include a Location header.');
+        currentUrl = new URL(location, parsedUrl).toString();
+        continue;
+      }
+
+      if (!response.ok) throw new Error(`Feed fetch failed with HTTP ${response.status}.`);
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        const text = await response.text();
+        if (Buffer.byteLength(text, 'utf8') > MAX_ICAL_BYTES) throw new Error('iCal feed exceeds the 2 MB sync limit.');
+        return { body: text, contentType: response.headers.get('content-type') || '' };
+      }
+
+      const chunks = [];
+      let total = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > MAX_ICAL_BYTES) throw new Error('iCal feed exceeds the 2 MB sync limit.');
+        chunks.push(Buffer.from(value));
+      }
+
+      return { body: Buffer.concat(chunks).toString('utf8'), contentType: response.headers.get('content-type') || '' };
+    } finally {
+      clearTimeout(timeout);
     }
-
-    const chunks = [];
-    let total = 0;
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      total += value.byteLength;
-      if (total > MAX_ICAL_BYTES) throw new Error('iCal feed exceeds the 2 MB sync limit.');
-      chunks.push(Buffer.from(value));
-    }
-
-    return { body: Buffer.concat(chunks).toString('utf8'), contentType: response.headers.get('content-type') || '' };
-  } finally {
-    clearTimeout(timeout);
   }
+
+  throw new Error('iCal feed exceeded the redirect limit.');
 }
 
 function dateRangesOverlap(startA, endA, startB, endB) {
