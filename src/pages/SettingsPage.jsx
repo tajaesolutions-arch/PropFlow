@@ -7,6 +7,7 @@ import {
   CreditCard,
   Database,
   Globe2,
+  History,
   KeyRound,
   Link2,
   Send,
@@ -166,6 +167,42 @@ function getAssignmentMemberName(members, userId) {
   return member ? getMemberName(member) : userId || 'Unknown member';
 }
 
+function humanizeAction(action) {
+  return String(action || 'workspace_activity')
+    .replace(/[._-]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function getActivityActorName(log, members = [], currentUser = null) {
+  const actorId = log.actorUserId || log.actor_user_id;
+  if (!actorId) return 'System';
+  if (actorId === currentUser?.id) return currentUser.fullName || currentUser.full_name || currentUser.email || 'You';
+
+  const member = members.find((item) => getMemberId(item) === actorId);
+  return member ? getMemberName(member) : 'Workspace user';
+}
+
+function getActivityMetadataSummary(log, properties = []) {
+  const metadata = log?.metadata && typeof log.metadata === 'object' ? log.metadata : {};
+  const pieces = [];
+  const propertyId = metadata.property_id || metadata.propertyId;
+  const propertyName = propertyId ? getPropertyName(properties, propertyId) : metadata.property_name;
+
+  if (propertyName && propertyName !== 'Unknown property') pieces.push(propertyName);
+  if (metadata.title) pieces.push(metadata.title);
+  if (metadata.guest_name) pieces.push(`Guest: ${metadata.guest_name}`);
+  if (metadata.email) pieces.push(`Email: ${metadata.email}`);
+  if (metadata.status) pieces.push(`Status: ${humanizeAction(metadata.status)}`);
+  if (metadata.priority) pieces.push(`Priority: ${humanizeAction(metadata.priority)}`);
+  if (metadata.start_date && metadata.end_date) pieces.push(`${metadata.start_date} to ${metadata.end_date}`);
+  if (metadata.check_in && metadata.check_out) pieces.push(`${metadata.check_in} to ${metadata.check_out}`);
+  if (Array.isArray(metadata.changed_fields) && metadata.changed_fields.length) {
+    pieces.push(`Updated: ${metadata.changed_fields.map(humanizeAction).slice(0, 4).join(', ')}`);
+  }
+
+  return pieces.length ? pieces.join(' • ') : 'No additional details saved.';
+}
+
 async function copyToClipboard(value) {
   if (!value) return false;
 
@@ -247,6 +284,8 @@ export function SettingsPage() {
   const {
     currentWorkspace,
     data,
+    dataLoading,
+    dataWarnings,
     createInvite,
     updateWorkspaceMemberStatus,
     revokeWorkspaceInvite,
@@ -266,6 +305,7 @@ export function SettingsPage() {
   const [assignmentBusy, setAssignmentBusy] = React.useState(false);
   const [memberBusyId, setMemberBusyId] = React.useState('');
   const [inviteBusyId, setInviteBusyId] = React.useState('');
+  const [activityFilter, setActivityFilter] = React.useState('all');
 
   const canInvite = hasAnyRole(currentUser, [roles.OWNER_ADMIN]);
   const canManageMembers = hasAnyRole(currentUser, [roles.OWNER_ADMIN]);
@@ -273,11 +313,15 @@ export function SettingsPage() {
   const canOpenBilling = hasAnyRole(currentUser, billingAccessRoles);
   const canViewTeamAccess = hasAnyRole(currentUser, teamVisibilityRoles);
   const canViewCompanyCode = hasAnyRole(currentUser, companyCodeVisibilityRoles);
+  const canViewActivityLogs = hasAnyRole(currentUser, teamVisibilityRoles);
 
   const activeProperties = (data.properties || []).filter((property) => property.status !== 'archived');
   const members = data.members || [];
   const invites = data.invites || [];
   const propertyAssignments = data.propertyAssignments || [];
+  const activityLogs = (data.activityLogs || []).filter((log) => !currentWorkspace?.id || (log.workspace_id || log.workspaceId) === currentWorkspace.id);
+  const activityActionOptions = Array.from(new Set(activityLogs.map((log) => log.action).filter(Boolean))).sort();
+  const visibleActivityLogs = activityFilter === 'all' ? activityLogs : activityLogs.filter((log) => log.action === activityFilter);
   const assignableMembers = members.filter((member) => member.status === 'active');
 
   const workspaceName = getWorkspaceName(currentWorkspace);
@@ -849,6 +893,82 @@ export function SettingsPage() {
           </div>
         )}
       </section>
+
+
+      {canViewActivityLogs ? (
+        <section className="card settings-activity-card">
+          <div className="card-header">
+            <div>
+              <h3>Activity / Audit history</h3>
+              <p>Recent RLS-visible workspace activity for authorized managers. Results are workspace-scoped and limited to the latest 50 records.</p>
+            </div>
+            <History size={20} className="muted" />
+          </div>
+
+          <div className="settings-activity-toolbar">
+            <label>
+              Filter by action
+              <select value={activityFilter} onChange={(event) => setActivityFilter(event.target.value)}>
+                <option value="all">All activity</option>
+                {activityActionOptions.map((action) => (
+                  <option key={action} value={action}>{humanizeAction(action)}</option>
+                ))}
+              </select>
+            </label>
+            <span className="helper">Workspace: {workspaceName}</span>
+          </div>
+
+          {!isSupabaseConfigured ? (
+            <EmptyState
+              compact
+              icon={Database}
+              title="Supabase is not configured"
+              description="Activity logs are skipped safely in local/demo mode until VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are configured."
+            />
+          ) : dataLoading ? (
+            <div className="settings-activity-state" role="status">Loading recent activity…</div>
+          ) : dataWarnings.some((warning) => warning.toLowerCase().includes('activity logs')) ? (
+            <EmptyState
+              compact
+              icon={ShieldCheck}
+              title="Activity logs are not available"
+              description="The database did not return activity logs for this role or workspace. RLS may allow only your own relevant activity, or the foundation migration may still need to be applied."
+            />
+          ) : visibleActivityLogs.length ? (
+            <div className="settings-activity-list">
+              {visibleActivityLogs.map((log) => (
+                <article className="settings-activity-item" key={log.id}>
+                  <div className="settings-activity-main">
+                    <strong>{humanizeAction(log.action)}</strong>
+                    <span>{getActivityMetadataSummary(log, activeProperties)}</span>
+                  </div>
+                  <div className="settings-activity-meta">
+                    <span>{getActivityActorName(log, members, currentUser)}</span>
+                    <span>{workspaceName}</span>
+                    <time dateTime={log.created_at || log.createdAt}>{formatDate(log.created_at || log.createdAt)}</time>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              compact
+              icon={History}
+              title={activityFilter === 'all' ? 'No activity logs yet' : 'No matching activity'}
+              description="Safe audit events will appear here after authorized users create or update records in this workspace."
+            />
+          )}
+        </section>
+      ) : (
+        <section className="card">
+          <EmptyState
+            compact
+            icon={ShieldCheck}
+            title="Activity history is restricted"
+            description="Broad workspace audit history is visible to Workspace Owners / Company Admins and Property Managers when Supabase RLS allows it."
+          />
+        </section>
+      )}
 
       {canViewTeamAccess ? (
         <section className="panel-grid two">

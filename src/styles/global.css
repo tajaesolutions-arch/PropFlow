@@ -7671,3 +7671,87 @@ label {
     display: none;
   }
 }
+
+.settings-activity-card {
+  display: grid;
+  gap: 16px;
+}
+
+.settings-activity-toolbar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.settings-activity-toolbar label {
+  min-width: min(100%, 260px);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.settings-activity-list {
+  display: grid;
+  gap: 10px;
+}
+
+.settings-activity-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 260px);
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.settings-activity-main,
+.settings-activity-meta {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.settings-activity-main strong {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.settings-activity-main span,
+.settings-activity-meta span,
+.settings-activity-meta time,
+.settings-activity-state {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.settings-activity-meta {
+  justify-items: end;
+  text-align: right;
+}
+
+.settings-activity-state {
+  padding: 18px;
+  border: 1px dashed var(--border);
+  border-radius: 16px;
+  background: var(--surface-2);
+}
+
+@media (max-width: 760px) {
+  .settings-activity-toolbar,
+  .settings-activity-item {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-activity-toolbar {
+    display: grid;
+    align-items: stretch;
+  }
+
+  .settings-activity-meta {
+    justify-items: start;
+    text-align: left;
+  }
+}
