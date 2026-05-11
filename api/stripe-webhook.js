@@ -18,6 +18,7 @@ const HANDLED_EVENTS = new Set([
   'customer.subscription.deleted',
   'invoice.payment_failed',
   'invoice.payment_succeeded',
+  'payment_intent.payment_failed',
 ]);
 
 const BILLING_EVENT_BY_STRIPE_EVENT = {
@@ -27,6 +28,7 @@ const BILLING_EVENT_BY_STRIPE_EVENT = {
   'customer.subscription.deleted': 'subscription_canceled',
   'invoice.payment_failed': 'payment_failed',
   'invoice.payment_succeeded': 'payment_succeeded',
+  'payment_intent.payment_failed': 'payment_failed',
 };
 
 function providerNotConfigured(request, response, requiredServerEnv = []) {
@@ -236,8 +238,82 @@ async function updateSubscription(supabaseAdmin, row, patch) {
   return data;
 }
 
+
+async function notifyWorkspaceManagers(supabaseAdmin, workspaceId, eventType, title, body, metadata = {}) {
+  if (!workspaceId) return;
+  const { data: members, error } = await supabaseAdmin
+    .from('workspace_members')
+    .select('user_id, roles, status')
+    .eq('workspace_id', workspaceId)
+    .eq('status', 'active');
+  if (error) throw error;
+
+  const recipients = (members || [])
+    .filter((member) => Array.isArray(member.roles) && member.roles.some((role) => ['workspace_owner', 'property_manager', 'host'].includes(role)))
+    .map((member) => member.user_id)
+    .filter(Boolean);
+  if (!recipients.length) return;
+
+  await supabaseAdmin.from('notifications').insert(recipients.map((recipientUserId) => ({
+    workspace_id: workspaceId,
+    recipient_user_id: recipientUserId,
+    actor_user_id: null,
+    event_type: eventType,
+    type: 'workspace_activity',
+    title,
+    body,
+    message: body,
+    priority: eventType.includes('failed') ? 'high' : 'normal',
+    action_url: '/direct-bookings',
+    metadata,
+    status: 'unread',
+  })));
+}
+
+async function updateDirectBookingPayment(supabaseAdmin, event, paymentStatus) {
+  const object = event.data.object;
+  const metadata = object.metadata || {};
+  const requestId = metadata.direct_booking_request_id || object.client_reference_id || null;
+  if (!requestId || metadata.booking_type !== 'direct_booking') return null;
+
+  const patch = {
+    payment_status: paymentStatus,
+    updated_at: new Date().toISOString(),
+  };
+  if (object.id?.startsWith?.('cs_')) patch.stripe_checkout_session_id = object.id;
+  if (object.payment_intent) patch.stripe_payment_intent_id = asId(object.payment_intent);
+  if (object.id?.startsWith?.('pi_')) patch.stripe_payment_intent_id = object.id;
+
+  const { data: directRequest, error } = await supabaseAdmin
+    .from('direct_booking_requests')
+    .update(patch)
+    .eq('id', requestId)
+    .select('*')
+    .maybeSingle();
+  if (error) throw error;
+  if (!directRequest) return null;
+
+  const succeeded = paymentStatus === 'paid';
+  await logActivity(supabaseAdmin, directRequest.workspace_id, succeeded ? 'direct_booking_payment_succeeded' : 'direct_booking_payment_failed', {
+    direct_booking_request_id: directRequest.id,
+    property_id: directRequest.property_id,
+    stripe_event_id: event.id,
+  });
+  await notifyWorkspaceManagers(
+    supabaseAdmin,
+    directRequest.workspace_id,
+    succeeded ? 'workspace_activity' : 'billing_payment_failed',
+    succeeded ? 'Direct booking payment succeeded' : 'Direct booking payment failed',
+    succeeded ? 'A direct booking request payment succeeded in Stripe Checkout.' : 'A direct booking request payment failed in Stripe Checkout.',
+    { direct_booking_request_id: directRequest.id, property_id: directRequest.property_id, stripe_event_id: event.id },
+  );
+
+  return { workspaceId: directRequest.workspace_id, subscriptionId: null, status: paymentStatus, directBookingRequestId: directRequest.id };
+}
+
 async function processCheckoutCompleted(supabaseAdmin, event) {
   const session = event.data.object;
+  if (session.metadata?.booking_type === 'direct_booking') return updateDirectBookingPayment(supabaseAdmin, event, 'paid');
   const workspaceId = session.metadata?.workspace_id || session.client_reference_id || null;
   const plan = session.metadata?.plan_id || null;
   const stripeCustomerId = asId(session.customer);
@@ -344,6 +420,7 @@ async function processInvoiceEvent(supabaseAdmin, event) {
 
 async function processEvent(supabaseAdmin, event) {
   if (event.type === 'checkout.session.completed') return processCheckoutCompleted(supabaseAdmin, event);
+  if (event.type === 'payment_intent.payment_failed') return updateDirectBookingPayment(supabaseAdmin, event, 'failed') || { workspaceId: null, subscriptionId: null };
   if (event.type.startsWith('customer.subscription.')) return processSubscriptionEvent(supabaseAdmin, event);
   if (event.type.startsWith('invoice.payment_')) return processInvoiceEvent(supabaseAdmin, event);
   return { workspaceId: null, subscriptionId: null };

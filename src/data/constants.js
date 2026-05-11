@@ -189,21 +189,26 @@ export const directBookingPageStatuses = [
 
 export const directBookingRequestStatuses = [
   ['new', 'New'],
+  ['pending', 'Pending'],
   ['under_review', 'Under review'],
   ['approved', 'Approved'],
   ['declined', 'Declined'],
+  ['rejected', 'Rejected'],
   ['converted_to_booking', 'Converted to booking'],
   ['cancelled', 'Cancelled'],
+  ['canceled', 'Canceled'],
+  ['archived', 'Archived'],
 ];
 
 export const directBookingPaymentModes = [
   ['none', 'No online payment'],
+  ['full_payment', 'Full payment via Stripe Checkout'],
   ['full_payment_placeholder', 'Full payment placeholder'],
-  ['deposit_placeholder', 'Deposit placeholder'],
 ];
 
 export const directBookingConfirmationModes = [
   ['manual_approval', 'Manual approval'],
+  ['instant_booking', 'Instant booking after payment'],
   ['instant_booking_placeholder', 'Instant booking placeholder'],
 ];
 
