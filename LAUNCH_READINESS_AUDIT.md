@@ -1,23 +1,46 @@
 # PropFlow Production Launch Readiness Audit
 
-Date: 2026-05-11
-Status: Manual QA checklist
+_Last updated: May 11, 2026_
 
-This document is the working launch-readiness checklist for PropFlow. Use it before adding more features or opening public access.
+This audit is a manual launch-readiness checklist for PropFlow while Codex usage is unavailable. It is documentation-only and does not change application logic.
 
-## 1. Launch decision
+## Current status
 
-PropFlow is not ready for public launch until every P0 item is checked or documented with a clear fix plan.
+PropFlow has recently merged these production-readiness layers:
 
-Priority levels:
+- Supabase database-first MVP foundation
+- Workspace setup and role-based routing
+- Notifications foundation and UI connection
+- Activity logs / audit history connection
+- Workspace/team invite access QA
+- Billing and subscription grace-period UI
+- Stripe Checkout and webhook foundation
+- Stripe Customer Portal foundation
+- Frontend plan limits and feature gating
+- Backend/database plan-limit enforcement
 
-- P0: Launch blocker. Must be fixed before public launch.
-- P1: Important. Should be fixed before paid customers.
-- P2: Nice-to-have. Can be handled after controlled beta.
+The latest checked `main` branch head before this audit branch was the merged plan-limit enforcement commit: `38a8fb9855cdcb8edd678cd085212e6b2b737e23`.
 
-## 2. Key files to inspect
+## Scope
 
-Core app and routing:
+Audit these launch areas before public customer launch:
+
+- App routes
+- Role dashboards
+- Workspace isolation
+- Supabase/RLS
+- Billing/Stripe
+- Plan limits
+- Notifications
+- Activity logs
+- Invites/team access
+- Mobile responsiveness
+- Vercel deployment
+- Missing production TODOs
+
+## Files to inspect manually
+
+### Core app/auth/routing
 
 - `src/routes/AppRouter.jsx`
 - `src/lib/AppContext.jsx`
@@ -25,7 +48,7 @@ Core app and routing:
 - `src/lib/supabase.js`
 - `src/data/constants.js`
 
-Role dashboards:
+### Role dashboards
 
 - `src/pages/DashboardPage.jsx`
 - `src/pages/AdminDashboardPage.jsx`
@@ -34,15 +57,11 @@ Role dashboards:
 - `src/pages/MaintenanceDashboardPage.jsx`
 - `src/pages/AccountantDashboardPage.jsx`
 
-Operational pages:
+### Operational pages
 
 - `src/pages/PropertiesPage.jsx`
 - `src/pages/PropertyDetailPage.jsx`
 - `src/pages/BookingsPage.jsx`
-- `src/pages/LeasesPage.jsx`
-- `src/pages/DirectBookingsPage.jsx`
-- `src/pages/CalendarPage.jsx`
-- `src/pages/CalendarImportsPage.jsx`
 - `src/pages/CleaningPage.jsx`
 - `src/pages/MaintenancePage.jsx`
 - `src/pages/OwnersPage.jsx`
@@ -51,257 +70,286 @@ Operational pages:
 - `src/pages/ExpensesPage.jsx`
 - `src/pages/FilesPage.jsx`
 - `src/pages/InventoryPage.jsx`
+- `src/pages/DirectBookingsPage.jsx`
+- `src/pages/CalendarPage.jsx`
+- `src/pages/CalendarImportsPage.jsx`
+- `src/pages/LeasesPage.jsx`
 
-Billing, plans, and account state:
+### Billing, Stripe, and plan limits
 
 - `src/pages/BillingPage.jsx`
 - `src/pages/PricingPage.jsx`
 - `src/pages/SettingsPage.jsx`
 - `src/lib/billingStatus.js`
 - `src/lib/planLimits.js`
+- Vercel API routes under `api/` for Stripe checkout, portal, and webhook
 
-Notifications, audit trail, and team access:
+### Notifications, activity, team access
 
 - `src/pages/NotificationsPage.jsx`
 - `src/pages/NotificationSettingsPage.jsx`
 - `src/lib/activityLogs.js`
 - `src/pages/JoinWorkspacePage.jsx`
-- `src/pages/SignupPage.jsx`
 - `src/pages/LoginPage.jsx`
+- `src/pages/SignupPage.jsx`
 - `src/pages/SuspendedPage.jsx`
 
-Database and deployment:
+### Database and deployment
 
 - `supabase/migrations/*`
-- backend/API/edge function folders
+- `README.md`
+- `DEPLOYMENT_CHECKLIST.md`
+- `SUPABASE_RUNTIME_TEST_PLAN.md`
+- `VERCEL_RUNTIME_TEST_PLAN.md`
+- `MIGRATION_MANIFEST.md`
 - `package.json`
 - `vite.config.js`
-- `vercel.json`
-- `README.md`
+- `vercel.json` if present
 
-## 3. Manual QA checklist
+## Manual QA checklist
 
-### Public pages
+### 1. Public routes
 
-- [ ] `/` loads while logged out.
-- [ ] `/pricing` loads while logged out.
-- [ ] `/login` loads while logged out.
-- [ ] `/signup` loads while logged out.
-- [ ] `/join` loads while logged out.
-- [ ] Public booking page loads only public booking information.
-- [ ] Buttons on public pages do not route to broken pages.
-- [ ] Public pages work on mobile.
+- [ ] `/` loads while logged out
+- [ ] `/pricing` loads while logged out
+- [ ] `/login` loads while logged out
+- [ ] `/signup` loads while logged out
+- [ ] `/join` loads while logged out
+- [ ] `/suspended` loads safely
+- [ ] `/book/:slug` loads public direct booking page safely when configured
+- [ ] Public pages do not show private workspace data
+- [ ] Public pages are mobile responsive
 
-### Authentication and workspace setup
+### 2. Auth and workspace setup
 
-- [ ] New user can sign up.
-- [ ] Existing user can log in.
-- [ ] User can create a new workspace.
-- [ ] New workspace routes to the correct dashboard.
-- [ ] User with no workspace routes to workspace setup.
-- [ ] Invited user can join a workspace.
-- [ ] Workspace/company code requires a matching invite.
-- [ ] Suspended user routes to suspended/restricted screen.
-- [ ] Logout works.
-- [ ] Login after refresh still loads workspace and role.
+- [ ] New user can sign up
+- [ ] Existing user can log in
+- [ ] User with no workspace is routed to workspace setup
+- [ ] New user can create a workspace
+- [ ] Workspace creator becomes `workspace_owner`
+- [ ] User can log out
+- [ ] User can log back in and return to correct workspace/dashboard
+- [ ] Suspended user is routed to `/suspended`
 
-### Role routing
+### 3. Role dashboard routing
 
-- [ ] PropFlow Admin routes to `/admin`.
-- [ ] Workspace Owner routes to `/dashboard`.
-- [ ] Property Manager routes to `/dashboard`.
-- [ ] Host routes to `/dashboard`.
-- [ ] Accountant routes to accountant/finance view.
-- [ ] Property Owner routes to `/owner-dashboard`.
-- [ ] Cleaner routes to `/cleaner-dashboard`.
-- [ ] Maintenance routes to `/maintenance-dashboard`.
-- [ ] Role dashboards do not show unrelated controls.
+- [ ] PropFlow Admin routes to `/admin`
+- [ ] Workspace Owner routes to `/dashboard`
+- [ ] Property Manager routes to `/dashboard`
+- [ ] Host routes to `/dashboard`
+- [ ] Accountant routes to `/accountant-dashboard` or allowed finance area
+- [ ] Property Owner routes to `/owner-dashboard`
+- [ ] Cleaner routes to `/cleaner-dashboard`
+- [ ] Maintenance routes to `/maintenance-dashboard`
+- [ ] Users cannot access another role dashboard by changing the URL
 
-### Workspace data boundaries
+### 4. Workspace isolation and IDOR checks
 
-Create two workspaces and test from both accounts.
+Create Workspace A and Workspace B, then verify:
 
-- [ ] Workspace A user sees only Workspace A data.
-- [ ] Workspace B user sees only Workspace B data.
-- [ ] Property detail pages require the selected workspace context.
-- [ ] Reports load only for the selected workspace.
-- [ ] Notifications load only for the selected workspace/user context.
-- [ ] Activity logs load only for the selected workspace context.
-- [ ] Files and documents load only for permitted workspace/property/task context.
+- [ ] User A cannot open Workspace B property detail URL
+- [ ] User A cannot open Workspace B booking/report/file URLs
+- [ ] Cleaner assigned to Property A cannot see Property B tasks
+- [ ] Property Owner assigned to Property A cannot see all workspace properties
+- [ ] Maintenance user cannot update unrelated work orders
+- [ ] Notification records are recipient/workspace scoped
+- [ ] Activity logs are workspace scoped
+- [ ] File paths and signed URLs are workspace scoped
 
-### Core workflows
+### 5. Core workflows
 
-As Workspace Owner or Property Manager:
+- [ ] Add Property works
+- [ ] Add Booking works
+- [ ] Add Cleaning Task works
+- [ ] Add Maintenance Work Order works
+- [ ] Add Owner works
+- [ ] Add Guest works
+- [ ] Add Expense works or shows safe placeholder if intentionally incomplete
+- [ ] Create Report works or shows safe placeholder if intentionally incomplete
+- [ ] Upload File works with private bucket configured or shows safe setup error
+- [ ] Create Direct Booking Page works only for allowed plans/roles
+- [ ] Create Calendar Import works or shows safe placeholder if intentionally incomplete
 
-- [ ] Add Property works.
-- [ ] Add Booking works.
-- [ ] Add Cleaning Task works.
-- [ ] Add Maintenance Work Order works.
-- [ ] Add Owner works.
-- [ ] Add Guest works.
-- [ ] Add Expense works.
-- [ ] Create Report works.
-- [ ] Upload File flow is safe and clear.
-- [ ] Create Direct Booking Page works or shows a plan message.
-- [ ] Create Calendar Import works or shows a safe placeholder.
+### 6. Cleaner workflow
 
-### Cleaner workflow
+- [ ] Cleaner sees only assigned cleaning tasks
+- [ ] Cleaner can start a task
+- [ ] Cleaner can mark task in progress
+- [ ] Cleaner can mark task completed/guest ready if allowed
+- [ ] Cleaner can report issue if supported
+- [ ] Cleaner cannot access billing
+- [ ] Cleaner cannot access owner finance/reports unless intentionally allowed
+- [ ] Cleaner cannot invite team members
 
-- [ ] Cleaner sees assigned cleaning tasks only.
-- [ ] Cleaner can start a task.
-- [ ] Cleaner can complete a task.
-- [ ] Cleaner can report an issue.
-- [ ] Cleaner cannot access billing controls.
-- [ ] Cleaner cannot access broad finance/reporting areas.
+### 7. Maintenance workflow
 
-### Maintenance workflow
+- [ ] Maintenance user sees only assigned work orders
+- [ ] Maintenance user can update allowed status fields
+- [ ] Maintenance user can add allowed notes/costs if supported
+- [ ] Maintenance user cannot see unrelated work orders
+- [ ] Maintenance user cannot access billing
+- [ ] Maintenance user cannot access broad workspace finance
 
-- [ ] Maintenance user sees assigned work orders only.
-- [ ] Maintenance user can update status.
-- [ ] Maintenance user can add notes/costs where allowed.
-- [ ] Maintenance user can mark a work order complete.
-- [ ] Maintenance user cannot access unrelated work orders.
-- [ ] Maintenance user cannot access billing controls.
+### 8. Billing and Stripe
 
-### Owner and Accountant workflows
+- [ ] Billing page loads for Workspace Owner
+- [ ] Lower roles cannot open Stripe portal/checkout controls
+- [ ] Missing Stripe env vars show `Stripe billing is not configured yet.` or equivalent safe error
+- [ ] Checkout button calls server-side endpoint only
+- [ ] Customer Portal button calls server-side endpoint only
+- [ ] Webhook verifies Stripe signature
+- [ ] Failed payment/grace-period UI displays correctly
+- [ ] Billing recovery remains available to Workspace Owner/allowed billing roles
 
-- [ ] Property Owner sees only assigned property information.
-- [ ] Property Owner finance view is limited to allowed owner data.
-- [ ] Accountant sees finance/reporting areas.
-- [ ] Accountant does not get broad operational edit controls unless intentionally allowed.
+### 9. Plan limits
 
-### Billing and Stripe
+- [ ] Starter property limit blocks 4th active property
+- [ ] Starter team limit blocks 4th active/pending member if configured that way
+- [ ] Starter monthly owner report limit blocks over-limit creates
+- [ ] Direct booking pages are blocked on Starter if plan rules require Pro/Business
+- [ ] Existing over-limit data remains readable
+- [ ] Frontend shows upgrade message instead of raw SQL error
+- [ ] Direct Supabase/API insert attempts are blocked by database triggers
 
-- [ ] Billing page loads for Workspace Owner.
-- [ ] Billing page hides payment controls from lower roles.
-- [ ] Pricing page shows current plan structure clearly.
-- [ ] Choose plan button handles missing Stripe configuration cleanly.
-- [ ] Manage billing button handles missing Stripe configuration cleanly.
-- [ ] Stripe customer portal is owner-only.
-- [ ] Billing recovery remains available to Workspace Owner.
-- [ ] Staff see a clear restricted-access message when billing status requires it.
+### 10. Notifications
 
-### Plan limits
+- [ ] Notifications page loads
+- [ ] Empty state is clean
+- [ ] Unread badge works
+- [ ] Mark as read works
+- [ ] Archive works
+- [ ] User cannot see another user's private notification
+- [ ] Provider settings show Resend/Twilio placeholder status without exposing secrets
 
-- [ ] Starter property limit shows in UI.
-- [ ] Starter team member limit shows in UI.
-- [ ] Owner report monthly limit shows in UI.
-- [ ] Direct booking locked state works where applicable.
-- [ ] Backend/database limit messages are customer-friendly.
-- [ ] Existing over-limit data is not deleted.
+### 11. Activity logs
 
-### Notifications
+- [ ] Property creation creates an activity log
+- [ ] Booking creation creates an activity log if supported
+- [ ] Invite creation creates an activity log
+- [ ] Notification read/archive creates an activity log if supported
+- [ ] Workspace Owner sees workspace logs
+- [ ] Lower roles do not see broad workspace logs
+- [ ] Metadata is customer-readable and does not expose secrets/tokens
 
-- [ ] Notifications page loads.
-- [ ] Empty state is clean.
-- [ ] Unread badge count works.
-- [ ] Mark as read works.
-- [ ] Archive works.
-- [ ] Notification settings page loads.
-- [ ] Provider status does not claim real sending unless configured.
+### 12. Mobile responsiveness
 
-### Activity logs
+Test at phone width and tablet width:
 
-- [ ] Creating a property logs activity.
-- [ ] Creating a booking logs activity.
-- [ ] Creating a cleaning task logs activity.
-- [ ] Creating a maintenance work order logs activity.
-- [ ] Inviting a team member logs activity.
-- [ ] Marking notifications read/archive logs activity only if intended.
-- [ ] Activity log UI does not show raw JSON by default.
+- [ ] Landing page
+- [ ] Pricing page
+- [ ] Login/signup
+- [ ] Dashboard
+- [ ] Properties
+- [ ] Bookings
+- [ ] Cleaning dashboard
+- [ ] Maintenance dashboard
+- [ ] Owner dashboard
+- [ ] Billing page
+- [ ] Settings page
+- [ ] Notifications page
 
-### Mobile QA
+Pass criteria:
 
-Test on iPhone/mobile width:
+- No horizontal overflow
+- Sidebar/menu is usable
+- Tables stack or scroll cleanly
+- Buttons are tappable
+- Modals fit screen
+- Status badges remain readable
 
-- [ ] Landing page.
-- [ ] Pricing page.
-- [ ] Login/signup.
-- [ ] Main dashboard.
-- [ ] Properties page.
-- [ ] Bookings page.
-- [ ] Cleaning dashboard.
-- [ ] Maintenance dashboard.
-- [ ] Billing page.
-- [ ] Settings page.
-- [ ] Notifications page.
-- [ ] Modals fit small screens.
-- [ ] Tables stack or scroll cleanly.
-- [ ] Sidebar/mobile nav works.
+### 13. Vercel deployment
 
-### Vercel deployment
+- [ ] `npm install` passes locally or in CI
+- [ ] `npm run build` passes locally or in CI
+- [ ] Vercel production deployment succeeds
+- [ ] Vercel preview deployment succeeds
+- [ ] Required frontend env vars are configured
+- [ ] Required server-only env vars are not exposed as `VITE_*`
+- [ ] Refreshing protected routes does not create blank pages
+- [ ] Browser console has no launch-blocking runtime errors
 
-- [ ] `npm run build` passes.
-- [ ] Vercel preview deploy passes.
-- [ ] Vercel production deploy passes.
-- [ ] Required frontend env vars exist.
-- [ ] Server-only env vars are not exposed to Vite frontend.
-- [ ] Refreshing protected routes does not produce a blank screen.
-- [ ] Browser console has no critical runtime errors.
+## Launch blockers
 
-## 4. P0 launch blockers
+Do not launch publicly while any of these are true:
 
-Do not launch publicly if any of these fail:
+### Security blockers
 
-- Login/signup does not work.
-- Workspace creation does not work.
-- Invite/join workspace flow does not work.
-- Main dashboard fails after login.
-- Add Property fails.
-- Add Booking fails.
-- Add Cleaning Task fails.
-- Add Maintenance Work Order fails.
-- Workspace data appears in the wrong workspace.
-- Cleaner or Maintenance roles can see broad billing/finance data.
-- Customer users can assign platform-level admin roles.
-- Billing recovery blocks the Workspace Owner.
-- Vercel production deploy fails.
-- Mobile cleaner/maintenance workflows are unusable.
+- A user can access another workspace's data by changing an ID in the URL
+- A lower role can access billing, owner finance, or unrelated operational records
+- Customer workspace users can create or assign `propflow_admin`
+- Company/workspace code alone lets random users join
+- Private storage files are public
+- Supabase service-role key, Stripe secret key, Twilio token, or Resend key is exposed to frontend
+- Any private customer table has broad `using (true)` / `with check (true)` policies
 
-## 5. P1 pre-paid-customer fixes
+### Product blockers
 
-- Improve empty states on all core pages.
-- Confirm all plan-limit messages are clear.
-- Confirm reports/export placeholders are honest if not fully connected.
-- Confirm file upload privacy and document access rules.
-- Confirm notification provider settings are honest about Resend/Twilio status.
-- Confirm Stripe webhook status sync with test-mode events.
+- Login or signup fails
+- Workspace creation fails
+- Main dashboard fails after login
+- Add Property fails
+- Add Booking fails if bookings are considered launch-critical
+- Invite Team Member fails
+- Cleaner/Maintenance mobile workflows are unusable
+- Billing recovery blocks the owner from fixing payment status
 
-## 6. P2 post-beta improvements
+### Deployment blockers
 
-- More advanced dashboard charts.
-- AI tools implementation.
-- Automated email/SMS/WhatsApp sending.
-- Advanced owner report scheduling.
-- Usage-based billing.
-- Coupons and promotional codes.
-- Advanced admin analytics.
-- Deeper Airbnb/Booking.com/Vrbo integrations.
+- `npm run build` fails
+- Vercel deployment fails
+- Supabase migrations are not applied in order
+- Required env vars are missing in production
 
-## 7. Non-coder test order
+## Nice-to-have fixes after launch-readiness pass
 
-Use this order when manually testing:
+These should not block a controlled MVP beta unless severe:
 
-1. Sign up with a fresh email.
-2. Create a workspace.
-3. Add a property.
-4. Add a booking.
-5. Add a cleaning task.
-6. Add a maintenance work order.
-7. Invite a cleaner.
-8. Log in as the cleaner.
-9. Confirm cleaner sees only assigned cleaning work.
-10. Invite a maintenance user.
-11. Log in as maintenance.
-12. Confirm maintenance sees only assigned work orders.
-13. Open billing as Workspace Owner.
-14. Test mobile.
-15. Review notifications and activity logs.
+- Advanced chart polish
+- More dashboard animations
+- Real email/SMS/WhatsApp sending
+- AI tools implementation
+- Usage-based billing
+- Coupons/discounts
+- Custom invoice UI
+- Full channel integrations
+- Advanced owner report scheduling
+- PDF/CSV exports
+- Full public direct booking payment flow
 
-## 8. Findings log
+## Recommended non-coder test order
 
-Add findings here during manual QA.
+1. Sign up with a fresh email
+2. Create a workspace
+3. Add one property
+4. Add one booking
+5. Add one cleaning task
+6. Add one maintenance work order
+7. Invite a cleaner
+8. Log in as the cleaner
+9. Confirm cleaner sees only assigned cleaning work
+10. Invite a maintenance user
+11. Log in as maintenance
+12. Confirm maintenance sees only assigned work orders
+13. Open billing as Workspace Owner
+14. Test mobile
+15. Review notifications and activity logs
+16. Try opening another workspace's record URL and confirm no access
 
-| Date | Area | Issue | Severity | Status | Notes |
-| --- | --- | --- | --- | --- | --- |
-| 2026-05-11 | Launch audit | Initial checklist created | P2 | Open | Manual QA pending |
+## Result tracking
+
+Use this table while testing:
+
+| Area | Status | Notes | Blocker? |
+| --- | --- | --- | --- |
+| Public routes | Not tested |  |  |
+| Signup/login | Not tested |  |  |
+| Workspace setup | Not tested |  |  |
+| Role routing | Not tested |  |  |
+| Workspace isolation | Not tested |  |  |
+| Core workflows | Not tested |  |  |
+| Billing/Stripe | Not tested |  |  |
+| Plan limits | Not tested |  |  |
+| Notifications | Not tested |  |  |
+| Activity logs | Not tested |  |  |
+| Mobile | Not tested |  |  |
+| Vercel | Not tested |  |  |
