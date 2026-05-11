@@ -799,6 +799,11 @@ function requireSupabase() {
 }
 
 const PLAN_LIMIT_ERROR_MESSAGES = [
+  'Your current plan has reached the property limit. Upgrade your plan to add more properties.',
+  'Your current plan has reached the team member limit. Upgrade your plan to invite more team members.',
+  'Your current plan has reached the owner report limit for this month. Upgrade your plan or wait until next month.',
+  'Direct booking pages are not available on this plan.',
+  'Your workspace billing needs attention before adding premium records.',
   'Plan property limit reached. Upgrade your plan to add more properties.',
   'Plan team member limit reached. Upgrade your plan to invite more team members.',
   'Monthly owner report limit reached. Upgrade your plan or wait until next month.',
@@ -806,17 +811,37 @@ const PLAN_LIMIT_ERROR_MESSAGES = [
   'Billing recovery is required before premium workspace operations can continue.',
 ];
 
+const PLAN_LIMIT_ERROR_MAP = new Map([
+  ['Plan property limit reached. Upgrade your plan to add more properties.', 'Your current plan has reached the property limit. Upgrade your plan to add more properties.'],
+  ['Plan team member limit reached. Upgrade your plan to invite more team members.', 'Your current plan has reached the team member limit. Upgrade your plan to invite more team members.'],
+  ['Monthly owner report limit reached. Upgrade your plan or wait until next month.', 'Your current plan has reached the owner report limit for this month. Upgrade your plan or wait until next month.'],
+  ['Direct booking pages are available on Pro and Business plans.', 'Direct booking pages are not available on this plan.'],
+  ['Billing recovery is required before premium workspace operations can continue.', 'Your workspace billing needs attention before adding premium records.'],
+]);
+
 function formatSupabaseError(error, fallback = 'The database action failed.') {
   if (!error) return fallback;
 
   const parts = [error.message, error.details, error.hint].filter(Boolean);
   const message = parts.join(' ');
+  const lowerMessage = message.toLowerCase();
 
   const planLimitMessage = PLAN_LIMIT_ERROR_MESSAGES.find((safeMessage) => message.includes(safeMessage));
-  if (planLimitMessage) return planLimitMessage;
+  if (planLimitMessage) return PLAN_LIMIT_ERROR_MAP.get(planLimitMessage) || planLimitMessage;
 
-  if (error.code === 'P0001' && message.toLowerCase().includes('plan')) {
+  if (error.code === 'P0001' && (lowerMessage.includes('plan') || lowerMessage.includes('billing'))) {
     return 'This action is blocked by your workspace plan limits. Upgrade your plan to continue.';
+  }
+
+  if (error.code === '23505') return 'A record with these details already exists.';
+  if (error.code === '23503') return 'This record is linked to missing or unavailable workspace data.';
+  if (error.code === '23514') return 'This record does not meet PropFlow workspace rules.';
+  if (error.code === '42501' || lowerMessage.includes('row-level security')) {
+    return 'You do not have permission to complete this action.';
+  }
+
+  if (/sqlstate|\bp\d{4}\b|function|trigger|stack|json|undefined|null/i.test(message)) {
+    return fallback;
   }
 
   return message || fallback;

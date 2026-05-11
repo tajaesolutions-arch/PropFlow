@@ -138,6 +138,8 @@ supabase/migrations/202605100017_leases_long_term_rentals_foundation.sql
 supabase/migrations/202605100018_ical_calendar_import_foundation.sql
 supabase/migrations/202605100019_platform_admin_foundation.sql
 supabase/migrations/202605100020_production_readiness_rls_patch.sql
+supabase/migrations/202605110001_workspace_invite_assignment_update_trigger.sql
+supabase/migrations/202605110002_plan_limits_enforcement.sql
 ```
 
 After migrations, create the founder/team account through Supabase Auth, then manually bootstrap SaaS-level admin access from a trusted SQL console only:
@@ -180,6 +182,7 @@ Create the Supabase Storage bucket named `workspace-files` as **private**. Apply
 - Property Manager/Host can access intended operational pages and cannot access platform admin.
 - Property Owner, Cleaner, Maintenance Crew, and Accountant dashboards show role-scoped real data/empty states only.
 - Billing-restricted workspaces show recovery messaging and keep owner/accountant billing recovery available.
+- Frontend plan gates are UX-only; the database/backend plan-limit helpers and triggers are the production enforcement source of truth for active properties, team members, owner reports, direct booking pages, advanced reports, AI-tool preview gates, and priority-support flags.
 - Public direct booking requests validate min/max nights, date overlap, imported iCal blocks, and privileged fields at both frontend and RLS policy layers.
 - Mobile smoke test the sidebar/topbar, tables, modals, public booking form, and admin dashboard at 390px and 768px widths.
 
@@ -821,6 +824,8 @@ supabase/migrations/202605100017_leases_long_term_rentals_foundation.sql
 supabase/migrations/202605100018_ical_calendar_import_foundation.sql
 supabase/migrations/202605100019_platform_admin_foundation.sql
 supabase/migrations/202605100020_production_readiness_rls_patch.sql
+supabase/migrations/202605110001_workspace_invite_assignment_update_trigger.sql
+supabase/migrations/202605110002_plan_limits_enforcement.sql
 ```
 
 Important migration notes:

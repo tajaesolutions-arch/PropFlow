@@ -120,7 +120,7 @@ declare
   active_property_count integer;
 begin
   if public.workspace_is_billing_restricted(new.workspace_id) then
-    raise exception 'Billing recovery is required before premium workspace operations can continue.' using errcode = 'P0001';
+    raise exception 'Your workspace billing needs attention before adding premium records.' using errcode = 'P0001';
   end if;
 
   property_limit := public.workspace_plan_limit(new.workspace_id, 'max_properties');
@@ -136,7 +136,7 @@ begin
     and p.archived_at is null;
 
   if active_property_count >= property_limit then
-    raise exception 'Plan property limit reached. Upgrade your plan to add more properties.' using errcode = 'P0001';
+    raise exception 'Your current plan has reached the property limit. Upgrade your plan to add more properties.' using errcode = 'P0001';
   end if;
 
   return new;
@@ -163,7 +163,7 @@ begin
   end if;
 
   if public.workspace_is_billing_restricted(new.workspace_id) then
-    raise exception 'Billing recovery is required before premium workspace operations can continue.' using errcode = 'P0001';
+    raise exception 'Your workspace billing needs attention before adding premium records.' using errcode = 'P0001';
   end if;
 
   if coalesce(new.status, 'active') <> 'active' then
@@ -182,7 +182,7 @@ begin
     and wm.status = 'active';
 
   if active_member_count >= team_limit then
-    raise exception 'Plan team member limit reached. Upgrade your plan to invite more team members.' using errcode = 'P0001';
+    raise exception 'Your current plan has reached the team member limit. Upgrade your plan to invite more team members.' using errcode = 'P0001';
   end if;
 
   return new;
@@ -210,7 +210,7 @@ begin
   end if;
 
   if public.workspace_is_billing_restricted(new.workspace_id) then
-    raise exception 'Billing recovery is required before premium workspace operations can continue.' using errcode = 'P0001';
+    raise exception 'Your workspace billing needs attention before adding premium records.' using errcode = 'P0001';
   end if;
 
   if coalesce(new.status, 'pending') <> 'pending' then
@@ -236,7 +236,7 @@ begin
     and (wi.expires_at is null or wi.expires_at > now());
 
   if active_member_count + pending_invite_count >= team_limit then
-    raise exception 'Plan team member limit reached. Upgrade your plan to invite more team members.' using errcode = 'P0001';
+    raise exception 'Your current plan has reached the team member limit. Upgrade your plan to invite more team members.' using errcode = 'P0001';
   end if;
 
   return new;
@@ -261,7 +261,7 @@ declare
   next_month_start timestamptz;
 begin
   if public.workspace_is_billing_restricted(new.workspace_id) then
-    raise exception 'Billing recovery is required before premium workspace operations can continue.' using errcode = 'P0001';
+    raise exception 'Your workspace billing needs attention before adding premium records.' using errcode = 'P0001';
   end if;
 
   report_limit := public.workspace_plan_limit(new.workspace_id, 'max_owner_reports_per_month');
@@ -280,7 +280,7 @@ begin
     and reports.created_at < next_month_start;
 
   if monthly_report_count >= report_limit then
-    raise exception 'Monthly owner report limit reached. Upgrade your plan or wait until next month.' using errcode = 'P0001';
+    raise exception 'Your current plan has reached the owner report limit for this month. Upgrade your plan or wait until next month.' using errcode = 'P0001';
   end if;
 
   return new;
@@ -319,11 +319,11 @@ begin
   end if;
 
   if public.workspace_is_billing_restricted(new.workspace_id) then
-    raise exception 'Billing recovery is required before premium workspace operations can continue.' using errcode = 'P0001';
+    raise exception 'Your workspace billing needs attention before adding premium records.' using errcode = 'P0001';
   end if;
 
   if not public.workspace_can_use_feature(new.workspace_id, 'direct_booking_pages') then
-    raise exception 'Direct booking pages are available on Pro and Business plans.' using errcode = 'P0001';
+    raise exception 'Direct booking pages are not available on this plan.' using errcode = 'P0001';
   end if;
 
   return new;
