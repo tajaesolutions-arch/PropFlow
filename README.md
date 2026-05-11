@@ -944,3 +944,29 @@ Supported one-way iCal providers for the MVP foundation are Airbnb iCal, Booking
 Calendar visibility remains role-safe: Workspace Owners/Company Admins, Property Managers, and Hosts can manage iCal feeds and imported events for their workspace; assigned Property Owners can view imported blocks for assigned properties without seeing feed URLs; cleaners and maintenance users continue to see their assigned cleaning/work-order schedules and booking context through existing task-scoped RLS; suspended/revoked users are excluded by active workspace-membership checks. No policy grants global `USING (true)` access to customer calendar data.
 
 Known future TODOs: automatic scheduled iCal sync, two-way channel manager sync, full Airbnb/Booking.com/Vrbo API integrations, Google Calendar OAuth, automated reminders, conflict detection UX expansion, and advanced availability rules. None of those future integrations are added in this MVP foundation.
+
+### Direct booking request + payment foundation hardening
+
+PropFlow now treats public direct booking as a safe request-first MVP workflow. Public `/book/:slug` pages load only the safe public page/property fields returned by the direct-booking RPCs, show stay rules and rate previews where configured, and submit booking requests through `/api/create-direct-booking-request` instead of writing directly to Supabase from the browser. The endpoint validates the public page slug/page id, active published page status, property/workspace ownership, guest name, email format, check-in/check-out dates, stay length, adult/child counts, required phone/message rules, and availability before inserting a request.
+
+Manual approval remains the default. Manual pages create `direct_booking_requests` rows with a manager-review status and `payment_status = not_required`. If a page is explicitly configured for `booking_mode = instant_booking` and `payment_mode = full_payment`, the server endpoint may start Stripe Checkout after validation and returns only the request id, status, safe message, and Checkout URL. Stripe secrets stay server-only; the frontend never imports or reads `STRIPE_SECRET_KEY`, and the Supabase service-role key is used only by serverless endpoints.
+
+Direct booking Stripe Checkout sessions use payment metadata for `workspace_id`, `property_id`, `direct_booking_request_id`, and `booking_type = direct_booking`. The Stripe webhook updates `direct_booking_requests.payment_status` to `paid` or `failed`, stores safe Stripe session/payment-intent ids, and creates non-blocking notifications/activity logs for managers. The webhook does not automate refunds and does not add deposit logic.
+
+Availability checks now use a shared helper for normalized date ranges, overlap detection, availability blocks, conflict detection, and clean conflict messages. Public request submission and manager conversion both re-check active bookings, imported calendar blocks, and approved/paid/converted direct booking requests. Pending unpaid requests do not block availability by default. Conversion creates a normal internal booking through the existing booking workflow, so converted direct bookings appear on the Bookings and Calendar pages and contribute to existing occupancy/report calculations without duplicating imported iCal events.
+
+Workspace Owners/Company Admins, Property Managers, and Hosts manage direct booking pages and requests from the dashboard. They can view page status, copy public links, filter requests by workflow/payment status, approve/reject requests, and convert approved/paid requests to bookings after conflicts are checked again. Assigned Property Owners receive read-only visibility for assigned-property requests through RLS; cleaners and maintenance users do not receive public booking request/payment detail access from this foundation. Suspended users remain blocked by active membership/profile/workspace checks.
+
+Database hardening keeps the existing `direct_booking_pages` and `direct_booking_requests` tables instead of duplicating them. The latest migration adds adults/children, payment status, Stripe Checkout session id, Stripe payment-intent id, payment/status constraints, indexes, removes anonymous direct inserts, and relies on the validated server endpoint for public submissions. Public guests cannot read request rows, private workspace data, private property records, payments, notifications, activity logs, or files.
+
+Known future TODOs:
+
+- Deposit payments.
+- Refund automation.
+- Automated guest emails through Resend.
+- Automated guest SMS/WhatsApp through Twilio.
+- Guest portal accounts.
+- Advanced availability and pricing rules.
+- Coupon codes.
+- Full Airbnb/Booking.com/Vrbo channel-manager integrations.
+- Automated cleaning task creation from converted direct bookings.

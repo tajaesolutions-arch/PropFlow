@@ -116,7 +116,9 @@ function requestMatches(request, filters) {
   const query = filters.query.trim().toLowerCase();
   const haystack = [request.guestName, request.guestEmail, request.guestPhone, request.property].filter(Boolean).join(' ').toLowerCase();
   if (query && !haystack.includes(query)) return false;
-  if (filters.status && request.status !== filters.status) return false;
+  if (filters.status === 'paid') {
+    if ((request.paymentStatus || request.payment_status) !== 'paid') return false;
+  } else if (filters.status && request.status !== filters.status) return false;
   if (filters.propertyId && (request.propertyId || request.property_id) !== filters.propertyId) return false;
   if (filters.start && (request.checkIn || request.check_in || '') < filters.start) return false;
   if (filters.end && (request.checkIn || request.check_in || '') > filters.end) return false;
@@ -163,6 +165,7 @@ export function DirectBookingsPage() {
   const publishedCount = pages.filter((page) => page.status === 'published').length;
   const newRequestCount = requests.filter((request) => request.status === 'new').length;
   const approvedCount = requests.filter((request) => request.status === 'approved').length;
+  const paidCount = requests.filter((request) => (request.paymentStatus || request.payment_status) === 'paid').length;
 
   function updateForm(key, value) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -241,6 +244,7 @@ export function DirectBookingsPage() {
     { key: 'dates', label: 'Dates', render: (row) => `${formatDate(row.checkIn || row.check_in)} → ${formatDate(row.checkOut || row.check_out)}` },
     { key: 'guestCount', label: 'Guests', render: (row) => row.guestCount || row.guest_count || 1 },
     { key: 'status', label: 'Status', render: (row) => <StatusBadge>{requestStatusLabels[row.status] || row.status}</StatusBadge> },
+    { key: 'payment', label: 'Payment', render: (row) => <StatusBadge>{row.paymentStatus || row.payment_status || 'not_required'}</StatusBadge> },
     { key: 'total', label: 'Quote', render: (row) => row.quotedTotal || row.quoted_total ? formatCurrency(row.quotedTotal || row.quoted_total, row.currency) : '—' },
     { key: 'submitted', label: 'Submitted', render: (row) => formatDate(row.createdAt || row.created_at) },
     { key: 'message', label: 'Message', render: (row) => <small>{String(row.message || '—').slice(0, 90)}</small> },
@@ -257,7 +261,7 @@ export function DirectBookingsPage() {
             value={declineReasons[row.id] || ''}
             onChange={(event) => setDeclineReasons((value) => ({ ...value, [row.id]: event.target.value }))}
           />
-          <button type="button" onClick={() => runAction(() => reviewDirectBookingRequest(row.id, 'declined', { decline_reason: declineReasons[row.id] }), 'Request declined.')}>Decline</button>
+          <button type="button" onClick={() => runAction(() => reviewDirectBookingRequest(row.id, 'rejected', { decline_reason: declineReasons[row.id] }), 'Request rejected.')}>Reject</button>
           <button type="button" className="primary" onClick={() => runAction(() => convertDirectBookingRequestToBooking(row.id), 'Request converted into an internal pending booking.')}>Convert</button>
         </div>
       ),
@@ -283,7 +287,7 @@ export function DirectBookingsPage() {
         <StatCard label="Public pages" value={pages.length} icon={Globe2} subtitle={`${publishedCount} published`} />
         <StatCard label="New requests" value={newRequestCount} icon={Inbox} subtitle="Awaiting manager review" tone="warning" />
         <StatCard label="Approved" value={approvedCount} icon={CheckCircle2} subtitle="Ready to convert manually" tone="success" />
-        <StatCard label="Payment mode" value="Placeholder" icon={CreditCard} subtitle="No live guest checkout" tone="warning" />
+        <StatCard label="Paid requests" value={paidCount} icon={CreditCard} subtitle="Stripe Checkout status from webhooks" tone="success" />
       </section>
 
       {(message || error) && <section className={error ? 'modal-error' : 'helper success-helper'}>{error || message}</section>}
@@ -293,7 +297,7 @@ export function DirectBookingsPage() {
           <div>
             <p className="eyebrow">Page setup</p>
             <h2>{form.id ? 'Edit direct booking page' : 'Create direct booking page'}</h2>
-            <p>Manual approval is the safe default. Payment placeholders do not collect card details or call SaaS billing checkout.</p>
+            <p>Manual approval is the safe default. Full-payment instant booking starts Stripe Checkout only from the public server endpoint.</p>
           </div>
           <button type="button" onClick={() => setForm(toPageForm(null, properties, currentWorkspace))} disabled={directBookingLocked} title={directBookingLocked ? getUpgradeMessage(FEATURE_KEYS.DIRECT_BOOKING_PAGES, workspacePlan.key) : undefined}><Plus size={16} /> New page</button>
         </div>
@@ -377,7 +381,7 @@ export function DirectBookingsPage() {
         <div className="direct-booking-filters">
           <label>Search<input value={filters.query} onChange={(event) => setFilters((value) => ({ ...value, query: event.target.value }))} placeholder="Guest name or email" /></label>
           <label>Property<select value={filters.propertyId} onChange={(event) => setFilters((value) => ({ ...value, propertyId: event.target.value }))}><option value="">All properties</option>{properties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select></label>
-          <label>Request status<select value={filters.status} onChange={(event) => setFilters((value) => ({ ...value, status: event.target.value }))}><option value="">All request statuses</option>{directBookingRequestStatuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label>Request status<select value={filters.status} onChange={(event) => setFilters((value) => ({ ...value, status: event.target.value }))}><option value="">All request statuses</option>{[...directBookingRequestStatuses, ['paid', 'Paid']].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label>Page status<select value={filters.pageStatus} onChange={(event) => setFilters((value) => ({ ...value, pageStatus: event.target.value }))}><option value="">All page statuses</option>{directBookingPageStatuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label>From<input type="date" value={filters.start} onChange={(event) => setFilters((value) => ({ ...value, start: event.target.value }))} /></label>
           <label>To<input type="date" value={filters.end} onChange={(event) => setFilters((value) => ({ ...value, end: event.target.value }))} /></label>

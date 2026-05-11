@@ -26,7 +26,8 @@ const initialForm = {
   guest_phone: '',
   check_in: '',
   check_out: '',
-  guest_count: '1',
+  adults: '1',
+  children: '0',
   message: '',
 };
 
@@ -91,11 +92,14 @@ function validateForm(form, page, unavailableRanges) {
     if (overlaps) errors.push('Those dates overlap an unavailable stay. Please choose different dates.');
   }
 
-  const guests = Number(form.guest_count || 1);
-  if (!Number.isInteger(guests) || guests < 1) errors.push('Guest count must be at least 1.');
+  const adults = Number(form.adults || 1);
+  const children = Number(form.children || 0);
+  if (!Number.isInteger(adults) || adults < 1) errors.push('At least one adult is required.');
+  if (!Number.isInteger(children) || children < 0) errors.push('Children must be zero or more.');
 
   if (isBookingRequest && !page.allowBookingRequests) errors.push('Booking requests are currently paused for this property.');
   if (!isBookingRequest && !page.allowInquiries) errors.push('General inquiries are currently paused for this property.');
+  if (!isBookingRequest) errors.push('Please submit a booking request from this public page.');
 
   return errors;
 }
@@ -110,7 +114,7 @@ function InfoPill({ icon: Icon, label, value }) {
   );
 }
 
-function SuccessView({ page, onReset }) {
+function SuccessView({ page, checkoutUrl, onReset }) {
   return (
     <div className="public-page public-booking-page">
       <nav className="public-nav public-booking-nav">
@@ -122,9 +126,9 @@ function SuccessView({ page, onReset }) {
           <EmptyState
             eyebrow="Request sent"
             icon={CheckCircle2}
-            title="Your request was sent."
-            description="Your request was sent. The property manager will review and confirm availability."
-            action={<button type="button" className="primary" onClick={onReset}>Send another request</button>}
+            title={checkoutUrl ? 'Your request was submitted.' : 'Your booking request was submitted.'}
+            description={checkoutUrl ? 'Continue to secure payment. The host will review and confirm your booking after payment and availability checks.' : 'Your booking request was submitted. The host will review it and contact you.'}
+            action={checkoutUrl ? <button type="button" className="primary" onClick={() => { window.location.href = checkoutUrl; }}>Continue to secure payment</button> : <button type="button" className="primary" onClick={onReset}>Send another request</button>}
             secondaryAction={<button type="button" onClick={() => navigate(`/book/${page.slug}`)}>Back to property</button>}
           />
         </div>
@@ -142,6 +146,7 @@ export function PublicDirectBookingPage() {
   const [saving, setSaving] = React.useState(false);
   const [errors, setErrors] = React.useState([]);
   const [submitted, setSubmitted] = React.useState(false);
+  const [checkoutUrl, setCheckoutUrl] = React.useState('');
 
   React.useEffect(() => {
     let mounted = true;
@@ -165,7 +170,7 @@ export function PublicDirectBookingPage() {
 
       if (!mounted) return;
 
-      if (pageError) setErrors([pageError.message || 'Public booking page could not be loaded.']);
+      if (pageError) setErrors(['This booking page is not currently accepting requests.']);
       if (rangeError) console.warn('[PropFlow] Public unavailable date ranges could not be loaded', rangeError);
 
       setPage(normalizePage(Array.isArray(pageRows) ? pageRows[0] : pageRows));
@@ -184,7 +189,8 @@ export function PublicDirectBookingPage() {
   const quotedRate = page?.baseRate && nights > 0 ? Number(page.baseRate) * nights : null;
   const quotedCleaning = page?.cleaningFee ? Number(page.cleaningFee) : null;
   const quotedTotal = quotedRate !== null ? quotedRate + (quotedCleaning || 0) : null;
-  const paymentPlaceholder = page && page.paymentMode !== 'none';
+  const instantCheckoutEnabled = page?.bookingMode === 'instant_booking' && page?.paymentMode === 'full_payment';
+  const paymentPlaceholder = page && page.paymentMode !== 'none' && !instantCheckoutEnabled;
 
   const set = (key) => (event) => {
     setForm((value) => ({ ...value, [key]: event.target.value }));
@@ -201,44 +207,39 @@ export function PublicDirectBookingPage() {
     setSaving(true);
 
     const payload = {
-      workspace_id: page.workspace_id,
-      property_id: page.property_id,
+      slug: page.slug,
       direct_booking_page_id: page.id,
-      inquiry_type: form.inquiry_type,
-      status: 'new',
       guest_name: form.guest_name.trim(),
       guest_email: form.guest_email.trim().toLowerCase(),
       guest_phone: form.guest_phone.trim() || null,
-      check_in: form.inquiry_type === 'booking_request' ? form.check_in : null,
-      check_out: form.inquiry_type === 'booking_request' ? form.check_out : null,
-      guest_count: Number(form.guest_count || 1),
+      check_in: form.check_in,
+      check_out: form.check_out,
+      adults: Number(form.adults || 1),
+      children: Number(form.children || 0),
       message: form.message.trim() || null,
-      quoted_rate: quotedRate,
-      quoted_cleaning_fee: quotedCleaning,
-      quoted_total: quotedTotal,
-      currency: page.currency || null,
-      source: 'direct_booking_page',
-      metadata: {},
+      success_url: `/book/${page.slug}?payment=success`,
+      cancel_url: `/book/${page.slug}?payment=canceled`,
     };
 
-    const { error: insertError } = await supabase.from('direct_booking_requests').insert(payload);
-
-    setSaving(false);
-
-    if (insertError) {
-      const message = String(insertError.message || '').toLowerCase();
-      const friendlyMessage = message.includes('row-level security') || message.includes('violates')
-        ? 'Request could not be sent because the dates, stay rules, or page availability no longer pass server validation. Refresh the page and choose different dates.'
-        : insertError.message || 'Request could not be sent. Please try again.';
-      setErrors([friendlyMessage]);
-      return;
+    try {
+      const response = await fetch('/api/create-direct-booking-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok && response.status !== 202) throw new Error(result.message || 'Request could not be submitted. Please try again.');
+      setCheckoutUrl(result.checkoutUrl || '');
+      setSubmitted(true);
+    } catch (submitError) {
+      setErrors([submitError.message || 'Request could not be submitted. Please try again.']);
+    } finally {
+      setSaving(false);
     }
-
-    setSubmitted(true);
   }
 
   if (submitted && page) {
-    return <SuccessView page={page} onReset={() => { setForm(initialForm); setErrors([]); setSubmitted(false); }} />;
+    return <SuccessView page={page} checkoutUrl={checkoutUrl} onReset={() => { setForm(initialForm); setErrors([]); setCheckoutUrl(''); setSubmitted(false); }} />;
   }
 
   if (loading) {
@@ -281,7 +282,7 @@ export function PublicDirectBookingPage() {
             <h1>{page.headline || page.page_title || page.propertyName}</h1>
             <p>{page.description || 'Send a request directly to the property manager. Availability and payment instructions are confirmed after review.'}</p>
             <div className="hero-actions">
-              <StatusBadge tone="warning">Manual approval</StatusBadge>
+              <StatusBadge tone={instantCheckoutEnabled ? 'success' : 'warning'}>{instantCheckoutEnabled ? 'Book now with secure payment' : 'Manual approval'}</StatusBadge>
               <StatusBadge tone="info">Availability subject to confirmation</StatusBadge>
             </div>
           </div>
@@ -321,7 +322,7 @@ export function PublicDirectBookingPage() {
               <div className="public-booking-safety-grid">
                 <span><ShieldCheck size={16} /><strong>Manager review</strong><small>Requests do not become internal bookings until converted.</small></span>
                 <span><CalendarDays size={16} /><strong>Availability</strong><small>Unavailable ranges are blocked when detected; confirmation is still manual.</small></span>
-                <span><CreditCard size={16} /><strong>Payment</strong><small>{paymentPlaceholder ? 'Online payment is not active yet. The property manager will confirm payment instructions after review.' : 'No online payment is collected on this page.'}</small></span>
+                <span><CreditCard size={16} /><strong>Payment</strong><small>{instantCheckoutEnabled ? 'Stripe Checkout starts after request validation.' : paymentPlaceholder ? 'Online payment is not active yet. The property manager will confirm payment instructions after review.' : 'No online payment is collected on this page.'}</small></span>
               </div>
             </section>
 
@@ -339,8 +340,8 @@ export function PublicDirectBookingPage() {
             <div className="card-header">
               <div>
                 <p className="eyebrow">Request availability</p>
-                <h2>Send booking request</h2>
-                <p>Online payment is not active yet. The property manager will confirm payment instructions after review.</p>
+                <h2>{instantCheckoutEnabled ? 'Book now' : 'Send booking request'}</h2>
+                <p>{instantCheckoutEnabled ? 'Submit your details and continue to secure Stripe Checkout if the dates are available.' : 'The property manager will review availability and contact you.'}</p>
               </div>
               <Mail size={20} className="muted" />
             </div>
@@ -350,12 +351,6 @@ export function PublicDirectBookingPage() {
             )}
 
             <form className="modal-form" onSubmit={handleSubmit}>
-              <label>Inquiry type
-                <select value={form.inquiry_type} onChange={set('inquiry_type')}>
-                  {page.allowBookingRequests && <option value="booking_request">Booking request</option>}
-                  {page.allowInquiries && <option value="general_inquiry">General inquiry</option>}
-                </select>
-              </label>
               <label>Full name<input value={form.guest_name} onChange={set('guest_name')} placeholder="Jane Guest" /></label>
               <label>Email<input type="email" value={form.guest_email} onChange={set('guest_email')} placeholder="jane@example.com" /></label>
               <label>Phone{page.requireGuestPhone ? ' *' : ''}<input value={form.guest_phone} onChange={set('guest_phone')} placeholder="+1 555 000 0000" /></label>
@@ -367,7 +362,10 @@ export function PublicDirectBookingPage() {
                 </div>
               )}
 
-              <label>Guests<input type="number" min="1" value={form.guest_count} onChange={set('guest_count')} /></label>
+              <div className="form-grid two">
+                <label>Adults<input type="number" min="1" value={form.adults} onChange={set('adults')} /></label>
+                <label>Children<input type="number" min="0" value={form.children} onChange={set('children')} /></label>
+              </div>
               <label>Message{page.requireGuestMessage ? ' *' : ''}<textarea value={form.message} onChange={set('message')} rows="4" placeholder="Tell the manager anything helpful about your stay." /></label>
 
               {quotedTotal !== null && (
@@ -376,8 +374,8 @@ export function PublicDirectBookingPage() {
                 </div>
               )}
 
-              <button type="submit" className="primary" disabled={saving}>{saving ? 'Sending…' : 'Send request for review'}</button>
-              <small className="helper">Availability is subject to manager confirmation. No card details are collected.</small>
+              <button type="submit" className="primary" disabled={saving}>{saving ? 'Sending…' : instantCheckoutEnabled ? 'Book now' : 'Request booking'}</button>
+              <small className="helper">{instantCheckoutEnabled ? 'Card details are collected only by secure Stripe Checkout.' : 'Availability is subject to manager confirmation. No card details are collected.'}</small>
             </form>
           </aside>
         </section>
