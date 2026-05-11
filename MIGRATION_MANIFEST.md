@@ -35,6 +35,11 @@ Do not edit old migrations destructively after they have been applied to a share
 | 27 | `202605100019_platform_admin_foundation.sql` | Platform/founder admin operations foundation. | `profiles.is_propflow_admin` protections, admin audits/notes, admin-only SECURITY DEFINER RPCs for platform overview/workspace/user/health operations. | Bootstrap founder profile from trusted SQL; PropFlow Admin can access `/admin`; non-admin users receive denied/setup-safe state. |
 | 28 | `202605100020_production_readiness_rls_patch.sql` | Production readiness RLS hardening for public direct booking. | Public direct booking table lockdown, safe RPC-only reads, direct request server-side stay/availability validation. | Re-test public booking page/request flow, malicious privileged-field attempts, date overlap/imported block validation, and manager-only review. |
 
+| 29 | `202605110001_in_app_notifications_hardening.sql` | In-app notification hardening. | Notification visibility and creation helpers/policies for active workspace membership. | Re-test notification reads/creates for workspace roles and assigned operational users. |
+| 30 | `202605110001_workspace_invite_assignment_update_trigger.sql` | Workspace invite assignment update trigger. | Invite/member assignment trigger alignment. | Re-test invite assignment update flows. |
+| 31 | `202605110002_plan_limits_enforcement.sql` | Plan limits enforcement. | Plan limit helpers and enforcement RPC/policy alignment. | Re-test plan-gated create actions. |
+| 32 | `202605110002_private_file_uploads_foundation.sql` | Private file/photo uploads hardening. | Reuses `file_uploads`, adds entity/metadata context, locks `workspace-files` to private allowed MIME types, switches canonical paths to `workspaces/{workspace_id}/...`, removes video categories from MVP constraints, and replaces file/storage RLS helpers and policies. | Upload property photo/document, cleaning proof photo, maintenance issue/completion photo, and receipt/invoice as allowed roles; verify suspended/cross-workspace users cannot view metadata or objects and signed URLs expire. |
+
 ## Runtime validation notes
 
 - Apply all files in order before testing Vercel against the project.

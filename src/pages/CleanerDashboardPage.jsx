@@ -326,7 +326,7 @@ function CleanerTaskCard({
           {closed ? 'Upload disabled for closed cleaning' : uploading ? 'Uploading…' : 'Upload before/after photo'}
           <input
             type="file"
-            accept="image/*"
+            accept="image/jpeg,image/png,image/webp"
             disabled={uploading || closed}
             onChange={(event) => {
               const file = event.target.files?.[0];
@@ -507,7 +507,7 @@ export function CleanerDashboardPage() {
     try {
       await uploadWorkspaceFile({
         file,
-        category: 'cleaning_photo',
+        category: 'cleaning_after_photo',
         relatedTable: 'cleaning_tasks',
         relatedId: task.id,
         propertyId: getTaskPropertyId(task),

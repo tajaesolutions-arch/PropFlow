@@ -377,7 +377,7 @@ function WorkOrderCard({
             {uploading ? 'Uploading…' : 'Upload file'}
             <input
               type="file"
-              accept="image/*,video/*,.pdf"
+              accept="image/jpeg,image/png,image/webp,application/pdf,.docx,.xlsx"
               disabled={uploading}
               onChange={(event) => {
                 const file = event.target.files?.[0];
@@ -541,7 +541,7 @@ export function MaintenancePage() {
     try {
       await uploadWorkspaceFile({
         file,
-        category: 'maintenance_photo',
+        category: file.type?.startsWith('image/') ? 'maintenance_issue_photo' : 'receipt',
         maintenanceWorkOrderId: workOrder.id,
         propertyId: getWorkOrderPropertyId(workOrder),
       });

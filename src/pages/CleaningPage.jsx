@@ -340,7 +340,7 @@ function CleaningTaskCard({
               {uploading ? 'Uploading…' : 'Upload photo'}
               <input
                 type="file"
-                accept="image/*"
+                accept="image/jpeg,image/png,image/webp"
                 disabled={uploading}
                 onChange={(event) => {
                   const file = event.target.files?.[0];
@@ -505,7 +505,7 @@ export function CleaningPage() {
     try {
       await uploadWorkspaceFile({
         file,
-        category: 'cleaning_photo',
+        category: 'cleaning_before_photo',
         relatedTable: 'cleaning_tasks',
         relatedId: task.id,
         propertyId: getTaskPropertyId(task),

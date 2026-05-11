@@ -5,6 +5,7 @@ import { canAccessPlatformAdmin, resolvePrimaryRole } from './auth.js';
 import { logActivity } from './activityLogs.js';
 import { isSupabaseConfigured, supabase } from './supabase.js';
 import { getBillingStatus } from './billingStatus.js';
+import { WORKSPACE_FILES_BUCKET, getEntityContext, getWorkspaceFilePath, normalizeWorkspaceFileType, uploadWorkspaceFile as uploadPrivateWorkspaceFile, validateWorkspaceUploadFile } from './fileUploads.js';
 
 const AppContext = createContext(null);
 
@@ -401,6 +402,9 @@ function normalizeFileUpload(row) {
     mimeType: row.mime_type || row.file_type,
     fileType: row.mime_type || row.file_type,
     fileSize: row.file_size,
+    entityType: row.entity_type,
+    entityId: row.entity_id,
+    metadata: row.metadata || {},
     uploadedBy: row.uploaded_by,
     archivedAt: row.archived_at,
     visibility: row.visibility || 'private',
@@ -1039,109 +1043,37 @@ function isUnreadNotification(notification) {
   return notification?.status === 'unread' && !notification?.read_at && !notification?.readAt && !notification?.archived_at && !notification?.archivedAt;
 }
 
-const workspaceFileBucket = 'workspace-files';
-const legacyFileCategoryMap = {
-  cleaning_photo: 'cleaning_before_photo',
-  maintenance_photo: 'maintenance_issue_photo',
-  repair_completion_photo: 'maintenance_completion_photo',
-};
-const imageMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
-const documentMimeTypes = [
-  'application/pdf',
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-];
-const videoMimeTypes = ['video/mp4', 'video/quicktime', 'video/webm'];
-const fileCategoryRules = {
-  property_photo: { types: imageMimeTypes, maxSize: 10 * 1024 * 1024 },
-  cleaning_before_photo: { types: imageMimeTypes, maxSize: 10 * 1024 * 1024 },
-  cleaning_after_photo: { types: imageMimeTypes, maxSize: 10 * 1024 * 1024 },
-  cleaning_issue_photo: { types: imageMimeTypes, maxSize: 10 * 1024 * 1024 },
-  maintenance_issue_photo: { types: imageMimeTypes, maxSize: 10 * 1024 * 1024 },
-  maintenance_completion_photo: { types: imageMimeTypes, maxSize: 10 * 1024 * 1024 },
-  maintenance_video: { types: videoMimeTypes, maxSize: 100 * 1024 * 1024 },
-  receipt: { types: documentMimeTypes, maxSize: 20 * 1024 * 1024 },
-  lease: { types: documentMimeTypes, maxSize: 20 * 1024 * 1024 },
-  contract: { types: documentMimeTypes, maxSize: 20 * 1024 * 1024 },
-  owner_report: { types: documentMimeTypes, maxSize: 20 * 1024 * 1024 },
-  invoice: { types: documentMimeTypes, maxSize: 20 * 1024 * 1024 },
-  property_document: { types: documentMimeTypes, maxSize: 20 * 1024 * 1024 },
-  general_document: { types: documentMimeTypes, maxSize: 20 * 1024 * 1024 },
-  other: { types: [...documentMimeTypes, ...imageMimeTypes], maxSize: 20 * 1024 * 1024 },
-};
+const workspaceFileBucket = WORKSPACE_FILES_BUCKET;
 const fileManagerRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER];
 const hostFileCategories = [
   'property_photo',
   'cleaning_before_photo',
   'cleaning_after_photo',
-  'cleaning_issue_photo',
   'maintenance_issue_photo',
   'maintenance_completion_photo',
-  'maintenance_video',
-  'property_document',
   'general_document',
-  'other',
 ];
-const accountantFileCategories = ['receipt', 'invoice', 'owner_report', 'property_document'];
-const cleanerFileCategories = ['cleaning_before_photo', 'cleaning_after_photo', 'cleaning_issue_photo'];
-const maintenanceFileCategories = ['maintenance_issue_photo', 'maintenance_completion_photo', 'maintenance_video'];
+const accountantFileCategories = ['receipt', 'invoice', 'report_file', 'general_document'];
+const cleanerFileCategories = ['cleaning_before_photo', 'cleaning_after_photo'];
+const maintenanceFileCategories = ['maintenance_issue_photo', 'maintenance_completion_photo', 'receipt'];
 
-function normalizeFileCategory(value = 'property_document') {
-  const category = legacyFileCategoryMap[value] || value || 'property_document';
-  return fileCategoryRules[category] ? category : 'other';
-}
-
-function safeStorageFileName(fileName = 'upload') {
-  const cleanName = String(fileName || 'upload')
-    .normalize('NFKD')
-    .replace(/[^a-zA-Z0-9._-]/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^[.-]+/, '')
-    .slice(0, 120);
-
-  return cleanName || 'upload';
-}
-
-function getFileExtension(fileName = '') {
-  const match = String(fileName).match(/\.([a-zA-Z0-9]{1,12})$/);
-  return match ? match[1].toLowerCase() : '';
-}
-
-function buildFileContextSegment(context) {
-  if (context.cleaningTaskId) return `cleaning-${context.cleaningTaskId}`;
-  if (context.maintenanceWorkOrderId) return `work-order-${context.maintenanceWorkOrderId}`;
-  if (context.expenseId) return `expense-${context.expenseId}`;
-  if (context.reportId) return `report-${context.reportId}`;
-  if (context.bookingId) return `booking-${context.bookingId}`;
-  if (context.contactId) return `contact-${context.contactId}`;
-  if (context.propertyId) return `property-${context.propertyId}`;
-  return 'workspace';
-}
-
-function buildWorkspaceFilePath(workspaceId, context, file) {
-  const extension = getFileExtension(file?.name);
-  const name = safeStorageFileName(file?.name || `upload${extension ? `.${extension}` : ''}`);
-  const uniquePrefix = `${Date.now()}-${globalThis.crypto?.randomUUID?.() || Math.random().toString(16).slice(2)}`;
-
-  return `workspace/${workspaceId}/${context.fileCategory}/${buildFileContextSegment(context)}/${uniquePrefix}-${name}`;
+function normalizeFileCategory(value = 'general_document') {
+  return normalizeWorkspaceFileType(value);
 }
 
 function assertFileTypeAndSize(file, fileCategory) {
-  const rules = fileCategoryRules[fileCategory];
-  if (!rules) throw new Error('Select a supported file category.');
+  const validation = validateWorkspaceUploadFile(file, fileCategory);
+  if (!validation.valid) throw new Error(validation.error);
+}
 
-  if (file.size > rules.maxSize) {
-    const sizeMb = Math.round(rules.maxSize / (1024 * 1024));
-    throw new Error(`File is too large for this category. Maximum size is ${sizeMb} MB.`);
-  }
-
-  const mimeType = file.type || '';
-  if (mimeType && !rules.types.includes(mimeType)) {
-    throw new Error('This file type is not allowed for the selected category.');
-  }
+function buildWorkspaceFilePath(workspaceId, context, file) {
+  const entityContext = getEntityContext(context);
+  return getWorkspaceFilePath({
+    workspaceId,
+    entityType: entityContext.entityType,
+    entityId: entityContext.entityId,
+    fileName: file?.name,
+  });
 }
 
 function getActiveWorkspaceRoles(currentUser, memberships, currentWorkspace) {
@@ -2852,8 +2784,8 @@ export function AppProvider({ children }) {
     if (leaseDocumentFileId) {
       const file = requireWorkspaceScopedRecord(data.fileUploads, leaseDocumentFileId, 'lease document', propertyId);
       const category = file.fileCategory || file.file_category || file.category;
-      if (!['lease', 'contract', 'property_document'].includes(category)) {
-        throw new Error('Lease document must be a private lease, contract, or property document file.');
+      if (!['lease', 'contract', 'general_document', 'property_document'].includes(category)) {
+        throw new Error('Lease document must be a private lease, contract, or general document file.');
       }
       if ((file.visibility || 'private') !== 'private') {
         throw new Error('Lease documents must stay private.');
@@ -3074,8 +3006,8 @@ export function AppProvider({ children }) {
     const propertyId = lease.propertyId || lease.property_id;
     const file = requireWorkspaceScopedRecord(data.fileUploads, fileUploadId, 'lease document', propertyId);
     const category = file.fileCategory || file.file_category || file.category;
-    if (!['lease', 'contract', 'property_document'].includes(category)) {
-      throw new Error('Lease document must be uploaded as a private lease, contract, or property document file.');
+    if (!['lease', 'contract', 'general_document', 'property_document'].includes(category)) {
+      throw new Error('Lease document must be uploaded as a private lease, contract, or general document file.');
     }
     if ((file.visibility || 'private') !== 'private') throw new Error('Lease documents must stay private.');
 
@@ -4210,7 +4142,7 @@ export function AppProvider({ children }) {
 
     if (activeRoles.includes(roles.ACCOUNTANT) && accountantFileCategories.includes(fileCategory)) {
       if (fileCategory === 'receipt' && !expense) throw new Error('Receipt uploads must be linked to a workspace expense.');
-      if (fileCategory === 'owner_report' && !report) throw new Error('Owner report uploads must be linked to an owner report record.');
+      if (fileCategory === 'report_file' && !report) throw new Error('Report uploads must be linked to an owner report record.');
       return;
     }
 
@@ -4245,14 +4177,7 @@ export function AppProvider({ children }) {
 
     const storagePath = buildWorkspaceFilePath(currentWorkspace.id, normalizedContext, file);
 
-    const uploadResponse = await client.storage.from(workspaceFileBucket).upload(storagePath, file, {
-      upsert: false,
-      contentType: file.type || undefined,
-    });
-
-    if (uploadResponse.error) {
-      throw new Error(formatSupabaseError(uploadResponse.error, 'File upload failed. Confirm the private workspace-files bucket and storage policies are applied.'));
-    }
+    const entityContext = getEntityContext(normalizedContext);
 
     const filePayload = {
       workspace_id: currentWorkspace.id,
@@ -4264,34 +4189,78 @@ export function AppProvider({ children }) {
       report_id: normalizedContext.reportId,
       contact_id: normalizedContext.contactId,
       file_category: normalizedContext.fileCategory,
-      file_name: file.name,
       file_path: storagePath,
-      bucket_name: workspaceFileBucket,
-      mime_type: file.type || null,
-      file_size: file.size || null,
+      entity_type: entityContext.entityType,
+      entity_id: entityContext.entityId === 'workspace' ? currentWorkspace.id : entityContext.entityId,
       visibility: 'private',
       uploaded_by: session.user.id,
       notes: normalizedContext.notes,
-      bucket: workspaceFileBucket,
-      path: storagePath,
-      file_type: file.type || null,
-      category: normalizedContext.fileCategory,
+      metadata: { source: 'propflow_web_app' },
     };
 
-    const { data: row, error: insertError } = await client
-      .from('file_uploads')
-      .insert(filePayload)
-      .select('*')
-      .single();
-
-    if (insertError) {
-      await client.storage.from(workspaceFileBucket).remove([storagePath]);
-      throw new Error(formatSupabaseError(insertError, 'File record could not be saved. The uploaded object was cleaned up when possible.'));
+    let row;
+    try {
+      row = await uploadPrivateWorkspaceFile({
+        supabase: client,
+        file,
+        metadata: filePayload,
+        bucket: workspaceFileBucket,
+      });
+    } catch (uploadError) {
+      throw new Error(formatSupabaseError(uploadError, uploadError?.code ? 'File record could not be saved. The uploaded object was cleaned up when possible.' : 'File upload failed. Confirm the private workspace-files bucket and storage policies are applied.'));
     }
+
+    const normalizedFile = normalizeFileUpload(row);
+
+    const notificationTitleByCategory = {
+      property_photo: 'Property photo uploaded',
+      cleaning_before_photo: 'Cleaning proof photo uploaded',
+      cleaning_after_photo: 'Cleaning proof photo uploaded',
+      maintenance_issue_photo: 'Maintenance issue photo uploaded',
+      maintenance_completion_photo: 'Maintenance completion photo uploaded',
+      receipt: 'Receipt uploaded',
+      invoice: 'Invoice uploaded',
+      lease: 'Document uploaded',
+      contract: 'Document uploaded',
+      report_file: 'Document uploaded',
+      general_document: 'Document uploaded',
+    };
+
+    Promise.resolve().then(async () => {
+      await writeActivityLog('file_uploaded', {
+        file_upload_id: normalizedFile.id,
+        file_category: normalizedFile.fileCategory,
+        property_id: normalizedFile.propertyId,
+        cleaning_task_id: normalizedFile.cleaningTaskId,
+        maintenance_work_order_id: normalizedFile.maintenanceWorkOrderId,
+        expense_id: normalizedFile.expenseId,
+        report_id: normalizedFile.reportId,
+        mime_type: normalizedFile.mimeType,
+        size_bytes: normalizedFile.fileSize,
+      });
+
+      await notifyWorkspaceManagers({
+        event_type: 'file_uploaded',
+        title: notificationTitleByCategory[normalizedFile.fileCategory] || 'Private file uploaded',
+        body: `${normalizedFile.fileName || 'A private file'} was uploaded to PropFlow private storage.`,
+        priority: 'normal',
+        related_property_id: normalizedFile.propertyId,
+        related_cleaning_task_id: normalizedFile.cleaningTaskId,
+        related_maintenance_work_order_id: normalizedFile.maintenanceWorkOrderId,
+        related_expense_id: normalizedFile.expenseId,
+        related_report_id: normalizedFile.reportId,
+        related_file_upload_id: normalizedFile.id,
+        entity_type: 'file_upload',
+        entity_id: normalizedFile.id,
+        metadata: { file_category: normalizedFile.fileCategory },
+      });
+    }).catch((notificationError) => {
+      console.warn('[PropFlow] File upload activity/notification skipped', notificationError);
+    });
 
     await refreshWorkspaceData();
 
-    return normalizeFileUpload(row);
+    return normalizedFile;
   };
 
   const getFileSignedUrl = async (fileUploadOrId, expiresIn = 300) => {

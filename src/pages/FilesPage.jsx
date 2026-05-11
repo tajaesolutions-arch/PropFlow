@@ -3,6 +3,7 @@ import { Archive, Download, FileText, Filter, Lock, RotateCcw, Search, ShieldChe
 
 import { AppLayout } from '../components/layout/AppLayout.jsx';
 import { DataTable } from '../components/DataTable.jsx';
+import { FileUploadDropzone } from '../components/FileUploadDropzone.jsx';
 import { EmptyState } from '../components/EmptyState.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
 import { useApp } from '../lib/AppContext.jsx';
@@ -13,18 +14,14 @@ const fileCategories = [
   ['property_photo', 'Property photo'],
   ['cleaning_before_photo', 'Cleaning before photo'],
   ['cleaning_after_photo', 'Cleaning after photo'],
-  ['cleaning_issue_photo', 'Cleaning issue photo'],
   ['maintenance_issue_photo', 'Maintenance issue photo'],
   ['maintenance_completion_photo', 'Maintenance completion photo'],
-  ['maintenance_video', 'Maintenance video'],
   ['receipt', 'Receipt'],
   ['lease', 'Lease'],
   ['contract', 'Contract'],
-  ['owner_report', 'Owner report'],
+  ['report_file', 'Report file'],
   ['invoice', 'Invoice'],
-  ['property_document', 'Property document'],
   ['general_document', 'General document'],
-  ['other', 'Other'],
 ];
 
 const broadUploadRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
@@ -83,7 +80,7 @@ function contextLabel(file, data) {
 function FileUploadPanel({ data, onClose, onUpload, uploading }) {
   const [form, setForm] = React.useState({
     file: null,
-    fileCategory: 'property_document',
+    fileCategory: 'general_document',
     propertyId: '',
     notes: '',
   });
@@ -129,7 +126,15 @@ function FileUploadPanel({ data, onClose, onUpload, uploading }) {
 
           <label>
             File
-            <input type="file" onChange={(event) => setForm((value) => ({ ...value, file: event.target.files?.[0] || null }))} required />
+            <FileUploadDropzone
+              fileType={form.fileCategory}
+              uploading={uploading}
+              onFileSelect={(file, validationError) => {
+                setError(validationError || '');
+                setForm((value) => ({ ...value, file }));
+              }}
+              error={error}
+            />
           </label>
 
           <label>
@@ -318,7 +323,6 @@ export function FilesPage() {
               <option value="all">All types</option>
               <option value="image/">Images</option>
               <option value="application/pdf">PDFs</option>
-              <option value="video/">Videos</option>
             </select>
           </label>
 
