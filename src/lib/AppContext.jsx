@@ -671,7 +671,12 @@ function normalizeNotificationDeliveryLog(row) {
     workspaceId: row.workspace_id,
     notificationId: row.notification_id,
     recipientUserId: row.recipient_user_id,
-    recipientAddress: row.recipient_address,
+    recipientAddress: row.recipient_address || row.recipient_email,
+    recipientEmail: row.recipient_email || row.recipient_address,
+    templateKey: row.template_key,
+    providerErrorCode: row.provider_error_code,
+    providerErrorMessage: row.provider_error_message,
+    subject: row.subject,
     errorMessage: row.error_message,
     providerMessageId: row.provider_message_id,
     attemptedAt: row.attempted_at,
@@ -3113,6 +3118,7 @@ export function AppProvider({ children }) {
     await writeActivityLog('cleaning_task_created', { cleaning_task_id: row.id, property_id: row.property_id, booking_id: row.booking_id, assigned_cleaner_id: row.assigned_cleaner_id, scheduled_for: row.scheduled_for, status: row.status });
 
     if (row.assigned_cleaner_id) {
+      void triggerTransactionalEmail({ templateKey: 'cleaning_task_assigned', entityId: row.id });
       await safeCreateNotification({
         recipient_user_id: row.assigned_cleaner_id,
         event_type: 'cleaning_task_assigned',
@@ -3355,6 +3361,7 @@ export function AppProvider({ children }) {
     });
 
     if (row.assigned_maintenance_id) {
+      void triggerTransactionalEmail({ templateKey: 'maintenance_work_order_assigned', entityId: row.id });
       await safeCreateNotification({
         recipient_user_id: row.assigned_maintenance_id,
         event_type: row.priority === 'urgent' ? 'maintenance_work_order_urgent' : 'maintenance_work_order_assigned',
@@ -3618,6 +3625,26 @@ export function AppProvider({ children }) {
       metadata,
     });
 
+
+  const triggerTransactionalEmail = async ({ templateKey, entityId, workspaceId = currentWorkspace?.id }) => {
+    if (!session?.access_token || !workspaceId || !templateKey || !entityId) return null;
+
+    try {
+      const response = await fetch('/api/send-transactional-email', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ template_key: templateKey, workspace_id: workspaceId, entity_id: entityId }),
+      });
+      return response.ok ? response.json().catch(() => null) : null;
+    } catch (error) {
+      console.warn('[PropFlow] Transactional email hook skipped', error);
+      return null;
+    }
+  };
+
   const createInvite = async (payload) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
@@ -3705,6 +3732,7 @@ export function AppProvider({ children }) {
     if (insertError) throw new Error(formatSupabaseError(insertError, 'Invite could not be created.'));
 
     await writeActivityLog('team_invite_created', { invite_id: row.id, email, roles: roleList });
+    void triggerTransactionalEmail({ templateKey: 'team_invite', entityId: row.id });
     await notifyWorkspaceManagers({
       event_type: 'team_member_invited',
       title: 'Team invite created',
@@ -3943,6 +3971,7 @@ export function AppProvider({ children }) {
 
     await writeActivityLog('owner_report_created', { report_id: row.id, report_type: row.report_type, title: row.title, property_id: row.property_id, owner_id: row.owner_id, start_date: row.start_date, end_date: row.end_date, status: row.status });
     if (['ready', 'released', 'published'].includes(row.status)) {
+      void triggerTransactionalEmail({ templateKey: 'owner_report_ready', entityId: row.id });
       await safeCreateNotification({
         recipient_user_id: row.owner_id || null,
         recipient_role: row.owner_id ? null : roles.OWNER,

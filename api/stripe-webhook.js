@@ -10,6 +10,7 @@ import {
   stripeRequest,
   verifyStripeSignature,
 } from './_utils/stripe.js';
+import { sendTransactionalEmail } from './_utils/transactionalEmail.js';
 
 const HANDLED_EVENTS = new Set([
   'checkout.session.completed',
@@ -134,6 +135,77 @@ async function logActivity(supabaseAdmin, workspaceId, action, metadata = {}) {
   });
 }
 
+
+
+async function workspaceMembersWithProfiles(supabaseAdmin, workspaceId, roles) {
+  if (!workspaceId) return [];
+  const { data, error } = await supabaseAdmin
+    .from('workspace_members')
+    .select('user_id, roles, status, profiles:profiles!workspace_members_user_id_fkey(full_name, email)')
+    .eq('workspace_id', workspaceId)
+    .eq('status', 'active');
+  if (error) throw error;
+  return (data || []).filter((member) => Array.isArray(member.roles) && member.roles.some((role) => roles.includes(role)));
+}
+
+async function workspaceName(supabaseAdmin, workspaceId) {
+  const { data } = await supabaseAdmin.from('workspaces').select('name').eq('id', workspaceId).maybeSingle();
+  return data?.name || 'Workspace';
+}
+
+async function directBookingEmailContext(supabaseAdmin, directRequest) {
+  const { data: property } = await supabaseAdmin.from('properties').select('name').eq('id', directRequest.property_id).maybeSingle();
+  return {
+    appUrl: process.env.APP_URL || process.env.VITE_APP_URL,
+    guestName: directRequest.guest_name,
+    propertyName: property?.name || 'Property',
+    amount: directRequest.quoted_total,
+    currency: directRequest.currency,
+  };
+}
+
+async function sendDirectBookingPaymentEmails(supabaseAdmin, directRequest, event, succeeded) {
+  const templateKey = succeeded ? 'direct_booking_payment_succeeded' : 'direct_booking_payment_failed';
+  const context = await directBookingEmailContext(supabaseAdmin, directRequest);
+  const metadata = { entity_type: 'direct_booking_request', entity_id: directRequest.id, property_id: directRequest.property_id, stripe_event_id: event.id };
+
+  await sendTransactionalEmail({
+    supabaseAdmin,
+    workspaceId: directRequest.workspace_id,
+    recipientEmail: directRequest.guest_email,
+    templateKey,
+    context,
+    metadata,
+    idempotencyKey: `${templateKey}:${event.id}:guest`,
+  }).catch(() => null);
+
+  const managers = await workspaceMembersWithProfiles(supabaseAdmin, directRequest.workspace_id, ['workspace_owner', 'property_manager', 'host']);
+  await Promise.allSettled(managers.slice(0, 10).map((manager) => sendTransactionalEmail({
+    supabaseAdmin,
+    workspaceId: directRequest.workspace_id,
+    recipientUserId: manager.user_id,
+    recipientEmail: manager.profiles?.email,
+    templateKey,
+    context,
+    metadata,
+    idempotencyKey: `${templateKey}:${event.id}:${manager.user_id}`,
+  })));
+}
+
+async function sendBillingEmails(supabaseAdmin, workspaceId, event, graceEndsAt) {
+  const recipients = await workspaceMembersWithProfiles(supabaseAdmin, workspaceId, ['workspace_owner', 'accountant']);
+  const name = await workspaceName(supabaseAdmin, workspaceId);
+  await Promise.allSettled(recipients.slice(0, 10).map((member) => sendTransactionalEmail({
+    supabaseAdmin,
+    workspaceId,
+    recipientUserId: member.user_id,
+    recipientEmail: member.profiles?.email,
+    templateKey: 'billing_payment_failed',
+    context: { appUrl: process.env.APP_URL || process.env.VITE_APP_URL, workspaceName: name, gracePeriodEndsAt: graceEndsAt },
+    metadata: { entity_type: 'workspace_subscription', stripe_event_id: event.id },
+    idempotencyKey: `billing_payment_failed:${event.id}:${member.user_id}`,
+  })));
+}
 
 async function hasRecordedStripeEvent(supabaseAdmin, stripeEventId) {
   if (!stripeEventId) return false;
@@ -307,6 +379,7 @@ async function updateDirectBookingPayment(supabaseAdmin, event, paymentStatus) {
     succeeded ? 'A direct booking request payment succeeded in Stripe Checkout.' : 'A direct booking request payment failed in Stripe Checkout.',
     { direct_booking_request_id: directRequest.id, property_id: directRequest.property_id, stripe_event_id: event.id },
   );
+  await sendDirectBookingPaymentEmails(supabaseAdmin, directRequest, event, succeeded).catch(() => null);
 
   return { workspaceId: directRequest.workspace_id, subscriptionId: null, status: paymentStatus, directBookingRequestId: directRequest.id };
 }
@@ -413,6 +486,7 @@ async function processInvoiceEvent(supabaseAdmin, event) {
       'Resolve the failed payment before the grace period ends to avoid workspace access restrictions.',
       { grace_period_ends_at: graceEndsAt },
     );
+    await sendBillingEmails(supabaseAdmin, updated.workspace_id, event, graceEndsAt).catch(() => null);
   }
 
   return { workspaceId: updated.workspace_id, subscriptionId: updated.id, plan: updated.plan, status: updated.status };

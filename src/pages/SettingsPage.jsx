@@ -832,7 +832,7 @@ export function SettingsPage() {
           <div className="settings-status-list">
             <span>
               <strong>Email provider: Resend</strong>
-              <StatusBadge tone="warning">Backend setup required</StatusBadge>
+              <StatusBadge tone="info">Server-side foundation</StatusBadge>
             </span>
             <span>
               <strong>SMS provider: Twilio</strong>
@@ -845,7 +845,7 @@ export function SettingsPage() {
           </div>
 
           <div className="helper">
-            Provider readiness only. Real Resend/Twilio sending, API keys, webhooks, and secrets must be added server-side later and are not exposed here.
+            Resend email sends only from server-side API routes when production env vars are configured. API keys, provider errors, email bodies, SMS, and WhatsApp secrets are not exposed here.
           </div>
         </SettingCard>
 
