@@ -53,8 +53,8 @@ export function ReportsExportNotice() {
           <p className="eyebrow">Reports and exports</p>
           <h3>Safe export readiness status</h3>
           <p>
-            Reports use current workspace data where available. Backend PDF generation, scheduled owner reports,
-            and server-side CSV export are intentionally marked as not connected until those services are wired safely.
+            Reports use current workspace data where available. CSV export and browser print-to-PDF are available from role-authorized workspace rows where data exists.
+            Scheduled owner reports, email delivery, and stored generated PDFs remain intentionally out of scope.
           </p>
         </div>
         <Download size={22} className="muted" />
@@ -65,18 +65,18 @@ export function ReportsExportNotice() {
           <FileSpreadsheet size={18} />
           <span>
             <strong>CSV export</strong>
-            <small>Local table CSV export may be available where rows exist. Server-side CSV export is not connected yet.</small>
+            <small>Client-side CSV export is available where the current role already has visible rows.</small>
           </span>
-          <StatusBadge tone="warning">backend pending</StatusBadge>
+          <StatusBadge tone="success">available</StatusBadge>
         </div>
 
         <div className="reports-export-status-card">
           <FileText size={18} />
           <span>
             <strong>PDF export</strong>
-            <small>PDF report generation is a placeholder. Do not promise downloadable PDF reports until backend generation is added.</small>
+            <small>Browser print-to-PDF opens a styled printable report view without storing public links.</small>
           </span>
-          <StatusBadge tone="warning">not connected</StatusBadge>
+          <StatusBadge tone="success">print ready</StatusBadge>
         </div>
 
         <div className="reports-export-status-card">
@@ -104,7 +104,7 @@ export function ReportsExportNotice() {
                 <strong>{item.title}</strong>
                 <small>{item.description}</small>
               </span>
-              <StatusBadge tone="info">placeholder</StatusBadge>
+              <StatusBadge tone="info">safe MVP</StatusBadge>
             </div>
           );
         })}
@@ -112,7 +112,7 @@ export function ReportsExportNotice() {
 
       <div className="helper reports-export-helper">
         <LockKeyhole size={16} />
-        Export generation must remain workspace-scoped and role-safe when backend PDF/CSV services are added later.
+        Exports remain workspace-scoped and role-safe; backend scheduled delivery and stored PDFs can be added later without public links.
       </div>
     </section>
   );
