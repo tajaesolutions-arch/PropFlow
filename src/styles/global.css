@@ -4096,6 +4096,13 @@ label {
   justify-content: flex-end;
 }
 
+.settings-role-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 180px;
+}
+
 .settings-invite-link {
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr) auto;
@@ -4109,6 +4116,13 @@ label {
 
 .settings-invite-link input {
   background: var(--surface);
+}
+
+.settings-invite-link small {
+  grid-column: 2 / -1;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .settings-assignment-form {
@@ -4152,6 +4166,14 @@ label {
 
   .settings-form-actions button {
     width: 100%;
+  }
+
+  .settings-role-badges {
+    min-width: 0;
+  }
+
+  .settings-invite-link small {
+    grid-column: 1;
   }
 
   .settings-status-list span {

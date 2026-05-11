@@ -1727,6 +1727,12 @@ export function AppProvider({ children }) {
           (membership) => membership.status === 'active' && membership.workspace,
         ) ||
         normalizedMemberships.find((membership) => membership.workspace);
+      const hasActiveWorkspaceMembership = normalizedMemberships.some((membership) => membership.status === 'active' && membership.workspace);
+      const selectedMembershipStatus = activeMembership?.status || 'active';
+      const accountStatus = profile?.account_status || profile?.status || 'active';
+      const effectiveAccountStatus = accountStatus === 'suspended' || (!hasActiveWorkspaceMembership && selectedMembershipStatus === 'suspended')
+        ? 'suspended'
+        : accountStatus;
 
       const activeWorkspace = normalizeWorkspace(activeMembership?.workspace || activeMembership?.workspaces);
 
@@ -1748,8 +1754,8 @@ export function AppProvider({ children }) {
         email: profile?.email || user.email,
         fullName: profile?.full_name || profile?.fullName || user.email,
         full_name: profile?.full_name || profile?.fullName || user.email,
-        status: profile?.account_status || profile?.status || 'active',
-        account_status: profile?.account_status || profile?.status || 'active',
+        status: effectiveAccountStatus,
+        account_status: effectiveAccountStatus,
         roles: userRoles,
         role: resolvePrimaryRole(userRoles),
         workspaceId: activeWorkspace?.id || null,
@@ -2046,6 +2052,13 @@ export function AppProvider({ children }) {
       throw new Error('This invite contains an unsupported role. Ask the workspace owner to send a new invite.');
     }
 
+    const invitedPropertyIds = asArray(invite.assigned_property_ids).filter(Boolean);
+    const requiresAssignedProperties = inviteRoles.some((role) => scopedInviteRoles.includes(role));
+
+    if (requiresAssignedProperties && !invitedPropertyIds.length) {
+      throw new Error('This invite is missing required property assignments. Ask the workspace owner to send a new invite.');
+    }
+
     const { error: memberError } = await client.from('workspace_members').upsert(
       {
         workspace_id: invite.workspace_id,
@@ -2075,7 +2088,7 @@ export function AppProvider({ children }) {
     if (acceptError) {
       console.warn('[PropFlow] Workspace invite status update failed after membership creation', acceptError);
     } else {
-      await writeActivityLog('workspace_invite.accepted', { invite_id: invite.id }, invite.workspace_id);
+      await writeActivityLog('team_invite_accepted', { invite_id: invite.id, roles: inviteRoles, assigned_property_ids: invitedPropertyIds }, invite.workspace_id);
       try {
         const ownerRows = getWorkspaceOwners(data.members, invite.workspace_id);
         await Promise.all(ownerRows.map((member) => safeCreateNotification({
@@ -3548,12 +3561,14 @@ export function AppProvider({ children }) {
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'invite');
 
     const email = cleanEmail(payload.email);
-    const roleList = cleanRoleArray(payload.roles || payload.role, inviteRoleOptions);
+    const rawInviteRoles = Array.isArray(payload.roles || payload.role) ? payload.roles || payload.role : [payload.roles || payload.role];
+    const roleList = cleanRoleArray(rawInviteRoles, inviteRoleOptions);
     const permissionLevel = payload.permission_level || payload.permissionLevel || 'standard';
     const expiresValue = payload.expires_at || payload.expiresAt || null;
 
     if (!email || !isValidEmail(email)) throw new Error('Enter a valid invitee email address.');
     if (!roleList.length) throw new Error('Select at least one valid customer workspace role for this invite.');
+    if (roleList.length !== rawInviteRoles.filter(Boolean).length) throw new Error('Remove duplicate roles before creating the invite.');
     requireAllowedValue(permissionLevel, invitePermissionLevels, 'permission level');
 
     let expiresAt = null;
@@ -3675,7 +3690,26 @@ export function AppProvider({ children }) {
 
     if (updateError) throw new Error(formatSupabaseError(updateError, 'Member status could not be updated.'));
 
-    await writeActivityLog(nextStatus === 'suspended' ? 'team_member_suspended' : `team_member_${nextStatus}`, { member_id: memberId, user_id: member.user_id, status: nextStatus });
+    const lifecycleAction = nextStatus === 'suspended'
+      ? 'team_member_suspended'
+      : nextStatus === 'active'
+        ? 'team_member_reactivated'
+        : 'team_member_revoked';
+
+    await writeActivityLog(lifecycleAction, { member_id: memberId, user_id: member.user_id, status: nextStatus });
+    if (nextStatus === 'active') member.status = 'active';
+    if (nextStatus === 'suspended' || nextStatus === 'active') {
+      await safeCreateNotification({
+        recipient_user_id: member.user_id,
+        event_type: nextStatus === 'suspended' ? 'member_suspended' : 'member_reactivated',
+        title: nextStatus === 'suspended' ? 'Workspace access suspended' : 'Workspace access reactivated',
+        body: nextStatus === 'suspended'
+          ? 'Your workspace access has been suspended by a Workspace Owner.'
+          : 'Your workspace access has been reactivated by a Workspace Owner.',
+        priority: 'normal',
+        action_url: nextStatus === 'suspended' ? '/suspended' : '/login/redirect',
+      });
+    }
     await refreshWorkspaceData();
 
     return normalizeMember(row);
@@ -3701,7 +3735,7 @@ export function AppProvider({ children }) {
 
     if (updateError) throw new Error(formatSupabaseError(updateError, 'Invite could not be revoked.'));
 
-    await writeActivityLog('workspace_invite.revoked', { invite_id: inviteId, email: invite.email });
+    await writeActivityLog('team_invite_revoked', { invite_id: inviteId, email: invite.email });
     await refreshWorkspaceData();
 
     return row;
