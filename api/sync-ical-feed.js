@@ -3,6 +3,10 @@ import net from 'node:net';
 
 import { createClient } from '@supabase/supabase-js';
 
+import { getBearerToken } from './_utils/auth.js';
+import { getServerEnv, requireServerEnv } from './_utils/env.js';
+import { json, readJsonBody, requireJsonContentType, requireMethod, safeErrorMessage } from './_utils/http.js';
+
 const MAX_ICAL_BYTES = 2 * 1024 * 1024;
 const MAX_REQUEST_BYTES = 32 * 1024;
 const FETCH_TIMEOUT_MS = 15000;
@@ -12,39 +16,11 @@ const syncStatuses = new Set(['success', 'partial_success', 'failed', 'skipped',
 const activeFeedStatuses = new Set(['active']);
 const cancelledEventStatuses = new Set(['cancelled']);
 
-const json = (response, statusCode, body) => {
-  response.statusCode = statusCode;
-  response.setHeader('Content-Type', 'application/json');
-  response.end(JSON.stringify(body));
-};
-
 function getSupabaseConfig() {
   return {
-    url: process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
-    anonKey: process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY,
+    url: getServerEnv('SUPABASE_URL', ['VITE_SUPABASE_URL']),
+    anonKey: getServerEnv('SUPABASE_ANON_KEY', ['VITE_SUPABASE_ANON_KEY']),
   };
-}
-
-function getBearerToken(request) {
-  const header = request.headers.authorization || request.headers.Authorization || '';
-  const match = String(header).match(/^Bearer\s+(.+)$/i);
-  return match?.[1] || '';
-}
-
-async function readJsonBody(request) {
-  if (request.body && typeof request.body === 'object') return request.body;
-
-  const chunks = [];
-  let total = 0;
-  for await (const chunk of request) {
-    const buffer = Buffer.from(chunk);
-    total += buffer.byteLength;
-    if (total > MAX_REQUEST_BYTES) throw new Error('request_body_too_large');
-    chunks.push(buffer);
-  }
-  const raw = Buffer.concat(chunks).toString('utf8');
-  if (!raw.trim()) return {};
-  return JSON.parse(raw);
 }
 
 function unfoldIcalLines(text) {
@@ -403,22 +379,14 @@ async function createSyncRun(client, feed, userId, status = 'running') {
 }
 
 export default async function handler(request, response) {
-  if (request.method !== 'POST') {
-    response.setHeader('Allow', 'POST');
-    return json(response, 405, { code: 'method_not_allowed', message: 'Use POST for iCal sync requests.' });
-  }
+  if (!requireMethod(request, response, 'POST')) return;
+  if (!requireJsonContentType(request, response)) return;
+  if (!requireServerEnv(request, response, [{ name: 'SUPABASE_URL', fallbacks: ['VITE_SUPABASE_URL'] }, { name: 'SUPABASE_ANON_KEY', fallbacks: ['VITE_SUPABASE_ANON_KEY'] }])) return;
 
   const { url, anonKey } = getSupabaseConfig();
-  if (!url || !anonKey) {
-    return json(response, 501, {
-      code: 'provider_not_configured',
-      message: 'Supabase server sync is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY (or Vite equivalents) on the server.',
-      requiredServerEnv: ['SUPABASE_URL', 'SUPABASE_ANON_KEY'],
-    });
-  }
 
   const token = getBearerToken(request);
-  if (!token) return json(response, 401, { code: 'missing_session', message: 'Authenticated session required to sync iCal feeds.' });
+  if (!token) return json(request, response, 401, { code: 'missing_session', message: 'Authenticated session required to sync iCal feeds.' });
 
   const client = createClient(url, anonKey, {
     global: { headers: { Authorization: `Bearer ${token}` } },
@@ -427,29 +395,29 @@ export default async function handler(request, response) {
 
   let body;
   try {
-    body = await readJsonBody(request);
+    body = await readJsonBody(request, { maxBytes: MAX_REQUEST_BYTES });
   } catch (bodyError) {
     if (bodyError?.message === 'request_body_too_large') {
-      return json(response, 413, { code: 'request_body_too_large', message: 'Request body exceeds the 32 KB limit.' });
+      return json(request, response, 413, { code: 'request_body_too_large', message: 'Request body exceeds the 32 KB limit.' });
     }
-    return json(response, 400, { code: 'invalid_json', message: 'Request body must be valid JSON.' });
+    return json(request, response, 400, { code: 'invalid_json', message: 'Request body must be valid JSON.' });
   }
 
   const feedId = String(body.feedId || body.feed_id || '').trim();
-  if (!feedId) return json(response, 400, { code: 'missing_feed_id', message: 'feedId is required.' });
+  if (!feedId) return json(request, response, 400, { code: 'missing_feed_id', message: 'feedId is required.' });
 
   const { data: userResponse, error: userError } = await client.auth.getUser(token);
   const userId = userResponse?.user?.id;
-  if (userError || !userId) return json(response, 401, { code: 'invalid_session', message: 'Session could not be validated.' });
+  if (userError || !userId) return json(request, response, 401, { code: 'invalid_session', message: 'Session could not be validated.' });
 
   const { data: feed, error: feedError } = await client.from('calendar_import_feeds').select('*').eq('id', feedId).maybeSingle();
-  if (feedError || !feed) return json(response, 404, { code: 'feed_not_found', message: 'Calendar import feed was not found or is not available for this role.' });
+  if (feedError || !feed) return json(request, response, 404, { code: 'feed_not_found', message: 'Calendar import feed was not found or is not available for this role.' });
 
   if (!activeFeedStatuses.has(feed.status) || feed.archived_at) {
     const run = await createSyncRun(client, feed, userId, 'skipped');
     await client.from('calendar_import_sync_runs').update({ status: 'skipped', completed_at: new Date().toISOString(), error_message: 'Feed is paused or archived.' }).eq('id', run.id);
     await client.from('calendar_import_feeds').update({ last_sync_status: 'skipped', last_sync_at: new Date().toISOString(), last_error: 'Feed is paused or archived.' }).eq('id', feed.id);
-    return json(response, 200, { code: 'skipped', status: 'skipped', message: 'Feed is paused or archived.' });
+    return json(request, response, 200, { code: 'skipped', status: 'skipped', message: 'Feed is paused or archived.' });
   }
 
   let run;
@@ -561,7 +529,7 @@ export default async function handler(request, response) {
       })
       .eq('id', feed.id);
 
-    return json(response, 200, { code: status, status, feedId: feed.id, ...summary });
+    return json(request, response, 200, { code: status, status, feedId: feed.id, ...summary });
   } catch (error) {
     const message = error?.message || 'iCal sync failed.';
 
@@ -577,6 +545,6 @@ export default async function handler(request, response) {
       .update({ last_sync_status: 'failed', last_sync_at: new Date().toISOString(), last_error: message })
       .eq('id', feed.id);
 
-    return json(response, 500, { code: 'failed', status: 'failed', message, ...summary });
+    return json(request, response, 500, { code: 'failed', status: 'failed', message: safeErrorMessage(error, 'iCal sync failed.'), ...summary });
   }
 }

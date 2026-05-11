@@ -9,14 +9,6 @@ import { StatusBadge } from './StatusBadge.jsx';
 const billingManagerRoles = [roles.ADMIN, roles.OWNER_ADMIN, roles.ACCOUNTANT];
 const staffRestrictedRoles = [roles.OWNER, roles.CLEANER, roles.MAINTENANCE];
 
-function getEnvValue(key) {
-  return import.meta.env?.[key]?.trim?.() || '';
-}
-
-function isStripePublishableKeyConfigured() {
-  return Boolean(getEnvValue('VITE_STRIPE_PUBLISHABLE_KEY'));
-}
-
 function formatBillingRoleMessage(currentUser) {
   if (hasAnyRole(currentUser, [roles.ADMIN])) {
     return 'PropFlow Admin can review platform billing setup and provider readiness.';
@@ -41,7 +33,7 @@ export function BillingSafetyNotice() {
   const { currentUser, currentWorkspace } = useApp();
   const primaryRole = resolvePrimaryRole(currentUser);
   const subscription = currentWorkspace?.subscription || null;
-  const stripeConfigured = isStripePublishableKeyConfigured();
+  const stripeConfigured = false;
   const canViewBilling = hasAnyRole(currentUser, billingManagerRoles);
 
   return (
@@ -65,12 +57,12 @@ export function BillingSafetyNotice() {
             <strong>Stripe setup</strong>
             <small>
               {stripeConfigured
-                ? 'Publishable key indicator is present. Secret keys and webhooks must still remain server-side.'
-                : 'Stripe is not configured. Add only safe public indicators to frontend env; keep secrets server-side.'}
+                ? 'Stripe public checkout is enabled.'
+                : 'Stripe is not live. Keep all billing provider keys server-side until checkout and webhooks are implemented.'}
             </small>
           </span>
           <StatusBadge tone={stripeConfigured ? 'success' : 'warning'}>
-            {stripeConfigured ? 'public key present' : 'not configured'}
+            {stripeConfigured ? 'live' : 'provider_not_configured'}
           </StatusBadge>
         </div>
 

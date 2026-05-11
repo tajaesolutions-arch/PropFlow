@@ -77,20 +77,22 @@ This repository is launch-stabilized as an MVP foundation, not a fully automated
 Frontend/Vite variables for local development and Vercel Preview/Production:
 
 ```bash
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+VITE_APP_ENV=
+VITE_APP_URL=
 ```
 
 Serverless/API variables used only by Vercel functions when those endpoints are enabled:
 
 ```bash
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your-supabase-anon-key
-STRIPE_SECRET_KEY=sk_live_or_test_server_only
-STRIPE_WEBHOOK_SECRET=whsec_server_only
-STRIPE_PRICE_STARTER=price_...
-STRIPE_PRICE_PRO=price_...
-STRIPE_PRICE_BUSINESS=price_...
+SUPABASE_URL=
+SUPABASE_ANON_KEY=
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+STRIPE_PRICE_STARTER=
+STRIPE_PRICE_PRO=
+STRIPE_PRICE_BUSINESS=
 ```
 
 Do **not** expose Supabase service-role keys, Stripe secrets, Twilio tokens, or Resend API keys in any `VITE_*` variable or frontend code. Stripe checkout, portal, and webhook endpoints currently return setup/provider-not-configured responses until a full server-side billing implementation is deliberately added.
@@ -177,8 +179,10 @@ npm install
 Create `.env.local` only when connecting to Supabase:
 
 ```bash
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+VITE_APP_ENV=
+VITE_APP_URL=
 ```
 
 Run locally:
@@ -200,8 +204,10 @@ npm run build
 Set these exact Vercel environment variables for Preview and Production deployments:
 
 ```bash
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+VITE_APP_ENV=
+VITE_APP_URL=
 ```
 
 No server-only Supabase service role key is required by this front-end build. Do **not** expose a Supabase service role key in Vite variables.
@@ -303,8 +309,10 @@ Workspace creation now uses `public.create_workspace_with_owner(...)` from front
 The only required frontend environment variables remain:
 
 ```bash
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+VITE_APP_ENV=
+VITE_APP_URL=
 ```
 
 Do **not** use or expose a Supabase service-role key in frontend code.
@@ -667,3 +675,161 @@ Operational warnings:
 - Platform admin audit logs and notes are visible only to PropFlow Admin profiles.
 - Admin controls do not hard-delete customer data; status changes require audit logs and reasons for restrictive actions.
 - If the migration is missing, `/admin` shows a setup-required state instead of fake/demo platform metrics.
+
+## Deployment, security, monitoring, and launch-hardening foundation
+
+This launch-hardening pass prepares PropFlow for Vercel + Supabase operations without enabling live payments, live email/SMS/WhatsApp, invasive analytics, public operational storage, or fake/demo production data.
+
+### Environment configuration audit
+
+Use `.env.example` as the source template. Frontend-safe variables are limited to:
+
+```bash
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+VITE_APP_ENV=local|preview|staging|production
+VITE_APP_URL=https://your-propflow-domain.example
+```
+
+Server-only values must be configured only in Vercel Project Settings or a local server runtime, never in frontend `VITE_*` variables:
+
+```bash
+SUPABASE_URL=
+SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY= # only if a future trusted server endpoint truly requires it; never frontend
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+STRIPE_PRICE_STARTER=
+STRIPE_PRICE_PRO=
+STRIPE_PRICE_BUSINESS=
+RESEND_API_KEY=
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_MESSAGING_SERVICE_SID=
+TWILIO_WHATSAPP_FROM=
+```
+
+Current Stripe, Resend, SMS, and WhatsApp behavior is intentionally provider-not-configured/stubbed until separate live provider implementations are reviewed and deployed.
+
+### Launch checklist
+
+Before sending production traffic to PropFlow, confirm every item below in the target Supabase and Vercel projects:
+
+- [ ] Supabase migrations were applied in order by filename.
+- [ ] Founder PropFlow Admin profile was bootstrapped with the platform-only admin flag.
+- [ ] RLS policies were verified with real role-based users, not only frontend hiding.
+- [ ] Vercel frontend env vars are configured: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_APP_ENV`, `VITE_APP_URL`.
+- [ ] Vercel server env vars are configured for API stubs/providers as needed and contain no frontend prefixes.
+- [ ] Private Supabase Storage bucket `workspace-files` exists and is not public.
+- [ ] Public direct booking pages were tested with safe public fields only.
+- [ ] iCal sync was tested with a safe external feed and private/internal URL blocking remained active.
+- [ ] Billing remains `provider_not_configured` until Stripe live checkout, billing portal, and webhook verification are implemented server-side.
+- [ ] Notification external sends remain `provider_not_configured` until Resend/Twilio live senders are implemented server-side.
+- [ ] Workspace Owner, Property Manager/Host, Owner, Cleaner, Maintenance, and Accountant role tests passed.
+- [ ] No fake/demo data exists in the production workspace.
+- [ ] No public storage leaks exist for private operational files.
+
+### Migration order and production rules
+
+Apply every migration in `supabase/migrations` in ascending filename order:
+
+```text
+supabase/migrations/202605050001_propflow_schema.sql
+supabase/migrations/202605060001_create_workspace_with_owner_rpc.sql
+supabase/migrations/202605060002_bookings_calendar_foundation.sql
+supabase/migrations/202605060003_fix_booking_form_persistence.sql
+supabase/migrations/202605060004_billing_foundation.sql
+supabase/migrations/202605060004_inventory_foundation.sql
+supabase/migrations/202605060005_notification_provider_foundation.sql
+supabase/migrations/202605060006_reports_export_foundation.sql
+supabase/migrations/202605060007_direct_booking_foundation.sql
+supabase/migrations/202605100001_rls_create_action_alignment.sql
+supabase/migrations/202605100002_create_workspace_with_owner_rpc.sql
+supabase/migrations/202605100003_properties_rls_alignment.sql
+supabase/migrations/202605100004_bookings_rls_alignment.sql
+supabase/migrations/202605100005_cleaning_tasks_rls_alignment.sql
+supabase/migrations/202605100006_maintenance_work_orders_rls_alignment.sql
+supabase/migrations/202605100007_contacts_owners_guests_rls_alignment.sql
+supabase/migrations/202605100008_reports_owner_reports_rls_alignment.sql
+supabase/migrations/202605100009_expenses_finance_foundation.sql
+supabase/migrations/202605100010_supplies_inventory_rls_alignment.sql
+supabase/migrations/202605100012_files_documents_media_foundation.sql
+supabase/migrations/202605100013_team_invites_roles_rls_alignment.sql
+supabase/migrations/202605100014_notifications_foundation.sql
+supabase/migrations/202605100015_billing_subscription_foundation.sql
+supabase/migrations/202605100016_direct_booking_foundation.sql
+supabase/migrations/202605100017_leases_long_term_rentals_foundation.sql
+supabase/migrations/202605100018_ical_calendar_import_foundation.sql
+supabase/migrations/202605100019_platform_admin_foundation.sql
+supabase/migrations/202605100020_production_readiness_rls_patch.sql
+```
+
+Important migration notes:
+
+- Apply all migrations in order by filename.
+- Supabase CLI was not always available during Codex work, so manual Supabase runtime testing is required after applying SQL.
+- After applying RPC/function migrations, Supabase/PostgREST schema cache may need a refresh before RPCs are visible to the app.
+- Never edit old applied migrations destructively in production. Add a new forward-only migration for production fixes.
+
+### Vercel deployment documentation
+
+Recommended Vercel settings:
+
+- Framework preset: **Vite**.
+- Install command: `npm install`.
+- Build command: `npm run build`.
+- Output directory: `dist`.
+- Required frontend env vars: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_APP_ENV`, `VITE_APP_URL`.
+- Server env vars for current API routes/stubs: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, Stripe keys/prices for future billing, and Resend/Twilio keys for future notifications. Keep all server secrets unprefixed by `VITE_`.
+
+Redeploy process:
+
+1. Push or merge the target branch to GitHub.
+2. Open Vercel → PropFlow project → Deployments.
+3. Select the new deployment or click **Redeploy** after changing env vars.
+4. Review build logs for dependency installation, Vite build output, and serverless function bundling.
+5. The current Vite chunk-size warning is non-fatal unless it becomes a measured performance issue; revisit with route-level/code-splitting work if customer performance degrades.
+
+`vercel.json` adds conservative security headers. CSP is intentionally deferred because a strict policy can break Vite assets, Supabase auth redirects, and public booking pages if it is not tested against the final production domain and asset/provider list.
+
+### Supabase deployment documentation
+
+1. Create a Supabase project for the environment.
+2. Apply all migrations in filename order.
+3. Configure Auth redirect URLs for the deployed Vercel domain, preview domains if used, and local development URLs.
+4. Confirm RLS is enabled and policies protect workspace-scoped data.
+5. Create/confirm the private Storage bucket `workspace-files`.
+6. Bootstrap the founder/team PropFlow Admin profile; do not grant customer workspace admins platform admin by company code alone.
+7. Confirm public direct booking RPCs expose only safe public page/property fields.
+8. Confirm iCal sync tables/RPC-dependent screens are present and SSRF validation remains active.
+9. Confirm platform admin RPCs return overview, workspace, user, and health data only to PropFlow Admin.
+10. Test with real Supabase Auth users for every launch role.
+
+### Security checklist
+
+- [ ] No Supabase service-role key is present in frontend code, Vite env vars, logs, or browser responses.
+- [ ] No Stripe secrets are present in frontend code or `VITE_*` env vars.
+- [ ] No Twilio/Resend secrets are present in frontend code or `VITE_*` env vars.
+- [ ] Public direct booking pages expose safe public fields only.
+- [ ] Private files use private bucket storage and signed URLs.
+- [ ] iCal feed SSRF protection blocks localhost, private networks, internal hostnames, embedded credentials, unsafe redirects, and oversized feeds.
+- [ ] RLS protects workspace data and role/property assignment boundaries.
+- [ ] PropFlow Admin is platform-only and distinct from customer Workspace Owner/Admin.
+- [ ] Company code alone does not grant workspace access without accepted membership/invite flow and RLS checks.
+- [ ] Billing restricted users have an owner/accountant recovery path.
+
+### Admin health diagnostics
+
+The `/admin` Platform Health panel is safe to use for launch diagnostics. It shows setup-required status, app environment label, provider stub status, private bucket name expectation, iCal failures/conflicts, billing restricted workspace counts, provider-not-configured delivery counts, and migration/RPC warnings. It intentionally does not show secret values.
+
+### Remaining manual deployment test steps
+
+After Vercel and Supabase are configured, manually test:
+
+- Signup/login and auth redirects on the production domain.
+- Workspace creation RPC and schema-cache visibility.
+- Role-priority routing for PropFlow Admin, Workspace Owner/Admin, Property Manager/Host, Accountant, Property Owner, Maintenance, and Cleaner.
+- Private file upload/download signed URL flow against `workspace-files`.
+- Public `/book/:slug` direct booking flow with safe data only.
+- iCal sync with a known-safe HTTPS feed and blocked private/internal URLs.
+- Billing and notification screens remain provider-not-configured until live provider work is intentionally added.
