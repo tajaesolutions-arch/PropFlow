@@ -120,13 +120,13 @@ const calendarManagerRoles = operationalRoles;
 const directBookingManagerRoles = operationalRoles;
 const calendarImportManagerRoles = operationalRoles;
 
-const dashboardAccess = {
-  '/dashboard': operationalRoles,
-  '/owner-dashboard': [roles.OWNER],
-  '/cleaner-dashboard': [roles.CLEANER],
-  '/maintenance-dashboard': [roles.MAINTENANCE],
-  '/accountant-dashboard': [roles.ACCOUNTANT],
-};
+const roleDashboardPaths = new Set([
+  '/dashboard',
+  '/owner-dashboard',
+  '/cleaner-dashboard',
+  '/maintenance-dashboard',
+  '/accountant-dashboard',
+]);
 
 const protectedRoutes = {
   '/workspace-setup': { Page: JoinWorkspacePage },
@@ -152,11 +152,11 @@ const protectedRoutes = {
   '/files': { Page: FilesPage, access: filesPageRoles },
   '/notifications': {
     Page: NotificationsPage,
-    access: [roles.ADMIN, ...allWorkspaceRoles],
+    access: allWorkspaceRoles,
   },
   '/notification-settings': {
     Page: NotificationSettingsPage,
-    access: [roles.ADMIN, ...operationalRoles],
+    access: operationalRoles,
   },
   '/settings': { Page: SettingsPage, access: operationalRoles },
   '/account': { Page: AccountSettingsPage },
@@ -170,7 +170,7 @@ const protectedRoutes = {
     access: inventoryPageRoles,
   },
   '/team': { Page: SettingsPage, access: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER] },
-  '/billing': { Page: BillingPage, access: [roles.ADMIN, roles.OWNER_ADMIN, roles.ACCOUNTANT] },
+  '/billing': { Page: BillingPage, access: [roles.OWNER_ADMIN, roles.ACCOUNTANT] },
   '/smart-tools': {
     Page: ComingSoonPage,
     props: { title: 'Smart Tools / AI Tools' },
@@ -179,7 +179,7 @@ const protectedRoutes = {
   '/help': {
     Page: ComingSoonPage,
     props: { title: 'Help / Support' },
-    access: [roles.ADMIN, ...allWorkspaceRoles],
+    access: allWorkspaceRoles,
   },
 };
 
@@ -502,6 +502,10 @@ export function AppRouter() {
 
   const isPropFlowAdmin = isPropFlowAdminUser(currentUser);
 
+  if (isPropFlowAdmin && path !== '/admin') {
+    return <RedirectTo to="/admin" />;
+  }
+
   if (!currentWorkspace && !isPropFlowAdmin && !shouldSkipWorkspaceRequirement(path)) {
     return <RedirectTo to="/workspace-setup" />;
   }
@@ -522,7 +526,7 @@ export function AppRouter() {
     return <BillingRestrictedScreen currentUser={currentUser} />;
   }
 
-  if (dashboardAccess[path] && !hasAnyRole(currentUser, dashboardAccess[path])) {
+  if (roleDashboardPaths.has(path) && !hasAnyRole(currentUser, protectedRoutes[path]?.access || [])) {
     return <RedirectTo to={getPostLoginPath(currentUser)} />;
   }
 

@@ -67,6 +67,96 @@ Not implemented in this phase:
 - Apply `supabase/migrations/202605100016_direct_booking_foundation.sql` after the earlier workspace, property, booking, notification, and billing migrations. The frontend uses only the Supabase anon key; do **not** expose a Supabase service-role key in Vite/frontend environment variables.
 - Public request spam/rate limiting is future backend protection; this foundation restricts anon inserts through RLS to published, matching direct booking pages only.
 
+
+## Production launch readiness runbook (May 2026)
+
+This repository is launch-stabilized as an MVP foundation, not a fully automated production operations platform. Before pointing real customers at a hosted environment, complete the checklist below against the target Supabase and Vercel projects.
+
+### Required environment variables
+
+Frontend/Vite variables for local development and Vercel Preview/Production:
+
+```bash
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+```
+
+Serverless/API variables used only by Vercel functions when those endpoints are enabled:
+
+```bash
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-supabase-anon-key
+STRIPE_SECRET_KEY=sk_live_or_test_server_only
+STRIPE_WEBHOOK_SECRET=whsec_server_only
+STRIPE_PRICE_STARTER=price_...
+STRIPE_PRICE_PRO=price_...
+STRIPE_PRICE_BUSINESS=price_...
+```
+
+Do **not** expose Supabase service-role keys, Stripe secrets, Twilio tokens, or Resend API keys in any `VITE_*` variable or frontend code. Stripe checkout, portal, and webhook endpoints currently return setup/provider-not-configured responses until a full server-side billing implementation is deliberately added.
+
+### Supabase migrations and founder admin bootstrap
+
+Apply every file in `supabase/migrations/` in timestamp order, including the latest production-readiness patch:
+
+```text
+supabase/migrations/202605050001_propflow_schema.sql
+supabase/migrations/202605060001_create_workspace_with_owner_rpc.sql
+supabase/migrations/202605060002_bookings_calendar_foundation.sql
+supabase/migrations/202605060003_fix_booking_form_persistence.sql
+supabase/migrations/202605060004_billing_foundation.sql
+supabase/migrations/202605060004_inventory_foundation.sql
+supabase/migrations/202605060005_notification_provider_foundation.sql
+supabase/migrations/202605060006_reports_export_foundation.sql
+supabase/migrations/202605060007_direct_booking_foundation.sql
+supabase/migrations/202605100001_rls_create_action_alignment.sql
+...
+supabase/migrations/202605100020_production_readiness_rls_patch.sql
+```
+
+After migrations, create the founder/team account through Supabase Auth, then manually bootstrap SaaS-level admin access from a trusted SQL console only:
+
+```sql
+update public.profiles
+set is_propflow_admin = true
+where email = 'founder@example.com';
+```
+
+PropFlow Admin is a platform role only. Do not invite platform admins through customer workspace invites, and do not assign `propflow_admin` inside `workspace_members.roles`.
+
+### Private storage bucket setup
+
+Create the Supabase Storage bucket named `workspace-files` as **private**. Apply the storage/file migrations and policies before testing uploads. The app stores private object paths and creates short-lived signed URLs only after authorized `file_uploads` checks; public buckets are not required for operational photos, receipts, leases, reports, or documents.
+
+### Vercel deployment notes
+
+- Deploy the Vite app and `/api/*` serverless functions together.
+- Set frontend env vars in both Preview and Production.
+- Set server-only Stripe/Supabase variables only when implementing the real backend flow; missing provider env vars should return safe setup-required/provider-not-configured responses.
+- Re-run `npm install`, `npm run build`, and `git diff --check` before promoting a deployment.
+- If Supabase reports a missing table/RPC immediately after migration, wait for PostgREST schema cache refresh and reload before weakening RLS or adding direct frontend inserts.
+
+### Provider status and launch non-goals
+
+- Stripe subscription billing is a stub/foundation only; live checkout, customer portal redirects, and webhook persistence are not active.
+- Resend, Twilio SMS, and Twilio WhatsApp external sends are not live; in-app notifications and provider setup states are safe placeholders.
+- Direct booking guest payments are not live; public pages collect requests only and never card data.
+- iCal import is a one-way import foundation with SSRF-protected fetches; two-way sync/channel-manager integrations are not live.
+- CSV/PDF exports, receipt OCR, AI tools, rent payment automation, e-signature/legal generation, scheduled owner reports, tax/accounting automation, and external channel manager integrations remain explicit non-goals for this launch pass.
+- No fake/demo data should be added to production workflows; new workspaces should show real empty states.
+
+### Manual QA checklist
+
+- Public routes: `/`, `/pricing`, `/login`, `/signup`, `/join`, `/suspended`, and `/book/:slug` render without the private sidebar and fail safely when Supabase is unavailable.
+- Protected workspace routes redirect unauthenticated users to `/login` and workspace-less non-admin users to `/workspace-setup`.
+- PropFlow Admin can access `/admin` without a customer workspace and is redirected away from customer workspace routes.
+- Workspace Owner/Company Admin can access dashboard, billing, team/settings, files, reports, direct bookings, iCal imports, leases, notifications, and settings for only the active workspace.
+- Property Manager/Host can access intended operational pages and cannot access platform admin.
+- Property Owner, Cleaner, Maintenance Crew, and Accountant dashboards show role-scoped real data/empty states only.
+- Billing-restricted workspaces show recovery messaging and keep owner/accountant billing recovery available.
+- Public direct booking requests validate min/max nights, date overlap, imported iCal blocks, and privileged fields at both frontend and RLS policy layers.
+- Mobile smoke test the sidebar/topbar, tables, modals, public booking form, and admin dashboard at 390px and 768px widths.
+
 ## Tech stack
 
 - React
