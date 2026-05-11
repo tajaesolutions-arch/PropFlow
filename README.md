@@ -45,7 +45,7 @@ Implemented in this phase:
 
 Not implemented in this phase:
 
-- Advanced Stripe billing features such as customer portal, usage metering, coupons, invoice UI, and billing analytics. The focused Stripe Checkout + webhook foundation is present in `/api/create-stripe-checkout-session` and `/api/stripe-webhook`.
+- Advanced Stripe billing features such as usage metering, coupons, custom invoice UI, and billing analytics. The focused Stripe Checkout, Customer Portal, and webhook foundation is present in `/api/create-stripe-checkout-session`, `/api/create-stripe-customer-portal-session`, and `/api/stripe-webhook`.
 - Full notification automation.
 - Full reports/PDF/CSV exports.
 - Live guest payment checkout for direct bookings.
@@ -164,7 +164,7 @@ Create the Supabase Storage bucket named `workspace-files` as **private**. Apply
 
 ### Provider status and launch non-goals
 
-- Stripe subscription billing has a secure foundation only: Workspace Owners can request server-created Checkout Sessions when server-only Stripe env vars are configured, and the webhook endpoint verifies Stripe signatures before syncing workspace subscription state. Customer portal redirects, usage metering, coupons, invoice UI, and billing analytics are not active.
+- Stripe subscription billing has a secure foundation: Workspace Owners can request server-created Checkout Sessions and Customer Portal Sessions when server-only Stripe env vars are configured, and the webhook endpoint verifies Stripe signatures before syncing workspace subscription state. Usage metering, coupons, custom invoice UI, and billing analytics are not active.
 - Resend, Twilio SMS, and Twilio WhatsApp external sends are not live; in-app notifications and provider setup states are safe placeholders.
 - Direct booking guest payments are not live; public pages collect requests only and never card data.
 - iCal import is a one-way import foundation with SSRF-protected fetches; two-way sync/channel-manager integrations are not live.
@@ -238,7 +238,7 @@ VITE_SUPABASE_STORAGE_CONFIGURED=true|false
 
 Serverless billing endpoints require server-only Supabase and Stripe variables in Vercel Project Settings. Do **not** expose a Supabase service role key or Stripe secret key in Vite variables.
 
-Set these server-only variables for `/api/create-stripe-checkout-session` and `/api/stripe-webhook`:
+Set these server-only variables for `/api/create-stripe-checkout-session`, `/api/create-stripe-customer-portal-session`, `/api/create-billing-portal-session`, and `/api/stripe-webhook`:
 
 ```bash
 SUPABASE_URL=
@@ -252,6 +252,17 @@ STRIPE_PRICE_BUSINESS=
 ```
 
 Frontend-safe variables remain limited to `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_APP_ENV`, `VITE_APP_URL`, and other non-secret `VITE_*` flags. Missing Stripe or service-role values make the billing endpoints return `provider_not_configured` with the user-safe message `Stripe billing is not configured yet.` instead of crashing or mutating frontend billing state.
+
+
+Stripe Customer Portal setup notes:
+
+- Enable and configure the Stripe Customer Portal in the Stripe Dashboard before exposing billing management to customers.
+- PropFlow creates Customer Portal sessions only from the server-side `/api/create-stripe-customer-portal-session` endpoint, with `/api/create-billing-portal-session` kept as a compatibility alias.
+- Workspace Owners can open the portal from Settings or Pricing after the workspace has a stored `stripe_customer_id`; lower workspace roles cannot create portal sessions.
+- Portal features may include invoice history, payment method updates, subscription updates, and cancellation depending on your Stripe Dashboard configuration.
+- Some subscriptions cannot be updated in the portal depending on Stripe product, price, and portal settings.
+- Trialing subscription changes may end the trial depending on your Stripe portal configuration.
+- Stripe Customer Portal cannot be embedded in an iframe; PropFlow redirects the owner to Stripe and uses a same-origin return URL such as `/settings?tab=billing`.
 
 Stripe webhook setup notes:
 

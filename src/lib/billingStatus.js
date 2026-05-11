@@ -24,14 +24,14 @@ const STATUS_ALIASES = {
 };
 
 const BILLING_MESSAGES = {
-  trialing: 'Your workspace is in its 14-day trial. Billing management is prepared, but live Stripe checkout is not connected yet.',
-  active: 'Your workspace subscription is active. Stripe billing is not connected yet, so live payment management remains unavailable.',
+  trialing: 'Your workspace is in its 14-day trial. Owners can choose a plan through Stripe Checkout or manage billing in Stripe Customer Portal after a Stripe customer is connected.',
+  active: 'Your workspace subscription is active. Workspace Owners can manage invoices, payment methods, cancellation, and plan changes in Stripe Customer Portal when configured.',
   past_due: 'Payment needs attention. Workspace access stays available during the grace period and may be restricted if unresolved.',
   grace_period: 'Payment needs attention during the grace period. Access may be restricted after the grace period if unresolved.',
   unpaid: 'Workspace access is in recovery mode. Owners can review billing recovery while staff access is limited.',
-  canceled: 'This workspace subscription is canceled. Choose a plan when billing is connected to restore normal subscription management.',
-  incomplete: 'Subscription setup is incomplete. Finish setup when Stripe billing is connected.',
-  no_subscription: 'No subscription record was found for this workspace yet. Billing setup is prepared but not live.',
+  canceled: 'This workspace subscription is canceled. Choose a plan to restore normal subscription management.',
+  incomplete: 'Subscription setup is incomplete. Finish setup through Stripe Checkout before using Customer Portal management.',
+  no_subscription: 'No subscription record was found for this workspace yet. Choose a plan first.',
 };
 
 function toStatusKey(value) {
