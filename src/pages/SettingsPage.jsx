@@ -688,8 +688,23 @@ export function SettingsPage() {
             Open notification settings
           </button>
 
+          <div className="settings-status-list">
+            <span>
+              <strong>Email provider: Resend</strong>
+              <StatusBadge tone="warning">Backend setup required</StatusBadge>
+            </span>
+            <span>
+              <strong>SMS provider: Twilio</strong>
+              <StatusBadge tone="info">Coming soon</StatusBadge>
+            </span>
+            <span>
+              <strong>WhatsApp provider: Twilio</strong>
+              <StatusBadge tone="info">Coming soon</StatusBadge>
+            </span>
+          </div>
+
           <div className="helper">
-            Resend and Twilio provider configuration should be added server-side. No provider secrets should be exposed in frontend code.
+            Provider readiness only. Real Resend/Twilio sending, API keys, webhooks, and secrets must be added server-side later and are not exposed here.
           </div>
         </SettingCard>
 

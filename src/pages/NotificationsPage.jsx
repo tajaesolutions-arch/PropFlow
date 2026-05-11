@@ -25,6 +25,7 @@ import { useApp } from '../lib/AppContext.jsx';
 import { hasAnyRole } from '../lib/auth.js';
 import { notificationEventTypes, roles } from '../data/constants.js';
 import { navigate } from '../routes/AppRouter.jsx';
+import { isSupabaseConfigured } from '../lib/supabase.js';
 
 const notificationTypes = [
   'booking',
@@ -98,7 +99,16 @@ function getEventTypeLabel(notification) {
 }
 
 function isUnread(notification) {
-  return !notification.read_at && !notification.readAt && notification.status !== 'read';
+  return notification.status === 'unread' && !notification.read_at && !notification.readAt && !notification.archived_at && !notification.archivedAt;
+}
+
+function isArchived(notification) {
+  return notification.status === 'archived' || Boolean(notification.archived_at || notification.archivedAt);
+}
+
+function getActionUrl(notification) {
+  const url = notification.actionUrl || notification.action_url || '';
+  return String(url).startsWith('/') ? url : '';
 }
 
 function getTone(notification) {
@@ -151,7 +161,7 @@ function isVisibleNotification(notification, currentUser) {
   const type = getNotificationType(notification);
 
   if (recipientId && currentUser?.id) {
-    return recipientId === currentUser.id && matchesRoleType(type, currentUser);
+    return recipientId === currentUser.id;
   }
 
   if (isLimitedPortalRole(currentUser)) {
@@ -198,9 +208,11 @@ function matchesSearch(notification, query) {
 
   return [
     getNotificationType(notification),
+    getEventTypeLabel(notification),
     getNotificationTitle(notification),
     getNotificationMessage(notification),
     notification.status,
+    notification.priority,
     notification.channel,
   ]
     .filter(Boolean)
@@ -222,10 +234,12 @@ function sortNotifications(notifications) {
   });
 }
 
-function NotificationRow({ notification, onMarkRead, onArchive }) {
+function NotificationRow({ notification, onMarkRead, onArchive, actionBusy }) {
   const type = getNotificationType(notification);
   const Icon = getIcon(type);
   const unread = isUnread(notification);
+  const archived = isArchived(notification);
+  const actionUrl = getActionUrl(notification);
 
   return (
     <article className={`notification-row ${unread ? 'unread' : ''}`}>
@@ -240,37 +254,63 @@ function NotificationRow({ notification, onMarkRead, onArchive }) {
         </div>
 
         <small>
-          {getEventTypeLabel(notification)} · {formatDate(getNotificationDate(notification))}
+          {getEventTypeLabel(notification)} · Priority: {formatLabel(notification.priority || 'normal')} · {formatDate(getNotificationDate(notification))}
         </small>
+
+        {actionUrl && (
+          <button type="button" className="link-button inline" onClick={() => navigate(actionUrl)} data-skip-create-action="true">
+            Open related record
+          </button>
+        )}
       </div>
 
       <div className="notification-row-status">
-        <StatusBadge tone={unread ? 'warning' : 'success'}>{unread ? 'unread' : 'read'}</StatusBadge>
-        <StatusBadge tone={getTone(notification)}>{notification.priority || notification.status || type}</StatusBadge>
-        <button type="button" onClick={() => onMarkRead(notification, unread)} data-skip-create-action="true">
-          {unread ? 'Mark read' : 'Mark unread'}
-        </button>
-        <button type="button" onClick={() => onArchive(notification)} data-skip-create-action="true">
-          Archive
-        </button>
+        <StatusBadge tone={archived ? 'info' : unread ? 'warning' : 'success'}>{archived ? 'archived' : unread ? 'unread' : 'read'}</StatusBadge>
+        <StatusBadge tone={getTone(notification)}>{formatLabel(notification.priority || type)}</StatusBadge>
+        {!archived && (
+          <button type="button" onClick={() => onMarkRead(notification, unread)} disabled={actionBusy} data-skip-create-action="true">
+            {unread ? 'Mark read' : 'Mark unread'}
+          </button>
+        )}
+        {!archived && (
+          <button type="button" onClick={() => onArchive(notification)} disabled={actionBusy} data-skip-create-action="true">
+            Archive
+          </button>
+        )}
       </div>
     </article>
   );
 }
 
 export function NotificationsPage() {
-  const { data, currentUser, markNotificationRead, archiveNotification } = useApp();
+  const {
+    data,
+    dataLoading,
+    dataWarnings,
+    currentWorkspace,
+    currentUser,
+    markNotificationRead,
+    archiveNotification,
+    markAllNotificationsRead,
+  } = useApp();
 
   const [filters, setFilters] = React.useState({
     query: '',
     type: 'all',
     status: 'all',
   });
+  const [actionBusy, setActionBusy] = React.useState(false);
+  const [actionMessage, setActionMessage] = React.useState('');
+  const [actionError, setActionError] = React.useState('');
 
   const canOpenSettings = hasAnyRole(currentUser, settingsAccessRoles);
   const canSeeProviderDetails = hasAnyRole(currentUser, settingsAccessRoles);
-  const visibleTypes = getVisibleNotificationTypes(currentUser);
-  const notifications = sortNotifications((data.notifications || []).filter((notification) => isVisibleNotification(notification, currentUser)));
+  const baseVisibleTypes = getVisibleNotificationTypes(currentUser);
+  const notifications = sortNotifications((data.notifications || [])
+    .filter((notification) => !currentWorkspace?.id || notification.workspace_id === currentWorkspace.id || notification.workspaceId === currentWorkspace.id)
+    .filter((notification) => isVisibleNotification(notification, currentUser)));
+  const visibleTypes = Array.from(new Set([...baseVisibleTypes, ...notifications.map(getNotificationType)])).filter(Boolean);
+  const notificationWarnings = (dataWarnings || []).filter((warning) => String(warning).toLowerCase().includes('notification'));
 
   React.useEffect(() => {
     if (filters.type !== 'all' && !visibleTypes.includes(filters.type)) {
@@ -287,7 +327,8 @@ export function NotificationsPage() {
     .filter((notification) => filters.type === 'all' || getNotificationType(notification) === filters.type)
     .filter((notification) => {
       if (filters.status === 'unread') return isUnread(notification);
-      if (filters.status === 'read') return !isUnread(notification);
+      if (filters.status === 'read') return !isUnread(notification) && !isArchived(notification);
+      if (filters.status === 'archived') return isArchived(notification);
       return true;
     })
     .filter((notification) => matchesSearch(notification, filters.query));
@@ -307,21 +348,35 @@ export function NotificationsPage() {
     });
   };
 
-  const handleMarkRead = async (notification, read = true) => {
+  const runNotificationAction = async (action, successMessage) => {
+    setActionBusy(true);
+    setActionError('');
+    setActionMessage('');
     try {
-      await markNotificationRead(notification.id, read);
+      await action();
+      setActionMessage(successMessage);
     } catch (notificationError) {
-      console.warn('[PropFlow] Could not update notification read state', notificationError);
+      console.warn('[PropFlow] Notification action failed', notificationError);
+      setActionError(notificationError?.message || 'Notification could not be updated. Your role or database security policy may not allow this action.');
+    } finally {
+      setActionBusy(false);
     }
   };
 
-  const handleArchive = async (notification) => {
-    try {
-      await archiveNotification(notification.id, true);
-    } catch (notificationError) {
-      console.warn('[PropFlow] Could not archive notification', notificationError);
-    }
-  };
+  const handleMarkRead = (notification, read = true) => runNotificationAction(
+    () => markNotificationRead(notification.id, read),
+    read ? 'Notification marked as read.' : 'Notification marked as unread.',
+  );
+
+  const handleArchive = (notification) => runNotificationAction(
+    () => archiveNotification(notification.id, true),
+    'Notification archived.',
+  );
+
+  const handleMarkAllRead = () => runNotificationAction(
+    () => markAllNotificationsRead(),
+    'All visible unread notifications were marked as read where database policy allowed it.',
+  );
 
   return (
     <AppLayout
@@ -332,15 +387,15 @@ export function NotificationsPage() {
         <div className="card-header">
           <div>
             <p className="eyebrow">Notification visibility</p>
-            <h3>Notifications are filtered for this role</h3>
-            <p>{getVisibilityCopy(currentUser)}</p>
+            <h3>Notifications are filtered by workspace and RLS</h3>
+            <p>{getVisibilityCopy(currentUser)} Supabase RLS remains the source of truth; this page only renders records returned for the selected workspace.</p>
           </div>
           <ShieldCheck size={22} className="muted" />
         </div>
       </section>
 
       <section className="stat-grid dense">
-        <StatCard label="Visible notifications" value={notifications.length} icon={Bell} />
+        <StatCard label="Visible notifications" value={dataLoading ? 'Loading' : notifications.length} icon={Bell} />
         <StatCard label="Unread" value={unreadCount} icon={AlertTriangle} tone={unreadCount ? 'warning' : 'accent'} />
         <StatCard label="Maintenance alerts" value={maintenanceCount} icon={Wrench} />
         <StatCard label="Billing alerts" value={canSeeProviderDetails ? billingCount : 'Hidden'} icon={CreditCard} />
@@ -361,6 +416,10 @@ export function NotificationsPage() {
               Notification settings
             </button>
           )}
+
+          <button type="button" onClick={handleMarkAllRead} disabled={!unreadCount || actionBusy} data-skip-create-action="true">
+            Mark all read
+          </button>
 
           <button type="button" onClick={clearFilters} data-skip-create-action="true">
             Clear filters
@@ -423,10 +482,24 @@ export function NotificationsPage() {
               <option value="all">All statuses</option>
               <option value="unread">Unread</option>
               <option value="read">Read</option>
+              <option value="archived">Archived</option>
             </select>
           </label>
         </div>
       </section>
+
+      {(actionMessage || actionError || notificationWarnings.length || !isSupabaseConfigured || !currentWorkspace?.id) && (
+        <section className={`workspace-load-warning ${actionError ? 'error' : ''}`} role="status">
+          <strong>{actionError ? 'Notification action needs attention' : !isSupabaseConfigured ? 'Supabase not configured' : !currentWorkspace?.id ? 'Workspace required' : notificationWarnings.length ? 'Notification load warning' : 'Notification updated'}</strong>
+          <span>
+            {actionError || (!isSupabaseConfigured
+              ? 'Local/demo mode is active. Real notification records will load after Supabase URL and anon key are configured.'
+              : !currentWorkspace?.id
+                ? 'Select or create a workspace before loading notification records.'
+                : notificationWarnings.join(' ') || actionMessage)}
+          </span>
+        </section>
+      )}
 
       <section className="card">
         <div className="card-header">
@@ -438,10 +511,17 @@ export function NotificationsPage() {
           <StatusBadge tone="info">{filteredNotifications.length} shown</StatusBadge>
         </div>
 
-        {filteredNotifications.length ? (
+        {dataLoading ? (
+          <EmptyState
+            eyebrow="Loading"
+            icon={Bell}
+            title="Loading notification records"
+            description="PropFlow is loading workspace-scoped notifications through Supabase RLS."
+          />
+        ) : filteredNotifications.length ? (
           <div className="notifications-list">
             {filteredNotifications.map((notification) => (
-              <NotificationRow key={notification.id} notification={notification} onMarkRead={handleMarkRead} onArchive={handleArchive} />
+              <NotificationRow key={notification.id} notification={notification} onMarkRead={handleMarkRead} onArchive={handleArchive} actionBusy={actionBusy} />
             ))}
           </div>
         ) : (
@@ -452,7 +532,9 @@ export function NotificationsPage() {
             description={
               notifications.length
                 ? 'Adjust the search, type, or status filters to view more visible in-app notification records.'
-                : 'PropFlow will show role-safe in-app alerts here when visible records create notification entries. Email, SMS, and WhatsApp delivery are not active yet.'
+                : isSupabaseConfigured
+                  ? 'No notification records were returned for this user and workspace. PropFlow will show real in-app alerts here when RLS-visible records exist. Email, SMS, and WhatsApp delivery are not active yet.'
+                  : 'Supabase is not configured, so real notification records are not loaded in local/demo mode. Add Supabase environment variables to connect the notification foundation.'
             }
           />
         )}

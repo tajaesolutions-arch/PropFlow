@@ -978,7 +978,7 @@ function getWorkspaceOwners(members, workspaceId) {
 }
 
 function isUnreadNotification(notification) {
-  return !notification?.read_at && !notification?.readAt && notification?.status === 'unread';
+  return notification?.status === 'unread' && !notification?.read_at && !notification?.readAt && !notification?.archived_at && !notification?.archivedAt;
 }
 
 const workspaceFileBucket = 'workspace-files';
@@ -1263,13 +1263,19 @@ export function AppProvider({ children }) {
   const [workspaces, setWorkspaces] = useState([]);
   const [currentWorkspace, setCurrentWorkspaceState] = useState(null);
   const [data, setData] = useState(emptyData);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [dataWarnings, setDataWarnings] = useState([]);
   const [error, setError] = useState('');
 
-  const refreshWorkspaceData = async (workspace = currentWorkspace) => {
-    if (!supabase || !workspace?.id) {
+  const refreshWorkspaceData = async (workspace = currentWorkspace, activeSession = session) => {
+    if (!supabase || !workspace?.id || !activeSession?.user?.id) {
       setData(emptyData);
+      setDataWarnings([]);
+      setDataLoading(false);
       return { ok: true, warnings: [] };
     }
+
+    setDataLoading(true);
 
     const workspaceId = workspace.id;
     const nextData = { ...emptyData };
@@ -1464,8 +1470,8 @@ export function AppProvider({ children }) {
           .from('notifications')
           .select('*')
           .eq('workspace_id', workspaceId)
-          .eq('recipient_user_id', session?.user?.id || '')
-          .order('created_at', { ascending: false }),
+          .order('created_at', { ascending: false })
+          .limit(100),
         normalize: (rows) => rows.map(normalizeNotification),
       },
       {
@@ -1475,7 +1481,7 @@ export function AppProvider({ children }) {
           .from('notification_preferences')
           .select('*')
           .eq('workspace_id', workspaceId)
-          .eq('user_id', session?.user?.id || '')
+          .eq('user_id', activeSession.user.id)
           .order('event_group', { ascending: true }),
         normalize: (rows) => rows.map(normalizeNotificationPreference),
       },
@@ -1580,6 +1586,8 @@ export function AppProvider({ children }) {
     nextData.unreadNotificationCount = asArray(nextData.notifications).filter(isUnreadNotification).length;
 
     setData(nextData);
+    setDataWarnings(warnings);
+    setDataLoading(false);
 
     return {
       ok: warnings.length === 0,
@@ -1730,7 +1738,7 @@ export function AppProvider({ children }) {
       setCurrentWorkspaceState(activeWorkspace || null);
 
       if (activeWorkspace?.id) {
-        await refreshWorkspaceData(activeWorkspace);
+        await refreshWorkspaceData(activeWorkspace, activeSession);
       } else {
         setData(emptyData);
       }
@@ -4942,7 +4950,6 @@ export function AppProvider({ children }) {
       .update({ status, read_at: read ? new Date().toISOString() : null })
       .eq('id', notificationId)
       .eq('workspace_id', currentWorkspace.id)
-      .eq('recipient_user_id', session.user.id)
       .select('*')
       .single();
 
@@ -4968,7 +4975,6 @@ export function AppProvider({ children }) {
       })
       .eq('id', notificationId)
       .eq('workspace_id', currentWorkspace.id)
-      .eq('recipient_user_id', session.user.id)
       .select('*')
       .single();
 
@@ -4979,6 +4985,27 @@ export function AppProvider({ children }) {
     await refreshWorkspaceData();
 
     return normalizeNotification(row);
+  };
+
+
+  const markAllNotificationsRead = async () => {
+    const client = requireSupabase();
+    requireWorkspaceSession(currentWorkspace, session);
+
+    const { error: updateError } = await client
+      .from('notifications')
+      .update({ status: 'read', read_at: new Date().toISOString() })
+      .eq('workspace_id', currentWorkspace.id)
+      .eq('status', 'unread')
+      .is('archived_at', null);
+
+    if (updateError) {
+      throw new Error(formatSupabaseError(updateError, 'Notifications could not be marked as read.'));
+    }
+
+    await refreshWorkspaceData();
+
+    return true;
   };
 
   const updateNotificationPreference = async (eventGroup, channels = {}) => {
@@ -5065,6 +5092,8 @@ export function AppProvider({ children }) {
       workspaces,
       currentWorkspace,
       data,
+      dataLoading,
+      dataWarnings,
       error,
       loadAccount,
       refreshWorkspaceData,
@@ -5122,6 +5151,7 @@ export function AppProvider({ children }) {
       createNotification,
       markNotificationRead,
       archiveNotification,
+      markAllNotificationsRead,
       updateNotificationPreference,
       updateNotificationProviderSetting,
       ensureWorkspaceSubscription,
@@ -5144,6 +5174,8 @@ export function AppProvider({ children }) {
       workspaces,
       currentWorkspace,
       data,
+      dataLoading,
+      dataWarnings,
       error,
     ],
   );

@@ -5406,8 +5406,8 @@ label {
 .notification-row-copy h3,
 .notification-row-copy p,
 .notification-row-copy small {
-  overflow: hidden;
-  text-overflow: ellipsis;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .notification-row-copy small {
@@ -5419,6 +5419,16 @@ label {
   display: grid;
   gap: 6px;
   justify-items: end;
+}
+
+.notification-row-status button,
+.notification-row-copy .link-button.inline {
+  min-height: 36px;
+}
+
+.notification-row-copy .link-button.inline {
+  justify-self: start;
+  padding: 0.45rem 0.7rem;
 }
 
 .notification-provider-summary {
