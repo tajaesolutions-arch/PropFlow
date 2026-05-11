@@ -87,56 +87,6 @@ function getMemberId(member) {
 }
 
 function getMemberName(member) {
-  const updateMemberStatus = async (memberId, status) => {
-    if (!canManageMembers) {
-      setMessage('Only Workspace Owners / Company Admins can manage member lifecycle controls.');
-      return;
-    }
-
-    setMemberBusyId(memberId);
-    setMessage('');
-
-    try {
-      await updateWorkspaceMemberStatus(memberId, status);
-      setMessage(status === 'active' ? 'Member reactivated.' : `Member ${status}.`);
-      clearMessageSoon();
-    } catch (error) {
-      setMessage(error?.message || 'Member status could not be updated.');
-    } finally {
-      setMemberBusyId('');
-    }
-  };
-
-  const revokeInvite = async (inviteId) => {
-    if (!canInvite) {
-      setMessage('Only Workspace Owners / Company Admins can revoke invites.');
-      return;
-    }
-
-    setInviteBusyId(inviteId);
-    setMessage('');
-
-    try {
-      await revokeWorkspaceInvite(inviteId);
-      setMessage('Pending invite revoked.');
-      clearMessageSoon();
-    } catch (error) {
-      setMessage(error?.message || 'Invite could not be revoked.');
-    } finally {
-      setInviteBusyId('');
-    }
-  };
-
-  const copyInviteHistoryLink = async (inviteRow) => {
-    const link = buildInviteLink(inviteRow?.token);
-    const copied = await copyToClipboard(link);
-
-    if (copied) {
-      setMessage('Invite link copied. Email sending is not wired yet, so send the link manually.');
-      clearMessageSoon();
-    }
-  };
-
   return (
     member.profile?.full_name ||
     member.profiles?.full_name ||
@@ -158,6 +108,18 @@ function roleList(value) {
   return value.map((role) => roleLabels[role] || role).join(', ');
 }
 
+function roleBadges(value) {
+  if (!Array.isArray(value) || !value.length) return '—';
+
+  return (
+    <div className="settings-role-badges">
+      {value.map((role) => (
+        <StatusBadge key={role} tone="info">{roleLabels[role] || role}</StatusBadge>
+      ))}
+    </div>
+  );
+}
+
 function getPropertyName(properties, propertyId) {
   return properties.find((property) => property.id === propertyId)?.name || 'Unknown property';
 }
@@ -165,6 +127,42 @@ function getPropertyName(properties, propertyId) {
 function getAssignmentMemberName(members, userId) {
   const member = members.find((item) => getMemberId(item) === userId);
   return member ? getMemberName(member) : userId || 'Unknown member';
+}
+
+function getInviteStatus(invite) {
+  if (invite?.status === 'pending' && invite.expires_at && new Date(invite.expires_at).getTime() <= Date.now()) {
+    return 'expired';
+  }
+
+  return invite?.status || 'pending';
+}
+
+function getStatusTone(status) {
+  if (status === 'active' || status === 'accepted') return 'success';
+  if (status === 'pending') return 'info';
+  if (status === 'suspended' || status === 'expired') return 'warning';
+  if (status === 'revoked') return 'error';
+  return 'info';
+}
+
+function summarizeProperties(properties, propertyIds = []) {
+  const names = Array.from(new Set(propertyIds))
+    .map((propertyId) => getPropertyName(properties, propertyId))
+    .filter((name) => name && name !== 'Unknown property');
+
+  if (!names.length) return 'Workspace-level access';
+  if (names.length <= 2) return names.join(', ');
+  return `${names.slice(0, 2).join(', ')} +${names.length - 2} more`;
+}
+
+function getMemberPropertySummary(member, assignments, properties) {
+  const memberId = getMemberId(member);
+  const propertyIds = assignments
+    .filter((assignment) => (assignment.user_id || assignment.userId) === memberId)
+    .map((assignment) => assignment.property_id || assignment.propertyId)
+    .filter(Boolean);
+
+  return summarizeProperties(properties, propertyIds);
 }
 
 function humanizeAction(action) {
@@ -215,56 +213,6 @@ async function copyToClipboard(value) {
 }
 
 function SettingCard({ icon: Icon, title, description, children }) {
-  const updateMemberStatus = async (memberId, status) => {
-    if (!canManageMembers) {
-      setMessage('Only Workspace Owners / Company Admins can manage member lifecycle controls.');
-      return;
-    }
-
-    setMemberBusyId(memberId);
-    setMessage('');
-
-    try {
-      await updateWorkspaceMemberStatus(memberId, status);
-      setMessage(status === 'active' ? 'Member reactivated.' : `Member ${status}.`);
-      clearMessageSoon();
-    } catch (error) {
-      setMessage(error?.message || 'Member status could not be updated.');
-    } finally {
-      setMemberBusyId('');
-    }
-  };
-
-  const revokeInvite = async (inviteId) => {
-    if (!canInvite) {
-      setMessage('Only Workspace Owners / Company Admins can revoke invites.');
-      return;
-    }
-
-    setInviteBusyId(inviteId);
-    setMessage('');
-
-    try {
-      await revokeWorkspaceInvite(inviteId);
-      setMessage('Pending invite revoked.');
-      clearMessageSoon();
-    } catch (error) {
-      setMessage(error?.message || 'Invite could not be revoked.');
-    } finally {
-      setInviteBusyId('');
-    }
-  };
-
-  const copyInviteHistoryLink = async (inviteRow) => {
-    const link = buildInviteLink(inviteRow?.token);
-    const copied = await copyToClipboard(link);
-
-    if (copied) {
-      setMessage('Invite link copied. Email sending is not wired yet, so send the link manually.');
-      clearMessageSoon();
-    }
-  };
-
   return (
     <section className="card settings-card">
       <div className="card-header">
@@ -384,19 +332,41 @@ export function SettingsPage() {
       return;
     }
 
-    const invalidRoles = invite.roles.filter((role) => !inviteRoleOptions.includes(role));
+    const normalizedRoles = Array.from(new Set(invite.roles.map((role) => String(role || '').trim()).filter(Boolean)));
+    const invalidRoles = normalizedRoles.filter((role) => !inviteRoleOptions.includes(role));
+
+    if (!normalizedRoles.length) {
+      setMessage('Choose at least one role.');
+      return;
+    }
+
+    if (normalizedRoles.length !== invite.roles.length) {
+      setMessage('Remove duplicate or blank roles before creating the invite.');
+      return;
+    }
+
     if (invalidRoles.length) {
       setMessage('Select valid customer workspace roles only. PropFlow Admin cannot be invited.');
       return;
     }
 
-    const needsScopedProperties = invite.roles.some((role) => propertyScopedInviteRoles.includes(role));
-    if (needsScopedProperties && !invite.assignedPropertyIds.length) {
+    const assignedPropertyIds = Array.from(new Set(invite.assignedPropertyIds.map((propertyId) => String(propertyId || '').trim()).filter(Boolean)));
+    const invalidPropertyIds = assignedPropertyIds.filter(
+      (propertyId) => !activeProperties.some((property) => property.id === propertyId && property.workspace_id === currentWorkspace.id),
+    );
+
+    if (invalidPropertyIds.length) {
+      setMessage('Assigned properties must belong to the current workspace.');
+      return;
+    }
+
+    const needsScopedProperties = normalizedRoles.some((role) => propertyScopedInviteRoles.includes(role));
+    if (needsScopedProperties && !assignedPropertyIds.length) {
       setMessage('Property Owner, Cleaner, and Maintenance invites require at least one assigned property.');
       return;
     }
 
-    if (!needsScopedProperties && invite.assignedPropertyIds.length) {
+    if (!needsScopedProperties && assignedPropertyIds.length) {
       setMessage('Assigned properties only apply to Property Owner, Cleaner, and Maintenance invites.');
       return;
     }
@@ -406,8 +376,8 @@ export function SettingsPage() {
       return;
     }
 
-    if (!invite.roles.length) {
-      setMessage('Choose at least one role.');
+    if (!isSupabaseConfigured) {
+      setMessage('Supabase is not configured. Invite validation is ready, but no production invite was created.');
       return;
     }
 
@@ -418,8 +388,8 @@ export function SettingsPage() {
     try {
       const created = await createInvite({
         email: normalizedEmail,
-        roles: invite.roles,
-        assignedPropertyIds: invite.assignedPropertyIds,
+        roles: normalizedRoles,
+        assignedPropertyIds,
         expiresAt: invite.expiresAt || null,
         message: invite.message.trim() || null,
         permissionLevel: invite.permissionLevel,
@@ -429,7 +399,7 @@ export function SettingsPage() {
 
       setLastLink(link);
       setInvite(defaultInvite);
-      setMessage('Invite created. Email sending is not wired yet, so copy and send the invite link manually.');
+      setMessage('Invite created. Email sending is not wired yet, so copy the one-time invite link and send it only to the invited email.');
       clearMessageSoon();
     } catch (error) {
       setMessage(error.message || 'Invite creation failed.');
@@ -568,16 +538,6 @@ export function SettingsPage() {
       setMessage(error?.message || 'Invite could not be revoked.');
     } finally {
       setInviteBusyId('');
-    }
-  };
-
-  const copyInviteHistoryLink = async (inviteRow) => {
-    const link = buildInviteLink(inviteRow?.token);
-    const copied = await copyToClipboard(link);
-
-    if (copied) {
-      setMessage('Invite link copied. Email sending is not wired yet, so send the link manually.');
-      clearMessageSoon();
     }
   };
 
@@ -890,6 +850,7 @@ export function SettingsPage() {
               <Copy size={16} />
               Copy
             </button>
+            <small>Shown only after creation. Send only to the invited email; invite acceptance still requires that signed-in email.</small>
           </div>
         )}
       </section>
@@ -998,12 +959,17 @@ export function SettingsPage() {
                   {
                     key: 'roles',
                     label: 'Roles',
-                    render: (row) => roleList(row.roles),
+                    render: (row) => roleBadges(row.roles),
+                  },
+                  {
+                    key: 'assigned_properties',
+                    label: 'Assigned properties',
+                    render: (row) => getMemberPropertySummary(row, propertyAssignments, activeProperties),
                   },
                   {
                     key: 'status',
                     label: 'Status',
-                    render: (row) => <StatusBadge>{row.status || 'active'}</StatusBadge>,
+                    render: (row) => <StatusBadge tone={getStatusTone(row.status || 'active')}>{row.status || 'active'}</StatusBadge>,
                   },
                   {
                     key: 'created_at',
@@ -1083,12 +1049,20 @@ export function SettingsPage() {
                     {
                       key: 'roles',
                       label: 'Roles',
-                      render: (row) => roleList(row.roles),
+                      render: (row) => roleBadges(row.roles),
+                    },
+                    {
+                      key: 'assigned_property_ids',
+                      label: 'Assigned properties',
+                      render: (row) => summarizeProperties(activeProperties, row.assigned_property_ids || row.assignedPropertyIds),
                     },
                     {
                       key: 'status',
                       label: 'Status',
-                      render: (row) => <StatusBadge>{row.status || 'pending'}</StatusBadge>,
+                      render: (row) => {
+                        const status = getInviteStatus(row);
+                        return <StatusBadge tone={getStatusTone(status)}>{status}</StatusBadge>;
+                      },
                     },
                     {
                       key: 'expires_at',
@@ -1100,13 +1074,7 @@ export function SettingsPage() {
                       label: 'Actions',
                       render: (row) => (
                         <div className="table-actions">
-                          {row.status === 'pending' && (
-                            <button type="button" onClick={() => copyInviteHistoryLink(row)} data-skip-create-action="true">
-                              <Copy size={16} />
-                              Link
-                            </button>
-                          )}
-                          {row.status === 'pending' && (
+                          {getInviteStatus(row) === 'pending' && (
                             <button
                               type="button"
                               onClick={() => revokeInvite(row.id)}

@@ -288,7 +288,7 @@ export function JoinWorkspacePage() {
             <h1>Create or join a workspace</h1>
             <p>
               Create a new property operation or join an existing workspace with a valid invite
-              token, invite link, or company code.
+              token, invite link, or a company code tied to a pending invite for your signed-in email.
             </p>
           </div>
 
@@ -480,11 +480,11 @@ export function JoinWorkspacePage() {
             </div>
 
             <label>
-              Invite link, invite token, or company code
+              Invite link, invite token, or invited company code
               <input
                 value={joinCode}
                 onChange={(event) => setJoinCode(normalizeJoinInput(event.target.value))}
-                placeholder="BLUE-2026 or invite token"
+                placeholder="Invite link, token, or invited company code"
                 required
               />
             </label>
@@ -493,7 +493,7 @@ export function JoinWorkspacePage() {
               <WorkspaceSetupFeature
                 icon={ShieldCheck}
                 title="Email match required"
-                description="Company codes should only work when an invite exists for your signed-in email."
+                description="A company code by itself cannot join a workspace; a pending invite must match your signed-in email."
               />
 
               <WorkspaceSetupFeature
