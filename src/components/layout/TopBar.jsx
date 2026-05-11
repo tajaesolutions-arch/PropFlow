@@ -26,10 +26,10 @@ export function TopBar({
 }) {
   const { data, markNotificationRead, archiveNotification } = useApp();
   const [dateRange, setDateRange] = React.useState(getInitialDateRange);
-  const notifications = Array.isArray(data?.notifications) ? data.notifications : [];
-  const recentNotifications = notifications.slice(0, 5);
+  const notifications = React.useMemo(() => (Array.isArray(data?.notifications) ? data.notifications : []), [data?.notifications]);
+  const recentNotifications = React.useMemo(() => notifications.slice(0, 5), [notifications]);
   const [notificationOpen, setNotificationOpen] = React.useState(false);
-  const unreadNotifications = notifications.filter(isUnreadNotification).length;
+  const unreadNotifications = React.useMemo(() => notifications.filter(isUnreadNotification).length, [notifications]);
   const notificationLabel = unreadNotifications
     ? `Open notifications. ${unreadNotifications} unread alert${unreadNotifications === 1 ? '' : 's'}.`
     : 'Open notifications. No unread alerts.';
@@ -121,7 +121,7 @@ export function TopBar({
           aria-expanded={notificationOpen}
           data-skip-create-action="true"
         >
-          <Bell size={18} />
+          <Bell size={18} aria-hidden="true" />
           {unreadNotifications ? (
             <span className="notification-count" aria-hidden="true">
               {unreadNotifications > 9 ? '9+' : unreadNotifications}
@@ -152,11 +152,11 @@ export function TopBar({
                         <small>{eventType.replaceAll('_', ' ')} · {new Date(notification.createdAt || notification.created_at || Date.now()).toLocaleString()}</small>
                       </button>
                       <div className="notification-dropdown-actions">
-                        <button type="button" onClick={() => handleMarkRead(notification, unread)} title={unread ? 'Mark read' : 'Mark unread'} data-skip-create-action="true">
-                          <Check size={14} />
+                        <button type="button" onClick={() => handleMarkRead(notification, unread)} title={unread ? 'Mark read' : 'Mark unread'} aria-label={unread ? 'Mark notification as read' : 'Mark notification as unread'} data-skip-create-action="true">
+                          <Check size={14} aria-hidden="true" />
                         </button>
-                        <button type="button" onClick={() => handleArchive(notification)} title="Archive" data-skip-create-action="true">
-                          <Archive size={14} />
+                        <button type="button" onClick={() => handleArchive(notification)} title="Archive" aria-label="Archive notification" data-skip-create-action="true">
+                          <Archive size={14} aria-hidden="true" />
                         </button>
                       </div>
                     </article>

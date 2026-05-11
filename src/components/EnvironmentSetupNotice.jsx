@@ -4,14 +4,6 @@ import { AlertTriangle, CheckCircle2, CreditCard, Mail, MessageCircle, ShieldChe
 import { StatusBadge } from './StatusBadge.jsx';
 import { isSupabaseConfigured } from '../lib/supabase.js';
 
-function getEnvValue(key) {
-  return import.meta.env?.[key]?.trim?.() || '';
-}
-
-function hasAnyEnv(keys) {
-  return keys.some((key) => Boolean(getEnvValue(key)));
-}
-
 function ProviderRow({ icon: Icon, name, status, description, requiredKeys }) {
   const connected = status === 'connected';
 
@@ -28,7 +20,7 @@ function ProviderRow({ icon: Icon, name, status, description, requiredKeys }) {
       </span>
 
       <StatusBadge tone={connected ? 'success' : 'warning'}>
-        {connected ? 'connected' : 'not configured'}
+        {connected ? 'connected' : 'provider_not_configured'}
       </StatusBadge>
     </div>
   );
@@ -50,33 +42,33 @@ export function EnvironmentSetupNotice({ compact = false }) {
       id: 'stripe',
       icon: CreditCard,
       name: 'Stripe billing',
-      status: hasAnyEnv(['VITE_STRIPE_PUBLISHABLE_KEY']) ? 'connected' : 'missing',
-      description: 'Provider status only. Secret keys and webhooks must stay server-side.',
-      requiredKeys: ['VITE_STRIPE_PUBLISHABLE_KEY'],
+      status: 'missing',
+      description: 'Server-only API routes intentionally return provider_not_configured until live Stripe is implemented.',
+      requiredKeys: ['server-only Stripe env vars'],
     },
     {
       id: 'resend',
       icon: Mail,
       name: 'Resend email',
-      status: hasAnyEnv(['VITE_RESEND_CONFIGURED']) ? 'connected' : 'missing',
-      description: 'Transactional email provider is not wired in this frontend MVP yet.',
-      requiredKeys: ['VITE_RESEND_CONFIGURED'],
+      status: 'missing',
+      description: 'External email sends are not live. Keep Resend credentials server-only when implemented.',
+      requiredKeys: ['server-only Resend env vars'],
     },
     {
       id: 'twilio-sms',
       icon: MessageCircle,
       name: 'Twilio SMS',
-      status: hasAnyEnv(['VITE_TWILIO_SMS_CONFIGURED']) ? 'connected' : 'missing',
-      description: 'SMS provider credentials should be stored server-side, not in frontend code.',
-      requiredKeys: ['VITE_TWILIO_SMS_CONFIGURED'],
+      status: 'missing',
+      description: 'External SMS sends are not live. Keep Twilio credentials server-only when implemented.',
+      requiredKeys: ['server-only Twilio SMS env vars'],
     },
     {
       id: 'twilio-whatsapp',
       icon: MessageCircle,
       name: 'Twilio WhatsApp',
-      status: hasAnyEnv(['VITE_TWILIO_WHATSAPP_CONFIGURED']) ? 'connected' : 'missing',
-      description: 'WhatsApp provider credentials should be stored server-side, not in frontend code.',
-      requiredKeys: ['VITE_TWILIO_WHATSAPP_CONFIGURED'],
+      status: 'missing',
+      description: 'External WhatsApp sends are not live. Keep Twilio credentials server-only when implemented.',
+      requiredKeys: ['server-only Twilio WhatsApp env vars'],
     },
   ];
 

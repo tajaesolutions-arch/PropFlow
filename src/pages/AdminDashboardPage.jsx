@@ -26,6 +26,7 @@ import { StatusBadge } from '../components/StatusBadge.jsx';
 import { roles } from '../data/constants.js';
 import { canAccessPlatformAdmin } from '../lib/auth.js';
 import { useApp } from '../lib/AppContext.jsx';
+import { appEnvironment } from '../lib/supabase.js';
 
 const sensitiveStatuses = new Set(['suspended', 'restricted', 'denied']);
 
@@ -140,7 +141,7 @@ function NoteModal({ target, onClose, onSubmit, busy }) {
             <h3>Add founder note</h3>
             <p>Internal only. Customers are not notified when platform admin notes are created.</p>
           </div>
-          <button type="button" className="icon-button" onClick={onClose} data-skip-create-action="true"><X size={18} /></button>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Close platform admin note modal" title="Close" data-skip-create-action="true"><X size={18} /></button>
         </div>
         <form className="settings-invite-form" onSubmit={submit}>
           <label>
@@ -191,7 +192,7 @@ function WorkspaceDetailDrawer({ detail, onClose, onStatus, onNote, busy }) {
             <h3>{workspace.name || 'Workspace'}</h3>
             <p>{workspace.company_code || 'No code'} · {workspace.country || '—'} · {workspace.default_currency || '—'}</p>
           </div>
-          <button type="button" className="icon-button" onClick={onClose} data-skip-create-action="true"><X size={18} /></button>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Close workspace detail drawer" title="Close" data-skip-create-action="true"><X size={18} /></button>
         </div>
 
         <div className="admin-detail-grid">
@@ -278,11 +279,16 @@ export function AdminDashboardPage() {
   const isAdmin = canAccessPlatformAdmin(currentUser) || currentUser?.roles?.includes(roles.ADMIN);
   const overview = data.platformOverview || {};
   const health = data.platformHealthReport || {};
-  const workspaces = data.platformWorkspaces || [];
-  const users = data.platformUsers || [];
-  const auditLogs = data.platformAdminAuditLogs || [];
-  const adminNotes = data.platformAdminNotes || [];
+  const workspaces = React.useMemo(() => data.platformWorkspaces || [], [data.platformWorkspaces]);
+  const users = React.useMemo(() => data.platformUsers || [], [data.platformUsers]);
+  const auditLogs = React.useMemo(() => data.platformAdminAuditLogs || [], [data.platformAdminAuditLogs]);
+  const adminNotes = React.useMemo(() => data.platformAdminNotes || [], [data.platformAdminNotes]);
   const subscriptionCounts = overview.subscription_status_counts || {};
+  const migrationWarning = data.platformAdminSetupRequired
+    ? 'Platform admin RPC migration/setup required'
+    : health.admin_rpc_status
+      ? ''
+      : 'Health RPC pending or unavailable until migrations are applied and schema cache refreshes.';
 
   React.useEffect(() => {
     if (!isAdmin) return;
@@ -411,13 +417,17 @@ export function AdminDashboardPage() {
         <section className="card">
           <div className="card-header"><div><h3>Platform health</h3><p>Safe operational signals from admin RPCs and app-side config.</p></div><Database size={22} className="muted" /></div>
           <div className="admin-health-list">
-            <div className="health-row"><span>Auth / Supabase config</span><StatusBadge tone={isSupabaseConfigured ? 'success' : 'error'}>{isSupabaseConfigured ? 'configured' : 'setup_required'}</StatusBadge></div>
+            <div className="health-row"><span>App environment</span><StatusBadge tone={appEnvironment === 'production' ? 'success' : 'info'}>{appEnvironment}</StatusBadge></div>
+            <div className="health-row"><span>Supabase configured</span><StatusBadge tone={isSupabaseConfigured ? 'success' : 'error'}>{isSupabaseConfigured ? 'yes' : 'setup_required'}</StatusBadge></div>
             <div className="health-row"><span>RLS / admin RPC status</span><StatusBadge tone={data.platformAdminSetupRequired ? 'warning' : 'success'}>{data.platformAdminSetupRequired ? 'migration_required' : health.admin_rpc_status || 'ready'}</StatusBadge></div>
-            <div className="health-row"><span>Billing restricted workspaces</span><strong>{numberValue(getHealthValue(health, 'billing_restricted_workspaces'))}</strong></div>
-            <div className="health-row"><span>Provider not configured deliveries</span><strong>{numberValue(getHealthValue(health, 'provider_not_configured_delivery_logs'))}</strong></div>
-            <div className="health-row"><span>Failed iCal syncs</span><strong>{numberValue(getHealthValue(health, 'failed_ical_syncs'))}</strong></div>
+            <div className="health-row"><span>Billing endpoints</span><StatusBadge tone="warning">provider_not_configured_stub</StatusBadge></div>
+            <div className="health-row"><span>Notification external sends</span><StatusBadge tone="warning">not_live</StatusBadge></div>
+            <div className="health-row"><span>Private storage bucket</span><strong>workspace-files</strong></div>
+            <div className="health-row"><span>Latest failed iCal sync count</span><strong>{numberValue(getHealthValue(health, 'failed_ical_syncs'))}</strong></div>
             <div className="health-row"><span>Open iCal conflicts</span><strong>{numberValue(getHealthValue(health, 'open_ical_conflicts'))}</strong></div>
-            <div className="health-row"><span>Private file/storage errors</span><StatusBadge tone="info">summary_only</StatusBadge></div>
+            <div className="health-row"><span>Billing restricted workspaces</span><strong>{numberValue(getHealthValue(health, 'billing_restricted_workspaces'))}</strong></div>
+            <div className="health-row"><span>Provider_not_configured delivery logs</span><strong>{numberValue(getHealthValue(health, 'provider_not_configured_delivery_logs'))}</strong></div>
+            <div className="health-row"><span>Migration/setup warnings</span><StatusBadge tone={migrationWarning ? 'warning' : 'success'}>{migrationWarning || 'none'}</StatusBadge></div>
           </div>
         </section>
       </section>
