@@ -476,7 +476,7 @@ Supported MVP categories include property photos, cleaning before/after photos, 
 ## Known limitations
 
 - Billing UI starts Stripe Checkout only for Workspace Owners when server env vars are configured; otherwise it shows `Stripe billing is not configured yet.` safely. Customer portal, invoices UI, usage metering, coupons, and billing analytics are still not implemented.
-- Reports, PDF exports, CSV exports, and owner statements are placeholders.
+- Reports/export foundation supports safe local CSV and browser print-to-PDF exports from role-authorized records. Scheduled delivery, stored generated PDFs, AI summaries, and accountant-grade automation remain future work.
 - Bookings and external booking platform integrations are not connected.
 - Guest CRM is a placeholder.
 - Notifications table exists, but automation is not implemented.
@@ -493,7 +493,7 @@ Supported MVP categories include property photos, cleaning before/after photos, 
 3. Add bookings and checkout-triggered cleaning task generation.
 4. Add signed download UI for private files.
 5. Add notification jobs and operational reminders.
-6. Add finance/reporting models before Stripe billing and exports.
+6. Add stored generated report files and scheduled delivery after backend report jobs are designed.
 
 ## Bookings + Calendar foundation phase
 
@@ -911,3 +911,26 @@ After Vercel and Supabase are configured, manually test:
 - Public `/book/:slug` direct booking flow with safe data only.
 - iCal sync with a known-safe HTTPS feed and blocked private/internal URLs.
 - Billing and notification screens remain provider-not-configured until live provider work is intentionally added.
+
+## Reports and export foundation
+
+PropFlow now includes a safe MVP reporting center for role-authorized workspace data. The foundation supports owner reports, revenue reports, expense reports, maintenance cost reports, cleaning cost reports, occupancy reports, and property performance reports. Reports are derived from records the current user can already see; the UI does not invent finance numbers, does not create fake/demo exported reports, and does not mark local preview exports as official accounting statements.
+
+CSV export is client-side and uses clean headers for each supported report type. CSV rows are built from role-scoped records only and avoid raw JSON dumps or permanent file URLs. When activity logging is configured, report export actions attempt a non-blocking `report_exported` activity log entry.
+
+PDF export uses a lightweight browser print/export-to-PDF flow instead of adding a heavy PDF dependency. The printable report includes the PropFlow name, workspace name, title, date range, generated date, property/owner context where applicable, summary metrics, report rows, and the disclaimer: “This report is for property management review and may require accounting verification.” Generated PDFs are not uploaded automatically, public report links are not created, and private signed file URLs are not embedded in exported content.
+
+Role-based visibility follows the existing app navigation and Supabase RLS model. Workspace Owners and Property Managers can see the full report center for their workspace. Hosts see operational reports. Accountants can see finance-oriented reports where the role exists. Property Owners see only assigned-property owner/occupancy/performance report data and released/ready owner report records returned by RLS. Cleaner and Maintenance Crew roles do not receive finance or owner report center access.
+
+Plan limits use the existing `planLimits` helpers. Basic owner reports remain visible where permitted, monthly owner-report usage is shown, and advanced reports display upgrade messaging when the current plan does not include advanced reporting. Frontend gates are UX only; backend/database plan-limit enforcement remains the production source of truth.
+
+The database foundation enhances the existing `public.owner_reports` metadata table rather than duplicating it. It adds optional private report file metadata linkage through `file_uploads`, JSON summary metadata, generated-by metadata, and stricter report type/status alignment while preserving existing rows and RLS protections.
+
+Known future TODOs:
+
+- Scheduled monthly owner reports.
+- Email delivery through Resend.
+- SMS/WhatsApp alerts through Twilio.
+- Stored generated PDFs.
+- AI report summaries.
+- Accountant-grade financial automation.

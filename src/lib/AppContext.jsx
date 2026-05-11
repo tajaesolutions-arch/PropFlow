@@ -379,6 +379,10 @@ function normalizeReport(row) {
     startDate: row.start_date,
     endDate: row.end_date,
     summary: row.summary || row.notes,
+    summaryData: row.summary_data || {},
+    fileId: row.file_id,
+    generatedBy: row.generated_by || row.created_by,
+    archivedAt: row.archived_at,
   };
 }
 
@@ -932,16 +936,18 @@ const maintenanceStatuses = ['reported', 'assigned', 'in_progress', 'waiting_par
 const maintenanceClosedStatuses = ['completed', 'cancelled'];
 
 const reportTypes = [
+  'owner_report',
   'owner_statement',
   'revenue_report',
   'expense_report',
   'occupancy_report',
   'maintenance_cost_report',
   'cleaning_cost_report',
+  'property_performance_report',
   'property_performance',
   'booking_summary',
 ];
-const reportStatuses = ['draft', 'released', 'published', 'sent', 'delivered', 'completed', 'archived'];
+const reportStatuses = ['draft', 'ready', 'exported', 'released', 'published', 'sent', 'delivered', 'completed', 'archived'];
 
 function normalizeMaintenanceStatus(value) {
   if (value === 'open') return 'reported';
@@ -3853,7 +3859,7 @@ export function AppProvider({ children }) {
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'report');
 
-    const reportType = payload.report_type || 'owner_statement';
+    const reportType = payload.report_type || 'owner_report';
     const status = payload.status || 'draft';
     requireAllowedValue(reportType, reportTypes, 'report type');
     requireAllowedValue(status, reportStatuses, 'report status');
@@ -3888,6 +3894,9 @@ export function AppProvider({ children }) {
         notes: cleanText(payload.notes),
         status,
         created_by: session.user.id,
+        generated_by: session.user.id,
+        file_id: payload.file_id || null,
+        summary_data: payload.summary_data && typeof payload.summary_data === 'object' ? payload.summary_data : {},
       },
       [
         'workspace_id',
@@ -3902,6 +3911,9 @@ export function AppProvider({ children }) {
         'notes',
         'status',
         'created_by',
+        'generated_by',
+        'file_id',
+        'summary_data',
       ],
     );
 
