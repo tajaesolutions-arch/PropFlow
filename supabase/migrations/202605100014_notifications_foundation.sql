@@ -188,6 +188,32 @@ set event_type = coalesce(event_type, nullif(type, ''), 'workspace_activity'),
     body = coalesce(body, message)
 where event_type is null or title is null;
 
+-- Existing deployments may already contain legacy notification rows whose
+-- old `type` values are not part of the stricter MVP event-type allowlist.
+-- Normalize those rows before adding the check constraint so this migration
+-- remains safe to run against projects with earlier notification data.
+update public.notifications
+set event_type = 'workspace_activity'
+where event_type is null
+  or btrim(event_type) = ''
+  or not public.valid_notification_event_type(event_type);
+
+update public.notifications
+set title = 'Workspace notification'
+where title is null or btrim(title) = '';
+
+update public.notifications
+set status = 'unread'
+where status is null
+  or btrim(status) = ''
+  or status not in ('unread','read','archived');
+
+update public.notifications
+set priority = 'normal'
+where priority is null
+  or btrim(priority) = ''
+  or priority not in ('low','normal','high','urgent');
+
 alter table public.notifications alter column event_type set not null;
 alter table public.notifications alter column title set not null;
 
