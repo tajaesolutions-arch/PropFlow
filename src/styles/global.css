@@ -8084,3 +8084,26 @@ label {
     align-items: stretch;
   }
 }
+
+.notification-delivery-list {
+  display: grid;
+  gap: 10px;
+}
+
+.notification-delivery-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+.notification-delivery-row span {
+  display: grid;
+  gap: 3px;
+}
+
+.notification-delivery-row small {
+  color: var(--text-muted);
+}

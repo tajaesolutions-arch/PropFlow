@@ -188,6 +188,15 @@ function getVisibilityCopy(currentUser) {
   return 'Notification visibility is limited for this role.';
 }
 
+
+function getDeliveryRecipient(log) {
+  const address = log.recipientEmail || log.recipient_email || log.recipientAddress || log.recipient_address || '';
+  if (!address) return 'Recipient hidden';
+  const [name, domain] = String(address).split('@');
+  if (!domain) return 'Recipient hidden';
+  return `${name.slice(0, 2)}***@${domain}`;
+}
+
 function statusTone(value) {
   const text = String(value || '').toLowerCase();
 
@@ -307,6 +316,15 @@ export function NotificationsPage() {
     .filter((notification) => isVisibleNotification(notification, currentUser)));
   const visibleTypes = Array.from(new Set([...baseVisibleTypes, ...notifications.map(getNotificationType)])).filter(Boolean);
   const notificationWarnings = (dataWarnings || []).filter((warning) => String(warning).toLowerCase().includes('notification'));
+  const recentEmailDeliveries = (data.notificationDeliveryLogs || [])
+    .filter((log) => (log.channel || '').toLowerCase() === 'email')
+    .slice(0, 5);
+  const emailDeliveryCounts = recentEmailDeliveries.reduce((counts, log) => {
+    const status = log.status || 'queued';
+    counts[status] = (counts[status] || 0) + 1;
+    return counts;
+  }, {});
+  const emailProviderConfigured = recentEmailDeliveries.some((log) => log.status === 'sent') || !recentEmailDeliveries.some((log) => log.status === 'provider_not_configured');
 
   const unreadCount = notifications.filter(isUnread).length;
   const ownUnreadCount = notifications.filter((notification) => isUnread(notification) && getRecipientId(notification) === currentUser?.id).length;
@@ -394,7 +412,7 @@ export function NotificationsPage() {
         <div>
           <h3>Notification center</h3>
           <p>
-            In-app alerts for visible records only. Email, SMS, and WhatsApp delivery are not active yet.
+            In-app alerts for visible records only. Transactional email delivery is handled server-side through Resend when configured; SMS and WhatsApp are still not active.
           </p>
         </div>
 
@@ -416,18 +434,45 @@ export function NotificationsPage() {
         </div>
       </section>
 
-      <section className="card notification-warning-card">
-        <div className="card-header">
-          <div>
-            <p className="eyebrow">Delivery status</p>
-            <h3>External notification delivery is pending backend setup</h3>
-            <p>
-              This page displays in-app notification records only. External delivery, provider retries, and sent-message status should be connected in a later backend notification phase.
-            </p>
+      {canSeeProviderDetails && (
+        <section className="card notification-warning-card">
+          <div className="card-header">
+            <div>
+              <p className="eyebrow">Email delivery</p>
+              <h3>Resend transactional email foundation</h3>
+              <p>
+                Recent delivery logs show safe status metadata only. API keys, full email bodies, raw provider errors, card data, and signed file links are never shown here.
+              </p>
+            </div>
+            <StatusBadge tone={emailProviderConfigured ? 'success' : 'warning'}>{emailProviderConfigured ? 'Configured' : 'Not configured'}</StatusBadge>
           </div>
-          <AlertTriangle size={22} className="muted" />
-        </div>
-      </section>
+
+          <div className="settings-status-list">
+            {['sent', 'failed', 'provider_not_configured', 'skipped'].map((status) => (
+              <span key={status}>
+                <strong>{formatLabel(status)}</strong>
+                <StatusBadge tone={statusTone(status)}>{emailDeliveryCounts[status] || 0}</StatusBadge>
+              </span>
+            ))}
+          </div>
+
+          {recentEmailDeliveries.length > 0 ? (
+            <div className="notification-delivery-list">
+              {recentEmailDeliveries.map((log) => (
+                <div key={log.id} className="notification-delivery-row">
+                  <span>
+                    <strong>{formatLabel(log.templateKey || log.template_key || 'transactional_email')}</strong>
+                    <small>{getDeliveryRecipient(log)} · {formatDate(log.createdAt || log.created_at)}</small>
+                  </span>
+                  <StatusBadge tone={statusTone(log.status)}>{formatLabel(log.status)}</StatusBadge>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="helper">No email delivery attempts have been recorded for this workspace yet.</p>
+          )}
+        </section>
+      )}
 
       <section className="card">
         <div className="notifications-filters">

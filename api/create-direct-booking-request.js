@@ -2,6 +2,7 @@ import { getServerEnv, requireServerEnv } from './_utils/env.js';
 import { json, readJsonBody, requireJsonContentType, requireMethod } from './_utils/http.js';
 import { getSupabaseAdminClient } from './_utils/supabaseAdmin.js';
 import { buildSameOriginUrl, getAppUrl, getStripeSecretKey, stripeRequest } from './_utils/stripe.js';
+import { sendTransactionalEmail } from './_utils/transactionalEmail.js';
 
 const EMAIL_RE = /^\S+@\S+\.\S+$/;
 const MAX_STAY_NIGHTS = 90;
@@ -86,6 +87,58 @@ async function hasConflict(supabaseAdmin, { workspaceId, propertyId, checkIn, ch
 
 async function logActivity(supabaseAdmin, workspaceId, action, metadata = {}) {
   await supabaseAdmin.from('activity_logs').insert({ workspace_id: workspaceId, actor_user_id: null, action, metadata });
+}
+
+
+async function workspaceManagers(supabaseAdmin, workspaceId) {
+  const { data, error } = await supabaseAdmin
+    .from('workspace_members')
+    .select('user_id, roles, status, profiles:profiles!workspace_members_user_id_fkey(full_name, email)')
+    .eq('workspace_id', workspaceId)
+    .eq('status', 'active');
+  if (error) return [];
+  return (data || []).filter((member) => {
+    const memberRoles = Array.isArray(member.roles) ? member.roles : [];
+    return memberRoles.some((role) => ['workspace_owner', 'property_manager', 'host'].includes(role)) && EMAIL_RE.test(String(member.profiles?.email || '').toLowerCase());
+  });
+}
+
+async function sendDirectBookingSubmittedEmails(request, supabaseAdmin, page, property, directRequest) {
+  const appUrl = getAppUrl(request);
+  const commonContext = {
+    appUrl,
+    publicPath: `/book/${page.slug}`,
+    guestName: directRequest.guest_name,
+    propertyName: property?.name,
+    checkIn: directRequest.check_in,
+    checkOut: directRequest.check_out,
+    guestCount: directRequest.guest_count,
+    quotedTotal: directRequest.quoted_total,
+    currency: directRequest.currency,
+  };
+
+  await sendTransactionalEmail({
+    supabaseAdmin,
+    workspaceId: directRequest.workspace_id,
+    recipientEmail: directRequest.guest_email,
+    templateKey: 'direct_booking_request_confirmation',
+    context: commonContext,
+    metadata: { entity_type: 'direct_booking_request', entity_id: directRequest.id, property_id: directRequest.property_id },
+    idempotencyKey: `direct_booking_request_confirmation:${directRequest.id}`,
+    replyTo: page.contact_email || null,
+  }).catch(() => null);
+
+  const managers = await workspaceManagers(supabaseAdmin, directRequest.workspace_id);
+  await Promise.allSettled(managers.slice(0, 10).map((manager) => sendTransactionalEmail({
+    supabaseAdmin,
+    workspaceId: directRequest.workspace_id,
+    recipientUserId: manager.user_id,
+    recipientEmail: manager.profiles?.email,
+    templateKey: 'direct_booking_request_received',
+    context: commonContext,
+    metadata: { entity_type: 'direct_booking_request', entity_id: directRequest.id, property_id: directRequest.property_id },
+    idempotencyKey: `direct_booking_request_received:${directRequest.id}:${manager.user_id}`,
+  })));
 }
 
 async function startCheckout(request, supabaseAdmin, page, directRequest, amountCents) {
@@ -193,6 +246,7 @@ export default async function handler(request, response) {
     if (insertError) throw insertError;
 
     await logActivity(supabaseAdmin, page.workspace_id, 'direct_booking_request_submitted', { direct_booking_request_id: created.id, property_id: page.property_id });
+    await sendDirectBookingSubmittedEmails(request, supabaseAdmin, page, property, created).catch(() => null);
 
     let checkout = null;
     if (requiresCheckout) {

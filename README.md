@@ -177,8 +177,8 @@ Future production TODOs: virus/malware scanning, video uploads, richer document 
 ### Provider status and launch non-goals
 
 - Stripe subscription billing has a secure foundation: Workspace Owners can request server-created Checkout Sessions and Customer Portal Sessions when server-only Stripe env vars are configured, and the webhook endpoint verifies Stripe signatures before syncing workspace subscription state. Usage metering, coupons, custom invoice UI, and billing analytics are not active.
-- Resend, Twilio SMS, and Twilio WhatsApp external sends are not live; in-app notifications and provider setup states are safe placeholders.
-- Direct booking guest payments are not live; public pages collect requests only and never card data.
+- Resend transactional email has a server-side foundation and sends only when production server env vars are configured; Twilio SMS and Twilio WhatsApp external sends are not live.
+- Direct booking guest payment status is handled through the secure Stripe foundation where configured; PropFlow never stores card data.
 - iCal import is a one-way import foundation with SSRF-protected fetches; two-way sync/channel-manager integrations are not live.
 - CSV/PDF exports, receipt OCR, AI tools, rent payment automation, e-signature/legal generation, scheduled owner reports, tax/accounting automation, and external channel manager integrations remain explicit non-goals for this launch pass.
 - No fake/demo data should be added to production workflows; new workspaces should show real empty states.
@@ -970,3 +970,61 @@ Known future TODOs:
 - Coupon codes.
 - Full Airbnb/Booking.com/Vrbo channel-manager integrations.
 - Automated cleaning task creation from converted direct bookings.
+
+## Resend transactional email foundation
+
+PropFlow includes a safe server-side transactional email foundation for Resend. The browser never receives `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_REPLY_TO_EMAIL`, or the Supabase service-role key.
+
+### Server-only environment variables
+
+Set these only in Vercel Project Settings or a trusted local server environment:
+
+```bash
+RESEND_API_KEY=
+RESEND_FROM_EMAIL=PropFlow <notifications@your-domain.example>
+RESEND_REPLY_TO_EMAIL=support@your-domain.example # optional
+APP_URL=https://your-app.example
+```
+
+Local/demo safety: Resend sends are treated as `provider_not_configured` when the runtime looks local, demo, preview, test, or development unless `RESEND_ALLOW_NON_PRODUCTION_SENDS=true` is set in a trusted non-production server environment. Do not enable that flag for normal local demos.
+
+### Templates included
+
+The approved transactional templates are:
+
+- `team_invite`
+- `cleaning_task_assigned`
+- `maintenance_work_order_assigned`
+- `direct_booking_request_confirmation`
+- `direct_booking_request_received`
+- `direct_booking_payment_succeeded`
+- `direct_booking_payment_failed`
+- `owner_report_ready`
+- `billing_payment_failed`
+- `subscription_billing_warning`
+
+Templates include plain-text fallbacks, simple PropFlow-branded HTML, same-origin app links from `APP_URL`, escaped user-provided content, and no tracking pixels.
+
+### Delivery logs and provider-not-configured behavior
+
+Transactional sends write safe delivery metadata to `public.notification_delivery_logs` using the existing notification delivery-log table. Logs track channel, provider, template key, subject, recipient address, safe status, provider message ID, timestamps, and safe metadata. Full email bodies, secrets, payment card data, raw signed file URLs, and private file contents are not stored.
+
+If Resend is not configured, the main product action still completes. The delivery log is marked `provider_not_configured`, and API responses return safe copy such as “Email provider is not configured yet.” or “Email could not be sent, but the main action completed.” Raw provider errors and stack traces are not shown to normal users.
+
+Webhook-triggered emails use idempotency keys based on Stripe event IDs and entity IDs to reduce duplicate email risk during webhook retries.
+
+### Security notes
+
+- `RESEND_API_KEY` is read only inside `/api/*` server code.
+- Supabase service-role access is used only by trusted server routes/helpers.
+- RLS remains enabled on delivery logs; workspace managers can view workspace delivery metadata, individual recipients can view their own delivery metadata, owner-report recipients are constrained to their own logs, and client inserts are restricted to internal in-app delivery logs.
+- SMS, WhatsApp, Twilio, marketing newsletters, bulk campaigns, scheduled emails, AI-generated emails, attachments, and retry queues are not implemented in this email foundation.
+
+### Future email/notification TODOs
+
+- Add unsubscribe/preference center if marketing email is ever introduced.
+- Authenticate sending domains with SPF/DKIM and monitor deliverability.
+- Add a retry queue for transient provider failures.
+- Add safe attachment support after private-file authorization is designed.
+- Add scheduled owner reports/reminders.
+- Add SMS/WhatsApp through Twilio in a separate PR.

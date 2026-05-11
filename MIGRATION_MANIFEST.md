@@ -40,6 +40,8 @@ Do not edit old migrations destructively after they have been applied to a share
 | 31 | `202605110002_plan_limits_enforcement.sql` | Plan limits enforcement. | Plan limit helpers and enforcement RPC/policy alignment. | Re-test plan-gated create actions. |
 | 32 | `202605110002_private_file_uploads_foundation.sql` | Private file/photo uploads hardening. | Reuses `file_uploads`, adds entity/metadata context, locks `workspace-files` to private allowed MIME types, switches canonical paths to `workspaces/{workspace_id}/...`, removes video categories from MVP constraints, and replaces file/storage RLS helpers and policies. | Upload property photo/document, cleaning proof photo, maintenance issue/completion photo, and receipt/invoice as allowed roles; verify suspended/cross-workspace users cannot view metadata or objects and signed URLs expire. |
 
+| 33 | `202605110006_resend_transactional_email_foundation.sql` | Resend transactional email delivery logs/RLS. | Enhances existing notification delivery logs with email template/status/provider metadata, idempotency indexes, and RLS policies for workspace managers, recipients, owner-report recipients, and PropFlow Admins; no secrets or email bodies stored. | Submit safe email-triggering workflows with Resend env vars absent and verify provider_not_configured logs, no client-side secrets, and no broad cross-workspace delivery-log reads. |
+
 ## Runtime validation notes
 
 - Apply all files in order before testing Vercel against the project.
