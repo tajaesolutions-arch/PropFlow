@@ -4981,7 +4981,7 @@ export function AppProvider({ children }) {
     await writeBillingEvent('checkout_started', 'Checkout requested from Billing page.', { plan: normalizedPlan });
 
     try {
-      const result = await callBillingEndpoint('/api/create-checkout-session', { workspaceId: currentWorkspace.id, plan: normalizedPlan });
+      const result = await callBillingEndpoint('/api/create-stripe-checkout-session', { workspaceId: currentWorkspace.id, plan: normalizedPlan });
       if (result?.url) {
         window.location.assign(result.url);
         return result;

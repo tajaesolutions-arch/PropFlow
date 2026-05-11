@@ -45,7 +45,7 @@ Implemented in this phase:
 
 Not implemented in this phase:
 
-- Stripe billing.
+- Advanced Stripe billing features such as customer portal, usage metering, coupons, invoice UI, and billing analytics. The focused Stripe Checkout + webhook foundation is present in `/api/create-stripe-checkout-session` and `/api/stripe-webhook`.
 - Full notification automation.
 - Full reports/PDF/CSV exports.
 - Live guest payment checkout for direct bookings.
@@ -90,6 +90,7 @@ Serverless/API variables used only by Vercel functions when those endpoints are 
 APP_URL=
 SUPABASE_URL=
 SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 STRIPE_PRICE_STARTER=
@@ -102,7 +103,7 @@ TWILIO_MESSAGING_SERVICE_SID=
 TWILIO_WHATSAPP_FROM=
 ```
 
-Do **not** expose Supabase service-role keys, Stripe secrets, Twilio tokens, or Resend API keys in any `VITE_*` variable or frontend code. Stripe checkout, portal, and webhook endpoints currently return setup/provider-not-configured responses until a full server-side billing implementation is deliberately added.
+Do **not** expose Supabase service-role keys, Stripe secrets, Twilio tokens, or Resend API keys in any `VITE_*` variable or frontend code. Stripe Checkout and webhook processing now run only through server-side Vercel API routes; missing provider env vars return setup/provider-not-configured responses instead of crashing.
 
 ### Supabase migrations and founder admin bootstrap
 
@@ -163,7 +164,7 @@ Create the Supabase Storage bucket named `workspace-files` as **private**. Apply
 
 ### Provider status and launch non-goals
 
-- Stripe subscription billing is a stub/foundation only; live checkout, customer portal redirects, and webhook persistence are not active.
+- Stripe subscription billing has a secure foundation only: Workspace Owners can request server-created Checkout Sessions when server-only Stripe env vars are configured, and the webhook endpoint verifies Stripe signatures before syncing workspace subscription state. Customer portal redirects, usage metering, coupons, invoice UI, and billing analytics are not active.
 - Resend, Twilio SMS, and Twilio WhatsApp external sends are not live; in-app notifications and provider setup states are safe placeholders.
 - Direct booking guest payments are not live; public pages collect requests only and never card data.
 - iCal import is a one-way import foundation with SSRF-protected fetches; two-way sync/channel-manager integrations are not live.
@@ -235,7 +236,29 @@ VITE_APP_URL=https://your-propflow-domain.example
 VITE_SUPABASE_STORAGE_CONFIGURED=true|false
 ```
 
-No server-only Supabase service role key is required by this front-end build. Do **not** expose a Supabase service role key in Vite variables.
+Serverless billing endpoints require server-only Supabase and Stripe variables in Vercel Project Settings. Do **not** expose a Supabase service role key or Stripe secret key in Vite variables.
+
+Set these server-only variables for `/api/create-stripe-checkout-session` and `/api/stripe-webhook`:
+
+```bash
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+APP_URL=https://your-propflow-domain.example
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+STRIPE_PRICE_STARTER=
+STRIPE_PRICE_PRO=
+STRIPE_PRICE_BUSINESS=
+```
+
+Frontend-safe variables remain limited to `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_APP_ENV`, `VITE_APP_URL`, and other non-secret `VITE_*` flags. Missing Stripe or service-role values make the billing endpoints return `provider_not_configured` with the user-safe message `Stripe billing is not configured yet.` instead of crashing or mutating frontend billing state.
+
+Stripe webhook setup notes:
+
+- Configure the Stripe Dashboard webhook URL to `https://your-propflow-domain.example/api/stripe-webhook`.
+- Subscribe to `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed`, and `invoice.payment_succeeded`.
+- Use the webhook signing secret as `STRIPE_WEBHOOK_SECRET`; do not commit real Stripe keys.
+- For local webhook testing, forward events with the Stripe CLI to your local Vercel/serverless route and set temporary test-mode server env vars outside source control.
 
 Expected behavior without Vercel env vars:
 
@@ -428,7 +451,7 @@ Supported MVP categories include property photos/documents, cleaning before/afte
 
 ## Known limitations
 
-- Billing UI is a placeholder; Stripe is not connected.
+- Billing UI starts Stripe Checkout only for Workspace Owners when server env vars are configured; otherwise it shows `Stripe billing is not configured yet.` safely. Customer portal, invoices UI, usage metering, coupons, and billing analytics are still not implemented.
 - Reports, PDF exports, CSV exports, and owner statements are placeholders.
 - Bookings and external booking platform integrations are not connected.
 - Guest CRM is a placeholder.
@@ -627,7 +650,7 @@ PropFlow billing is workspace-scoped and uses `workspace_subscriptions` for one 
 - New workspaces can initialize a safe `trialing` subscription row with a 14-day default trial. This does **not** create a paid Stripe subscription or fake Stripe IDs.
 - Stripe checkout, billing portal, and webhook processing must run only through server-side endpoints with server environment variables such as `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, and `STRIPE_PRICE_BUSINESS`.
 - Frontend code must never contain Stripe secret keys, webhook secrets, Supabase service-role keys, or provider tokens.
-- The current Vercel `api/` Stripe endpoints intentionally return `provider_not_configured` until secure auth validation, Stripe SDK wiring, signature verification, and idempotent subscription persistence are completed server-side.
+- The Vercel `api/` Stripe endpoints validate owner access, create server-side subscription Checkout Sessions, verify webhook signatures from the raw request body, and sync Stripe subscription status back into `workspace_subscriptions`. Missing server env vars still return `provider_not_configured` safely.
 - Failed payments should enter a grace-period model instead of causing instant lockout. After the grace period, workspace access becomes recovery-only for Workspace Owners/Accountants while operational staff may be limited until billing is resolved.
 - Do not insert fake active subscriptions, fake checkout success, fake portal links, generated invoices, tax automation, coupons, or usage-based billing records from the frontend.
 
@@ -721,7 +744,7 @@ Server-only values must be configured only in Vercel Project Settings or a local
 APP_URL=https://your-propflow-domain.example
 SUPABASE_URL=
 SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY= # only if a future trusted server endpoint truly requires it; never frontend
+SUPABASE_SERVICE_ROLE_KEY= # required by trusted billing API routes; never frontend
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 STRIPE_PRICE_STARTER=
@@ -734,7 +757,7 @@ TWILIO_MESSAGING_SERVICE_SID=
 TWILIO_WHATSAPP_FROM=
 ```
 
-Current Stripe, Resend, SMS, and WhatsApp behavior is intentionally provider-not-configured/stubbed until separate live provider implementations are reviewed and deployed.
+Current Stripe behavior is a focused subscription foundation only: Checkout Sessions and webhook subscription sync are implemented, while customer portal, invoices UI, metering, coupons, billing analytics, and external notifications are intentionally not added. Resend, SMS, and WhatsApp external sends remain provider-not-configured/stubbed until separate live provider implementations are reviewed and deployed.
 
 ### Launch checklist
 
@@ -748,7 +771,7 @@ Before sending production traffic to PropFlow, confirm every item below in the t
 - [ ] Private Supabase Storage bucket `workspace-files` exists and is not public.
 - [ ] Public direct booking pages were tested with safe public fields only.
 - [ ] iCal sync was tested with a safe external feed and private/internal URL blocking remained active.
-- [ ] Billing remains `provider_not_configured` until Stripe live checkout, billing portal, and webhook verification are implemented server-side.
+- [ ] Stripe test-mode Checkout and webhook events were validated in Vercel/local serverless logs; customer portal, invoices UI, metering, coupons, and analytics remain out of scope.
 - [ ] Notification external sends remain `provider_not_configured` until Resend/Twilio live senders are implemented server-side.
 - [ ] Workspace Owner, Property Manager/Host, Owner, Cleaner, Maintenance, and Accountant role tests passed.
 - [ ] No fake/demo data exists in the production workspace.
