@@ -256,25 +256,56 @@ alter table public.notifications add column if not exists read_at timestamptz;
 alter table public.notifications add column if not exists archived_at timestamptz;
 alter table public.notifications add column if not exists updated_at timestamptz not null default now();
 
-update public.notifications
-set event_type = coalesce(nullif(event_type, ''), nullif(type, ''), 'workspace_activity'),
-    type = coalesce(nullif(type, ''), nullif(event_type, ''), 'workspace_activity'),
-    title = coalesce(nullif(title, ''), nullif(type, ''), 'Workspace notification'),
-    body = coalesce(body, nullif(message, ''), nullif(title, ''), 'Workspace notification'),
-    message = coalesce(nullif(message, ''), body, title, 'Workspace notification'),
-    read_at = case when status = 'read' and read_at is null then now() else read_at end,
-    archived_at = case when status = 'archived' and archived_at is null then now() else archived_at end
-where event_type is null
-   or event_type = ''
-   or type is null
-   or type = ''
-   or title is null
-   or title = ''
-   or body is null
-   or message is null
-   or message = ''
-   or (status = 'read' and read_at is null)
-   or (status = 'archived' and archived_at is null);
+with normalized_notifications as (
+  select
+    id,
+    lower(trim(coalesce(nullif(event_type, ''), nullif(type, ''), 'workspace_activity'))) as raw_event
+  from public.notifications
+),
+mapped_notifications as (
+  select
+    id,
+    case
+      when public.valid_notification_event_type(raw_event) then raw_event
+      when raw_event in ('booking','bookings','new_booking','booking_reminder','reservation','reservation_created') then 'booking_created'
+      when raw_event in ('booking_updated','reservation_updated') then 'booking_updated'
+      when raw_event in ('checkin','check_in','checkin_due','check_in_due') then 'booking_checkin_due'
+      when raw_event in ('checkout','check_out','checkout_due','check_out_due') then 'booking_checkout_due'
+      when raw_event in ('cleaning','cleaning_assigned','cleaning_task','cleaning_task_created') then 'cleaning_task_assigned'
+      when raw_event in ('cleaning_due','cleaning_due_soon') then 'cleaning_task_due_soon'
+      when raw_event in ('cleaning_completed','cleaner_completed') then 'cleaning_task_completed'
+      when raw_event in ('cleaning_issue','cleaning_problem') then 'cleaning_task_issue_reported'
+      when raw_event in ('maintenance','maintenance_created','work_order','work_order_created') then 'maintenance_work_order_created'
+      when raw_event in ('maintenance_assigned','work_order_assigned') then 'maintenance_work_order_assigned'
+      when raw_event in ('maintenance_urgent','urgent_maintenance','urgent_work_order') then 'maintenance_work_order_urgent'
+      when raw_event in ('maintenance_completed','work_order_completed') then 'maintenance_work_order_completed'
+      when raw_event in ('owner_report','report_ready') then 'owner_report_ready'
+      when raw_event in ('owner_report_released','report_released') then 'owner_report_released'
+      when raw_event in ('expense','expense_added') then 'expense_created'
+      when raw_event in ('inventory','low_stock','low_supplies','supply_alert') then 'low_stock_alert'
+      when raw_event in ('file','file_upload','document_uploaded') then 'file_uploaded'
+      when raw_event in ('invite','team_invite','workspace_invite') then 'team_invite_created'
+      when raw_event in ('invite_accepted','team_joined') then 'team_invite_accepted'
+      when raw_event in ('user_suspended','account_suspended') then 'member_suspended'
+      when raw_event in ('user_reactivated','account_reactivated') then 'member_reactivated'
+      when raw_event in ('payment_failed','subscription_failed','billing_failed') then 'billing_payment_failed'
+      when raw_event in ('grace_period','billing_warning') then 'billing_grace_period_warning'
+      when raw_event in ('activity','general','notification','system','unknown') then 'workspace_activity'
+      else 'workspace_activity'
+    end as safe_event_type
+  from normalized_notifications
+)
+update public.notifications n
+set
+  event_type = m.safe_event_type,
+  type = m.safe_event_type,
+  title = coalesce(nullif(n.title, ''), initcap(replace(m.safe_event_type, '_', ' ')), 'Workspace notification'),
+  body = coalesce(n.body, nullif(n.message, ''), initcap(replace(m.safe_event_type, '_', ' ')), 'Workspace notification'),
+  message = coalesce(nullif(n.message, ''), n.body, initcap(replace(m.safe_event_type, '_', ' ')), 'Workspace notification'),
+  read_at = case when n.status = 'read' and n.read_at is null then now() else n.read_at end,
+  archived_at = case when n.status = 'archived' and n.archived_at is null then now() else n.archived_at end
+from mapped_notifications m
+where n.id = m.id;
 
 alter table public.notifications alter column event_type set default 'workspace_activity';
 alter table public.notifications alter column event_type set not null;
@@ -509,6 +540,7 @@ alter table public.notification_provider_settings enable row level security;
 
 drop policy if exists "notification_preferences_select_self_or_manager" on public.notification_preferences;
 drop policy if exists notification_preferences_select_self_or_manager on public.notification_preferences;
+drop policy if exists "notification_preferences_select_self_or_owner" on public.notification_preferences;
 drop policy if exists notification_preferences_select_self_or_owner on public.notification_preferences;
 create policy notification_preferences_select_self_or_owner
 on public.notification_preferences
@@ -521,6 +553,7 @@ using (
 
 drop policy if exists "notification_preferences_insert_self_or_manager" on public.notification_preferences;
 drop policy if exists notification_preferences_insert_self_or_manager on public.notification_preferences;
+drop policy if exists "notification_preferences_insert_self" on public.notification_preferences;
 drop policy if exists notification_preferences_insert_self on public.notification_preferences;
 create policy notification_preferences_insert_self
 on public.notification_preferences
@@ -534,6 +567,7 @@ with check (
 
 drop policy if exists "notification_preferences_update_self_or_manager" on public.notification_preferences;
 drop policy if exists notification_preferences_update_self_or_manager on public.notification_preferences;
+drop policy if exists "notification_preferences_update_self" on public.notification_preferences;
 drop policy if exists notification_preferences_update_self on public.notification_preferences;
 create policy notification_preferences_update_self
 on public.notification_preferences
@@ -546,8 +580,11 @@ with check (
   and public.valid_notification_event_group(event_group)
 );
 
+drop policy if exists "notifications_select_recipient_or_manager" on public.notifications;
 drop policy if exists notifications_select_recipient_or_manager on public.notifications;
+drop policy if exists "notifications_select_recipient" on public.notifications;
 drop policy if exists notifications_select_recipient on public.notifications;
+drop policy if exists "notifications_select_authorized" on public.notifications;
 drop policy if exists notifications_select_authorized on public.notifications;
 create policy notifications_select_authorized
 on public.notifications
@@ -555,7 +592,9 @@ for select
 to authenticated
 using (public.can_view_notification(workspace_id, recipient_user_id));
 
+drop policy if exists "notifications_manage_manager" on public.notifications;
 drop policy if exists notifications_manage_manager on public.notifications;
+drop policy if exists "notifications_insert_workspace_manager" on public.notifications;
 drop policy if exists notifications_insert_workspace_manager on public.notifications;
 create policy notifications_insert_workspace_manager
 on public.notifications
@@ -578,7 +617,9 @@ with check (
   )
 );
 
+drop policy if exists "notifications_update_own_status" on public.notifications;
 drop policy if exists notifications_update_own_status on public.notifications;
+drop policy if exists "notifications_update_recipient_or_manager" on public.notifications;
 drop policy if exists notifications_update_recipient_or_manager on public.notifications;
 create policy notifications_update_recipient_or_manager
 on public.notifications
@@ -595,6 +636,7 @@ with check (
 
 drop policy if exists "notification_delivery_logs_select_manager_or_recipient" on public.notification_delivery_logs;
 drop policy if exists notification_delivery_logs_select_manager_or_recipient on public.notification_delivery_logs;
+drop policy if exists "notification_delivery_logs_select_owner_or_recipient" on public.notification_delivery_logs;
 drop policy if exists notification_delivery_logs_select_owner_or_recipient on public.notification_delivery_logs;
 create policy notification_delivery_logs_select_owner_or_recipient
 on public.notification_delivery_logs
@@ -616,6 +658,7 @@ with check (
   and (recipient_user_id is null or public.user_is_active_workspace_member(workspace_id, recipient_user_id))
 );
 
+drop policy if exists "notification_delivery_logs_update_owner" on public.notification_delivery_logs;
 drop policy if exists notification_delivery_logs_update_owner on public.notification_delivery_logs;
 create policy notification_delivery_logs_update_owner
 on public.notification_delivery_logs
@@ -624,6 +667,7 @@ to authenticated
 using (public.has_workspace_role(workspace_id, array['workspace_owner']))
 with check (public.has_workspace_role(workspace_id, array['workspace_owner']));
 
+drop policy if exists "notification_provider_settings_select_manager" on public.notification_provider_settings;
 drop policy if exists notification_provider_settings_select_manager on public.notification_provider_settings;
 create policy notification_provider_settings_select_manager
 on public.notification_provider_settings
@@ -631,6 +675,7 @@ for select
 to authenticated
 using (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager']));
 
+drop policy if exists "notification_provider_settings_insert_owner" on public.notification_provider_settings;
 drop policy if exists notification_provider_settings_insert_owner on public.notification_provider_settings;
 create policy notification_provider_settings_insert_owner
 on public.notification_provider_settings
@@ -638,6 +683,7 @@ for insert
 to authenticated
 with check (public.can_manage_notification_provider_settings(workspace_id));
 
+drop policy if exists "notification_provider_settings_update_owner" on public.notification_provider_settings;
 drop policy if exists notification_provider_settings_update_owner on public.notification_provider_settings;
 create policy notification_provider_settings_update_owner
 on public.notification_provider_settings
