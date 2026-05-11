@@ -27,6 +27,7 @@ import {
 import { AppLayout } from '../components/layout/AppLayout.jsx';
 import { DataTable } from '../components/DataTable.jsx';
 import { EmptyState } from '../components/EmptyState.jsx';
+import { FileList } from '../components/FileList.jsx';
 import { StatCard } from '../components/StatCard.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
 import { useApp } from '../lib/AppContext.jsx';
@@ -711,7 +712,7 @@ export function PropertyDetailPage({ propertyId }) {
     try {
       await uploadWorkspaceFile({
         file,
-        category: file.type?.startsWith('image/') ? 'property_photo' : 'property_document',
+        category: file.type?.startsWith('image/') ? 'property_photo' : 'general_document',
         relatedTable: 'properties',
         relatedId: property.id,
         propertyId: property.id,
@@ -1033,7 +1034,7 @@ export function PropertyDetailPage({ propertyId }) {
             {uploading ? 'Uploading…' : 'Upload File'}
             <input
               type="file"
-              accept="image/*,video/*,.pdf,.doc,.docx,.csv,.xlsx"
+              accept="image/jpeg,image/png,image/webp,application/pdf,.docx,.xlsx"
               disabled={uploading}
               onChange={uploadFile}
             />
@@ -1216,33 +1217,12 @@ export function PropertyDetailPage({ propertyId }) {
             <FileText size={20} className="muted" />
           </div>
 
-          {files.length ? (
-            <div className="property-detail-file-list">
-              {files.slice(0, 10).map((file) => (
-                <div className="list-row" key={file.id || getFileName(file)}>
-                  <span>
-                    <strong>{getFileName(file)}</strong>
-                    <small>{formatLabel(getFileCategory(file))} · {formatDate(file.created_at || file.createdAt)}</small>
-                  </span>
-
-                  <span className="table-actions">
-                    <StatusBadge tone="info">private</StatusBadge>
-                    <button type="button" onClick={() => viewFile(file)} data-skip-create-action="true">
-                      <Eye size={15} />
-                      View
-                    </button>
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <EmptyState
-              compact
-              icon={Image}
-              title="No property files yet"
-              description="Private property photos, leases, contracts, receipts, and documents will appear here after upload."
-            />
-          )}
+          <FileList
+            files={files.slice(0, 10)}
+            onView={viewFile}
+            emptyTitle="No property files yet"
+            emptyDescription="Private property photos, leases, contracts, receipts, and documents will appear here after upload."
+          />
         </section>
       </section>
 

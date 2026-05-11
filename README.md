@@ -138,8 +138,10 @@ supabase/migrations/202605100017_leases_long_term_rentals_foundation.sql
 supabase/migrations/202605100018_ical_calendar_import_foundation.sql
 supabase/migrations/202605100019_platform_admin_foundation.sql
 supabase/migrations/202605100020_production_readiness_rls_patch.sql
+supabase/migrations/202605110001_in_app_notifications_hardening.sql
 supabase/migrations/202605110001_workspace_invite_assignment_update_trigger.sql
 supabase/migrations/202605110002_plan_limits_enforcement.sql
+supabase/migrations/202605110002_private_file_uploads_foundation.sql
 ```
 
 After migrations, create the founder/team account through Supabase Auth, then manually bootstrap SaaS-level admin access from a trusted SQL console only:
@@ -154,7 +156,15 @@ PropFlow Admin is a platform role only. Do not invite platform admins through cu
 
 ### Private storage bucket setup
 
-Create the Supabase Storage bucket named `workspace-files` as **private**. Apply the storage/file migrations and policies before testing uploads. The app stores private object paths and creates short-lived signed URLs only after authorized `file_uploads` checks; public buckets are not required for operational photos, receipts, leases, reports, or documents.
+Create the Supabase Storage bucket named `workspace-files` as **private**. The latest storage migration attempts to create/update this bucket with `public = false`, a 25 MB object limit, and the launch MIME allowlist. If a hosted/self-hosted Supabase environment cannot manage Storage buckets from SQL, create it manually in **Storage → New bucket** with **Name** `workspace-files`, **Public bucket** off, **File size limit** `25 MB`, and allowed MIME types `image/jpeg`, `image/png`, `image/webp`, `application/pdf`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document`, and `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`. Apply the storage/file migrations and policies before testing uploads.
+
+Private upload metadata reuses `public.file_uploads` (no duplicate upload table) with workspace scoping, entity context, metadata, and `visibility = private`. Objects are stored under `workspaces/{workspace_id}/{entity_type}/{entity_id}/{timestamp}-{safe_file_name}`. The app stores private object paths only and creates short-lived signed URLs after authorized metadata checks; raw signed URLs are not saved in the database, and public buckets are not required for property photos, cleaning proof photos, maintenance photos, receipts, invoices, leases, reports, contracts, or documents.
+
+Supported private upload types are property photos, cleaning before/after photos, maintenance issue/completion photos, receipts, invoices, leases, contracts, report files, and general documents. Images are limited to JPEG, PNG, and WebP up to 10 MB. Documents are limited to PDF, JPEG, PNG, WebP, DOCX, and XLSX up to 25 MB. Video uploads are intentionally not supported yet and should show “Video uploads coming soon.”
+
+RLS and Storage policies require active workspace membership and block suspended users. Workspace Owners / Company Admins and Property Managers can view/manage workspace files; Hosts can view operational workspace files; Owners are limited to assigned property files, released reports, leases/contracts, and owner-related documents; Cleaners can upload/view assigned cleaning task photos only; Maintenance Crew can upload/view assigned work-order photos only; PropFlow Admin metadata visibility is gated by the existing platform admin helper. Do not weaken these policies or add policies that return `true` globally.
+
+Future production TODOs: virus/malware scanning, video uploads, richer document previews, OCR/document search, and advanced owner document sharing.
 
 ### Vercel deployment notes
 
@@ -457,11 +467,11 @@ Use a real Supabase project for these checks:
 
 ## Files / Documents and private Storage behavior
 
-Operational files use the private Supabase Storage bucket `workspace-files`; public buckets are not used for property photos, cleaning photos, maintenance photos/videos, receipts, leases, contracts, reports, invoices, or internal documents. Storage paths include the workspace id using the convention `workspace/{workspace_id}/{file_category}/{record_context}/{timestamp-safe-file-name}`, while `file_uploads` stores workspace-scoped metadata only.
+Operational files use the private Supabase Storage bucket `workspace-files`; public buckets are not used for property photos, cleaning photos, maintenance photos, receipts, leases, contracts, reports, invoices, or internal documents. Storage paths include the workspace id using the convention `workspaces/{workspace_id}/{entity_type}/{entity_id}/{timestamp}-{safe_file_name}`, while `file_uploads` stores workspace-scoped metadata only.
 
 Files can be linked to properties, bookings, cleaning tasks, maintenance work orders, expenses, owner reports, contacts, or workspace-level documents. Viewing/downloading uses short-lived Supabase signed URLs created from authorized `file_uploads` records; permanent public URLs are not stored in the database. The frontend uses the Supabase anon client only and must never expose a service-role key.
 
-Supported MVP categories include property photos/documents, cleaning before/after/issue photos, maintenance issue/completion photos and videos, receipts, leases, contracts, owner reports, invoices, general documents, and other private documents. Receipt uploads and report document files remain placeholder-safe unless a workflow explicitly links them to real expense or owner-report records. Real uploads require Supabase environment variables, the latest migrations, and the private `workspace-files` bucket/policies applied.
+Supported MVP categories include property photos, cleaning before/after photos, maintenance issue/completion photos, receipts, invoices, leases, contracts, report files, and general documents. Video uploads are not supported yet. Receipt uploads and report document files remain placeholder-safe unless a workflow explicitly links them to real expense or owner-report records. Real uploads require Supabase environment variables, the latest migrations, and the private `workspace-files` bucket/policies applied.
 
 ## Known limitations
 
@@ -826,8 +836,10 @@ supabase/migrations/202605100017_leases_long_term_rentals_foundation.sql
 supabase/migrations/202605100018_ical_calendar_import_foundation.sql
 supabase/migrations/202605100019_platform_admin_foundation.sql
 supabase/migrations/202605100020_production_readiness_rls_patch.sql
+supabase/migrations/202605110001_in_app_notifications_hardening.sql
 supabase/migrations/202605110001_workspace_invite_assignment_update_trigger.sql
 supabase/migrations/202605110002_plan_limits_enforcement.sql
+supabase/migrations/202605110002_private_file_uploads_foundation.sql
 ```
 
 Important migration notes:

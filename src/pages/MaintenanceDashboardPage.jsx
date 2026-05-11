@@ -357,7 +357,7 @@ function MaintenanceJobCard({
         {closed ? 'Upload disabled for closed repair' : uploading ? 'Uploading…' : 'Upload issue/completion photo'}
         <input
           type="file"
-          accept="image/*,video/*"
+          accept="image/jpeg,image/png,image/webp"
           disabled={uploading || closed}
           onChange={(event) => {
             const file = event.target.files?.[0];
@@ -502,7 +502,7 @@ export function MaintenanceDashboardPage() {
     try {
       await uploadWorkspaceFile({
         file,
-        category: 'maintenance_photo',
+        category: 'maintenance_completion_photo',
         maintenanceWorkOrderId: workOrder.id,
         propertyId: getWorkOrderPropertyId(workOrder),
       });
