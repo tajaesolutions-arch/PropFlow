@@ -1,4 +1,4 @@
-import { json, requireMethod, safeErrorMessage } from './_utils/http.js';
+import { json, requireMethod } from './_utils/http.js';
 import { getSupabaseAdminClient } from './_utils/supabaseAdmin.js';
 import {
   getStripeSecretKey,
@@ -394,7 +394,7 @@ export default async function handler(request, response) {
   } catch (error) {
     return json(request, response, 500, {
       code: error?.code || 'stripe_webhook_failed',
-      message: safeErrorMessage(error, 'Stripe webhook could not be processed.'),
+      message: 'Stripe webhook could not be processed.',
     });
   }
 }

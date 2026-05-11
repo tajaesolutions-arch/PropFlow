@@ -1,8 +1,8 @@
 import { getBearerToken, requireBearerToken } from './_utils/auth.js';
 import { getServerEnv, requireServerEnv } from './_utils/env.js';
-import { json, readJsonBody, requireJsonContentType, requireMethod, safeErrorMessage } from './_utils/http.js';
+import { json, readJsonBody, requireJsonContentType, requireMethod } from './_utils/http.js';
 import { getAuthenticatedUser, getSupabaseAdminClient } from './_utils/supabaseAdmin.js';
-import { appendStripeParam, getAppUrl, getPlanPriceId, getStripeSecretKey, stripeRequest } from './_utils/stripe.js';
+import { appendStripeParam, buildSameOriginUrl, getAppUrl, getPlanPriceId, getStripeSecretKey, stripeRequest } from './_utils/stripe.js';
 
 const BILLING_MANAGE_ROLES = new Set(['workspace_owner']);
 
@@ -155,8 +155,8 @@ export default async function handler(request, response) {
     }
 
     const appUrl = getAppUrl(request);
-    const successUrl = body.successUrl || `${appUrl}/settings?billing=checkout-success`;
-    const cancelUrl = body.cancelUrl || `${appUrl}/settings?billing=checkout-canceled`;
+    const successUrl = buildSameOriginUrl(appUrl, body.successUrl, '/settings?billing=checkout-success');
+    const cancelUrl = buildSameOriginUrl(appUrl, body.cancelUrl, '/settings?billing=checkout-canceled');
     const params = {
       mode: 'subscription',
       customer: stripeCustomerId,
@@ -185,7 +185,7 @@ export default async function handler(request, response) {
     const statusCode = error?.code === 'provider_not_configured' ? 501 : 500;
     return json(request, response, statusCode, {
       code: error?.code || 'checkout_session_failed',
-      message: error?.code === 'provider_not_configured' ? 'Stripe billing is not configured yet.' : safeErrorMessage(error, 'Checkout could not be started.'),
+      message: error?.code === 'provider_not_configured' ? 'Stripe billing is not configured yet.' : 'Checkout could not be started.',
     });
   }
 }

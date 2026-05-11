@@ -32,6 +32,20 @@ export function getAppUrl(request) {
   return host ? `${protocol}://${host}` : 'http://localhost:5173';
 }
 
+
+export function buildSameOriginUrl(appUrl, candidateUrl, fallbackPath = '/') {
+  const appOrigin = new URL(appUrl).origin;
+  const fallbackUrl = new URL(fallbackPath || '/', appOrigin).toString();
+  if (!candidateUrl) return fallbackUrl;
+
+  try {
+    const candidate = new URL(String(candidateUrl), appOrigin);
+    return candidate.origin === appOrigin ? candidate.toString() : fallbackUrl;
+  } catch {
+    return fallbackUrl;
+  }
+}
+
 export async function stripeRequest(path, { method = 'GET', body, secretKey = getStripeSecretKey() } = {}) {
   if (!secretKey) {
     const error = new Error('Stripe billing is not configured yet.');

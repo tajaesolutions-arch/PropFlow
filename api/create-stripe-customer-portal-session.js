@@ -1,8 +1,8 @@
 import { getBearerToken, requireBearerToken } from './_utils/auth.js';
 import { getServerEnv, requireServerEnv } from './_utils/env.js';
-import { json, readJsonBody, requireJsonContentType, requireMethod, safeErrorMessage } from './_utils/http.js';
+import { json, readJsonBody, requireJsonContentType, requireMethod } from './_utils/http.js';
 import { getAuthenticatedUser, getSupabaseAdminClient } from './_utils/supabaseAdmin.js';
-import { getStripeSecretKey, stripeRequest } from './_utils/stripe.js';
+import { buildSameOriginUrl, getStripeSecretKey, stripeRequest } from './_utils/stripe.js';
 
 const BILLING_PORTAL_ROLES = new Set(['workspace_owner', 'billing_admin', 'billing-admin']);
 const NO_STRIPE_CUSTOMER_MESSAGE = 'No Stripe customer is connected to this workspace yet. Choose a plan first.';
@@ -21,20 +21,6 @@ function normalizeBody(body = {}) {
     returnUrl: body.return_url || body.returnUrl,
     action: body.action || body.billing_action || body.billingAction || 'manage_billing',
   };
-}
-
-function buildSafeReturnUrl(appUrl, returnUrl) {
-  const defaultReturnUrl = `${appUrl}/settings?tab=billing`;
-  if (!returnUrl) return defaultReturnUrl;
-
-  try {
-    const appOrigin = new URL(appUrl).origin;
-    const candidate = new URL(String(returnUrl), appOrigin);
-    if (candidate.origin !== appOrigin) return defaultReturnUrl;
-    return candidate.toString();
-  } catch {
-    return defaultReturnUrl;
-  }
 }
 
 function safeBillingAction(action) {
@@ -123,7 +109,7 @@ export default async function handler(request, response) {
       method: 'POST',
       body: {
         customer: subscription.stripe_customer_id,
-        return_url: buildSafeReturnUrl(getServerEnv('APP_URL', ['VITE_APP_URL']).replace(/\/$/, ''), body.returnUrl),
+        return_url: buildSameOriginUrl(getServerEnv('APP_URL', ['VITE_APP_URL']).replace(/\/$/, ''), body.returnUrl, '/settings?tab=billing'),
       },
     });
 
@@ -140,7 +126,7 @@ export default async function handler(request, response) {
     const statusCode = error?.code === 'provider_not_configured' ? 501 : 500;
     return json(request, response, statusCode, {
       code: error?.code || 'customer_portal_session_failed',
-      message: error?.code === 'provider_not_configured' ? 'Stripe billing is not configured yet.' : safeErrorMessage(error, 'Stripe billing portal could not be opened.'),
+      message: error?.code === 'provider_not_configured' ? 'Stripe billing is not configured yet.' : 'Stripe billing portal could not be opened.',
     });
   }
 }
