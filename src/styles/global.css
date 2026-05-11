@@ -7545,3 +7545,119 @@ label {
     position: static;
   }
 }
+
+/* Platform Admin / Founder Admin */
+.admin-hero-card .card-header,
+.admin-notice-card .card-header {
+  align-items: flex-start;
+}
+
+.admin-stats-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.admin-two-column {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.admin-growth-grid,
+.admin-health-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.growth-row,
+.health-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto auto auto auto;
+  gap: 0.6rem;
+  align-items: center;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+  color: var(--muted, #64748b);
+  text-transform: capitalize;
+}
+
+.health-row {
+  grid-template-columns: minmax(140px, 1fr) auto;
+  text-transform: none;
+}
+
+.growth-row:last-child,
+.health-row:last-child {
+  border-bottom: 0;
+}
+
+.growth-row strong,
+.health-row strong {
+  color: var(--text, #0f172a);
+}
+
+.admin-table-actions {
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.admin-table-actions button,
+.compact-controls button {
+  padding: 0.42rem 0.55rem;
+  font-size: 0.78rem;
+}
+
+.admin-modal-card,
+.admin-detail-drawer {
+  max-width: 720px;
+  width: min(92vw, 720px);
+}
+
+.admin-detail-drawer {
+  max-height: 90vh;
+  overflow: auto;
+}
+
+.admin-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.admin-detail-grid > div {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.8rem;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 0.85rem;
+  background: #f8fafc;
+}
+
+.admin-detail-grid span,
+.admin-detail-section h4 {
+  color: var(--muted, #64748b);
+  font-size: 0.8rem;
+}
+
+.admin-detail-section {
+  margin-top: 1.25rem;
+}
+
+.compact-health-list {
+  gap: 0.25rem;
+}
+
+@media (max-width: 900px) {
+  .admin-two-column {
+    grid-template-columns: 1fr;
+  }
+
+  .growth-row {
+    grid-template-columns: 1fr auto auto;
+  }
+
+  .growth-row strong:last-of-type,
+  .growth-row small:last-child {
+    display: none;
+  }
+}

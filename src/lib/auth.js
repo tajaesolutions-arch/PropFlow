@@ -21,6 +21,14 @@ export function resolvePrimaryRole(userOrRoles) {
   })[0];
 }
 
+export function isPropFlowAdmin(user) {
+  return Boolean(user?.is_propflow_admin || user?.isPropFlowAdmin || user?.roles?.includes(appRoles.ADMIN));
+}
+
+export function canAccessPlatformAdmin(user) {
+  return isPropFlowAdmin(user) && user?.status !== 'suspended' && user?.account_status !== 'suspended';
+}
+
 export function getPostLoginPath(user) {
   if (!user) {
     return '/login';
@@ -30,9 +38,9 @@ export function getPostLoginPath(user) {
     return '/suspended';
   }
 
-  const isPropFlowAdmin = user.roles?.includes(appRoles.ADMIN);
+  const userIsPropFlowAdmin = isPropFlowAdmin(user);
 
-  if (!user.workspaceId && !isPropFlowAdmin) {
+  if (!user.workspaceId && !userIsPropFlowAdmin) {
     return '/workspace-setup';
   }
 

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
 import { billingAccessRoles, billingEventTypes, billingManageRoles, billingPlans, calendarImportedEventStatuses, calendarImportedEventTypes, calendarImportConflictTypes, calendarImportProviderTypes, calendarImportStatuses, calendarImportSyncStatuses, currencies, deliveryStatuses, directBookingConfirmationModes, directBookingPageStatuses, directBookingPaymentModes, expenseCategories, expensePaymentStatuses, expenseStatuses, invitePermissionLevels, inviteRoleOptions, leasePaymentStatuses, leaseStatuses, leaseTypes, notificationChannels, notificationEventTypes, notificationPreferenceGroups, notificationStatuses, propertyAssignmentRoleOptions, propertyScopedInviteRoles, propertyStatuses, propertyTypes, rentalTypes, rentFrequencies, roles } from '../data/constants.js';
-import { resolvePrimaryRole } from './auth.js';
+import { canAccessPlatformAdmin, resolvePrimaryRole } from './auth.js';
 import { isSupabaseConfigured, supabase } from './supabase.js';
 
 const AppContext = createContext(null);
@@ -122,6 +122,15 @@ const emptyData = {
   calendarImportSyncRuns: [],
   calendarImportConflicts: [],
   calendarImportTablesReady: true,
+  platformOverview: null,
+  platformWorkspaces: [],
+  platformUsers: [],
+  platformWorkspaceDetail: null,
+  platformHealthReport: null,
+  platformAdminAuditLogs: [],
+  platformAdminNotes: [],
+  platformAdminSetupRequired: false,
+  platformAdminError: '',
 };
 
 function firstResult(data) {
@@ -1706,7 +1715,8 @@ export function AppProvider({ children }) {
         email: profile?.email || user.email,
         fullName: profile?.full_name || profile?.fullName || user.email,
         full_name: profile?.full_name || profile?.fullName || user.email,
-        status: profile?.status || 'active',
+        status: profile?.account_status || profile?.status || 'active',
+        account_status: profile?.account_status || profile?.status || 'active',
         roles: userRoles,
         role: resolvePrimaryRole(userRoles),
         workspaceId: activeWorkspace?.id || null,
@@ -4618,6 +4628,130 @@ export function AppProvider({ children }) {
 
 
 
+
+  const getPlatformAdminErrorMessage = (rpcName, rpcError) => {
+    const code = String(rpcError?.code || '');
+    const combined = getErrorText(rpcError);
+
+    if (code === 'PGRST202' || code === '42883' || combined.includes('could not find the function') || combined.includes('schema cache')) {
+      return `Platform admin setup required: apply the platform admin foundation migration so ${rpcName} is available.`;
+    }
+
+    if (code === '42501' || combined.includes('platform_admin_required') || combined.includes('permission denied')) {
+      return 'Platform admin access denied. Only trusted PropFlow Admin profiles can load founder operations data.';
+    }
+
+    return rpcError?.message || 'Platform admin request failed.';
+  };
+
+  const callPlatformRpc = async (rpcName, params = {}) => {
+    const client = requireSupabase();
+
+    if (!canAccessPlatformAdmin(currentUser)) {
+      throw new Error('Platform admin access denied.');
+    }
+
+    const { data: rpcData, error: rpcError } = await client.rpc(rpcName, params);
+
+    if (rpcError) {
+      throw new Error(getPlatformAdminErrorMessage(rpcName, rpcError));
+    }
+
+    return rpcData;
+  };
+
+  const mergePlatformAdminData = (patch) => {
+    setData((previous) => ({ ...previous, ...patch }));
+  };
+
+  const loadPlatformAdminData = async () => {
+    if (!supabase || !canAccessPlatformAdmin(currentUser)) {
+      return { ok: false, skipped: true };
+    }
+
+    try {
+      const [overview, platformWorkspaces, platformUsers, platformHealthReport] = await Promise.all([
+        callPlatformRpc('get_platform_admin_overview'),
+        callPlatformRpc('get_platform_workspaces'),
+        callPlatformRpc('get_platform_users'),
+        callPlatformRpc('get_platform_health_report'),
+      ]);
+
+      const nextOverview = overview || null;
+      mergePlatformAdminData({
+        platformOverview: nextOverview,
+        platformWorkspaces: asArray(platformWorkspaces),
+        platformUsers: asArray(platformUsers),
+        platformHealthReport: platformHealthReport || null,
+        platformAdminAuditLogs: asArray(nextOverview?.recent_audit_logs),
+        platformAdminNotes: asArray(nextOverview?.recent_admin_notes),
+        platformAdminSetupRequired: false,
+        platformAdminError: '',
+      });
+
+      return { ok: true };
+    } catch (adminError) {
+      const message = adminError?.message || 'Platform admin data could not load.';
+      mergePlatformAdminData({
+        platformAdminSetupRequired: message.toLowerCase().includes('setup required'),
+        platformAdminError: message,
+      });
+      return { ok: false, error: message };
+    }
+  };
+
+  const loadPlatformWorkspaceDetail = async (workspaceId) => {
+    if (!workspaceId) throw new Error('Workspace is required.');
+    const detail = await callPlatformRpc('get_platform_workspace_detail', { p_workspace_id: workspaceId });
+    mergePlatformAdminData({ platformWorkspaceDetail: detail || null, platformAdminError: '' });
+    return detail;
+  };
+
+  const refreshPlatformHealthReport = async () => {
+    const platformHealthReport = await callPlatformRpc('get_platform_health_report');
+    mergePlatformAdminData({ platformHealthReport: platformHealthReport || null, platformAdminError: '' });
+    return platformHealthReport;
+  };
+
+  const updatePlatformWorkspaceStatus = async (workspaceId, status, reason = '') => {
+    if (!workspaceId) throw new Error('Workspace is required.');
+    await callPlatformRpc('platform_admin_update_workspace_status', {
+      p_workspace_id: workspaceId,
+      p_status: status,
+      p_reason: reason || null,
+    });
+    await loadPlatformAdminData();
+    return loadPlatformWorkspaceDetail(workspaceId);
+  };
+
+  const updatePlatformUserStatus = async (userId, status, reason = '') => {
+    if (!userId) throw new Error('User is required.');
+    const result = await callPlatformRpc('platform_admin_update_user_status', {
+      p_user_id: userId,
+      p_status: status,
+      p_reason: reason || null,
+    });
+    await loadPlatformAdminData();
+    return result;
+  };
+
+  const createPlatformAdminNote = async (payload = {}) => {
+    const note = await callPlatformRpc('platform_admin_create_note', {
+      p_workspace_id: payload.workspaceId || payload.workspace_id || null,
+      p_user_id: payload.userId || payload.user_id || null,
+      p_subscription_id: payload.subscriptionId || payload.subscription_id || null,
+      p_note_type: payload.noteType || payload.note_type || 'general',
+      p_severity: payload.severity || 'info',
+      p_title: payload.title || '',
+      p_body: payload.body || null,
+    });
+    await loadPlatformAdminData();
+    if (payload.workspaceId || payload.workspace_id) {
+      await loadPlatformWorkspaceDetail(payload.workspaceId || payload.workspace_id);
+    }
+    return note;
+  };
+
   const getBillingAccessState = () => getWorkspaceBillingGate(currentWorkspace, data.subscription, currentUser);
 
   const requireBillingRole = (allowedRoles, message) => {
@@ -4995,6 +5129,12 @@ export function AppProvider({ children }) {
       openBillingPortal,
       refreshBillingStatus,
       getBillingAccessState,
+      loadPlatformAdminData,
+      loadPlatformWorkspaceDetail,
+      updatePlatformWorkspaceStatus,
+      updatePlatformUserStatus,
+      createPlatformAdminNote,
+      refreshPlatformHealthReport,
     }),
     [
       session,
