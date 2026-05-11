@@ -50,7 +50,7 @@ Not implemented in this phase:
 - Full reports/PDF/CSV exports.
 - Live guest payment checkout for direct bookings.
 - Airbnb/Booking.com/Vrbo API integrations.
-- iCal import/export for direct booking channels.
+- Two-way iCal export/channel-manager sync for direct booking channels.
 - Twilio SMS/WhatsApp automation.
 - Real AI tools.
 
@@ -433,12 +433,12 @@ Calendar views included now:
 - Day
 - List / agenda
 
-Calendar create buttons use the shared create-action modal and remain limited to roles allowed to create bookings or cleaning tasks. Staff calendar visibility is role-scoped through protected routing and sidebar navigation so owner, cleaner, maintenance, and accountant users do not receive a broad workspace calendar by accident. External integrations such as Google Calendar, Airbnb, Booking.com, Vrbo, and iCal import/export are not connected yet. Drag-and-drop editing, recurring events, public sharing, and notification automation are intentionally future extension points, not built in this phase.
+Calendar create buttons use the shared create-action modal and remain limited to roles allowed to create bookings or cleaning tasks. Staff calendar visibility is role-scoped through protected routing and sidebar navigation so owner, cleaner, maintenance, and accountant users do not receive a broad workspace calendar by accident. External API integrations such as Google Calendar, Airbnb, Booking.com, Vrbo, and two-way iCal export are not connected yet; the iCal import foundation is manager-controlled and block-only. Drag-and-drop editing, recurring events, public sharing, and notification automation are intentionally future extension points, not built in this phase.
 
 ### Known limitations
 
 - No public direct booking engine yet.
-- No channel-manager/API sync with Airbnb, Booking.com, Vrbo, iCal, or CSV imports yet; source values are placeholders only.
+- No channel-manager/API sync with Airbnb, Booking.com, Vrbo, iCal export, or CSV imports yet; iCal URL imports are block-only and manager-controlled.
 - No payment collection, payout automation, live currency conversion, or invoice ledger yet.
 - Lease document upload is a placeholder field for a future private upload flow.
 - Property status is derived in operational views; there is no background scheduler for persistent daily status transitions yet.
@@ -446,7 +446,7 @@ Calendar create buttons use the shared create-action modal and remain limited to
 
 ### Next recommended phase
 
-Build the revenue and guest operations layer next: direct booking request intake, quote/invoice records, payment ledger readiness, iCal import/export, property timeline view, cleaner assignment rules, and richer owner/accountant reporting.
+Build the revenue and guest operations layer next: direct booking request intake, quote/invoice records, payment ledger readiness, iCal export, property timeline view, cleaner assignment rules, and richer owner/accountant reporting.
 
 ### Bookings + Calendar manual test checklist
 
@@ -522,3 +522,17 @@ PropFlow includes an MVP foundation for manual long-term rental and lease tracki
 - Calendar views can display real lease start, lease period, and lease end events from workspace lease records. No fake/demo leases are added.
 - Lease route/sidebar visibility is role-restricted. Workspace Owners and Property Managers manage leases; Hosts and Accountants may view when allowed by RLS; Cleaners and Maintenance Crew do not access lease records.
 - Apply the Supabase migrations before using the module so the leases table, tenant contact alignment, constraints, indexes, triggers, and RLS policies are available.
+
+
+## iCal / Calendar Imports foundation
+
+- Calendar import feeds are workspace- and property-scoped. Workspace Owners, Property Managers, and Hosts can add iCal feed URLs per property from `/calendar-imports`.
+- External iCal URLs are treated as sensitive operational data and are restricted by RLS to calendar-import manager roles; Owner, Cleaner, Maintenance, and public direct-booking views do not receive raw feed URLs.
+- Imported iCal events are stored as calendar blocks by default (`booking_block`, `unavailable_block`, `owner_block`, `maintenance_block`, or `unknown`) and appear on the internal Calendar alongside bookings, leases, cleaning, and maintenance.
+- Managers can review feed status, recent sync runs, imported events, and conflicts. Conflicts are created for invalid dates, duplicate/unsupported imported data foundations, and overlaps with internal bookings, direct booking requests, or leases.
+- A server-side Vercel API route (`/api/sync-ical-feed`) performs CORS-safe feed fetching with authenticated user JWT/RLS, a 2 MB response limit, timeout protection, plain-text parsing, and no frontend service-role key exposure.
+- Auto-create bookings and cleaning tasks are disabled by default. Managers may manually convert an imported block to an unpaid internal booking; this does not create guest contacts, mark payment as paid, or auto-create cleaning.
+- Public direct booking availability uses imported calendar blocks as unavailable date ranges without exposing feed provider details, URLs, event descriptions, guest names, or raw event data.
+- This foundation does **not** add Airbnb, Vrbo, Booking.com, Google, or Outlook API integrations; it only supports iCal URL import.
+- This foundation does **not** add two-way sync/export, channel-manager automation, instant booking confirmation, or payment automation.
+- Apply `supabase/migrations/202605100018_ical_calendar_import_foundation.sql` after the existing workspace, property, booking, direct booking, notification, and lease migrations before using calendar imports.

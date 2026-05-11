@@ -19,7 +19,7 @@ import { navigate } from '../routes/AppRouter.jsx';
 const bookingStatuses = ['pending', 'confirmed', 'checked_in', 'checked_out', 'completed', 'cancelled'];
 const cleaningStatuses = ['scheduled', 'in_progress', 'completed', 'missed', 'needs_inspection', 'guest_ready', 'cancelled'];
 const priorities = ['low', 'medium', 'high', 'urgent'];
-const sources = ['manual', 'direct', 'airbnb', 'booking_com', 'vrbo', 'ical', 'csv', 'other'];
+const sources = ['manual', 'direct', 'airbnb', 'booking_com', 'vrbo', 'ical', 'airbnb_ical', 'vrbo_ical', 'booking_com_ical', 'google_calendar_ical', 'outlook_ical', 'manual_ical', 'other_ical', 'csv', 'other'];
 const views = ['month', 'week', 'day', 'agenda'];
 
 function isValidDate(value) {
@@ -92,6 +92,8 @@ function eventTone(type) {
     cleaning: 'event-cleaning',
     maintenance: 'event-error',
     lease: 'event-lease',
+    imported: 'event-imported',
+    ical: 'event-imported',
   }[type] || 'event-info';
 }
 
@@ -391,12 +393,45 @@ function buildMaintenanceEvents(maintenanceWorkOrders = [], properties = [], mem
     .filter(Boolean);
 }
 
+
+function buildImportedCalendarEvents(importedEvents = [], feeds = [], properties = []) {
+  return importedEvents
+    .filter((event) => !['cancelled', 'ignored', 'archived'].includes(normalizedStatus(event.status, 'imported')))
+    .filter((event) => !(event.archivedAt || event.archived_at))
+    .map((event) => {
+      const start = dateOnly(event.startsAt || event.starts_at);
+      const end = dateOnly(event.endsAt || event.ends_at);
+      if (!start || !end) return null;
+
+      const feed = feeds.find((item) => item.id === (event.feedId || event.feed_id));
+      const sourcePlatform = event.sourcePlatform || event.source_platform || feed?.providerType || feed?.provider_type || 'ical';
+      const typeLabel = (event.eventType || event.event_type || 'booking_block').replaceAll('_', ' ');
+
+      return {
+        id: `ical-${event.id}`,
+        sourceId: event.id,
+        type: 'imported',
+        title: event.title || `Imported ${typeLabel}`,
+        propertyId: getPropertyId(event),
+        property: getPropertyName(event, properties),
+        start,
+        end,
+        status: normalizedStatus(event.status, 'imported'),
+        source: sourcePlatform,
+        sourcePath: '/calendar-imports',
+        row: event,
+      };
+    })
+    .filter(Boolean);
+}
+
 function makeEvents(data, properties, members) {
   return [
     ...buildBookingEvents(data.bookings || [], properties),
     ...buildLeaseEvents(data.leases || [], properties),
     ...buildCleaningEvents(data.cleaningTasks || [], properties, members),
     ...buildMaintenanceEvents(data.maintenanceWorkOrders || [], properties, members),
+    ...buildImportedCalendarEvents(data.calendarImportEvents || [], data.calendarImportFeeds || [], properties),
   ];
 }
 
@@ -584,6 +619,7 @@ function CalendarLegend() {
     ['Cleaning', 'event-cleaning'],
     ['Maintenance', 'event-error'],
     ['Lease', 'event-lease'],
+    ['Imported iCal block', 'event-imported'],
   ];
 
   return (
@@ -618,6 +654,7 @@ export function CalendarPage() {
     source: 'all',
     currency: 'all',
     showCancelled: false,
+    showImported: true,
   });
 
   const properties = data.properties || [];
@@ -652,13 +689,15 @@ export function CalendarPage() {
     (data.bookings || []).length ||
       (data.leases || []).length ||
       (data.cleaningTasks || []).length ||
-      (data.maintenanceWorkOrders || []).length,
+      (data.maintenanceWorkOrders || []).length ||
+      (data.calendarImportEvents || []).length,
   );
   const dateRangeInvalid = Boolean(filters.start && filters.end && filters.end < filters.start);
 
   const events = React.useMemo(() => {
     return allEvents
-      .filter((event) => filters.showCancelled || !['cancelled', 'terminated'].includes(event.status))
+      .filter((event) => filters.showImported || event.type !== 'imported')
+      .filter((event) => filters.showCancelled || !['cancelled', 'terminated', 'archived'].includes(event.status))
       .filter((event) => filters.property === 'all' || event.propertyId === filters.property)
       .filter((event) => dateRangeInvalid || !filters.start || event.end >= filters.start)
       .filter((event) => dateRangeInvalid || !filters.end || event.start <= filters.end)
@@ -690,7 +729,6 @@ export function CalendarPage() {
       .filter(
         (event) =>
           filters.source === 'all' ||
-          !['booking', 'checkin', 'checkout'].includes(event.type) ||
           event.source === filters.source,
       )
       .filter((event) => filters.currency === 'all' || !event.currency || event.currency === filters.currency)
@@ -722,6 +760,7 @@ export function CalendarPage() {
   const cleaningEvents = events.filter((event) => event.type === 'cleaning');
   const maintenanceEvents = events.filter((event) => event.type === 'maintenance');
   const leaseEvents = events.filter((event) => event.type === 'lease');
+  const importedEvents = events.filter((event) => event.type === 'imported');
 
   const clearFilters = () => {
     setFilters({
@@ -737,6 +776,7 @@ export function CalendarPage() {
       source: 'all',
       currency: 'all',
       showCancelled: false,
+      showImported: true,
     });
   };
 
@@ -759,9 +799,9 @@ export function CalendarPage() {
 
         <div className="stat-card">
           <div>
-            <p>Booking events</p>
-            <strong>{bookingEvents.length}</strong>
-            <small>Reservations, check-ins, and check-outs</small>
+            <p>Booking / iCal events</p>
+            <strong>{bookingEvents.length + importedEvents.length}</strong>
+            <small>Reservations, check-ins, check-outs, and imported blocks</small>
           </div>
           <div className="stat-icon">
             <CalendarDays size={20} />
@@ -982,6 +1022,15 @@ export function CalendarPage() {
           <label className="inline-check calendar-cancelled-toggle">
             <input
               type="checkbox"
+              checked={filters.showImported}
+              onChange={setFilter('showImported')}
+            />
+            Show imported iCal
+          </label>
+
+          <label className="inline-check calendar-cancelled-toggle">
+            <input
+              type="checkbox"
               checked={filters.showCancelled}
               onChange={setFilter('showCancelled')}
             />
@@ -1013,7 +1062,7 @@ export function CalendarPage() {
           eyebrow="Calendar"
           icon={CalendarDays}
           title="No calendar events yet"
-          description="Real bookings, leases, cleaning tasks, and maintenance work orders create calendar events. No demo events are added for empty workspaces."
+          description="Real bookings, leases, imported iCal blocks, cleaning tasks, and maintenance work orders create calendar events. No demo events are added for empty workspaces."
           action={canCreateBooking ? (
             <button type="button" className="primary" data-create-action="booking">
               <Plus size={16} />
