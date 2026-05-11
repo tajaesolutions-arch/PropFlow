@@ -242,6 +242,7 @@ export function SettingsPage() {
     removePropertyAssignment,
     currentUser,
     isSupabaseConfigured,
+    startCheckout,
   } = useApp();
 
   const [invite, setInvite] = React.useState(defaultInvite);
@@ -255,11 +256,13 @@ export function SettingsPage() {
   const [memberBusyId, setMemberBusyId] = React.useState('');
   const [inviteBusyId, setInviteBusyId] = React.useState('');
   const [activityFilter, setActivityFilter] = React.useState('all');
+  const [billingBusyPlan, setBillingBusyPlan] = React.useState('');
 
   const canInvite = hasAnyRole(currentUser, [roles.OWNER_ADMIN]);
   const canManageMembers = hasAnyRole(currentUser, [roles.OWNER_ADMIN]);
   const canManageAssignments = hasAnyRole(currentUser, [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER]);
   const canOpenBilling = hasAnyRole(currentUser, billingAccessRoles);
+  const canManageBilling = hasAnyRole(currentUser, [roles.OWNER_ADMIN]);
   const canViewTeamAccess = hasAnyRole(currentUser, teamVisibilityRoles);
   const canViewCompanyCode = hasAnyRole(currentUser, companyCodeVisibilityRoles);
   const canViewActivityLogs = hasAnyRole(currentUser, teamVisibilityRoles);
@@ -504,6 +507,20 @@ export function SettingsPage() {
     }
   };
 
+
+  const handleStartCheckout = async (plan) => {
+    setMessage('');
+    setBillingBusyPlan(plan);
+
+    try {
+      await startCheckout(plan);
+    } catch (error) {
+      const text = String(error?.message || '').toLowerCase();
+      setMessage(text.includes('configured') ? 'Stripe billing is not configured yet.' : (error?.message || 'Checkout could not be started.'));
+      setBillingBusyPlan('');
+    }
+  };
+
   const updateMemberStatus = async (memberId, status) => {
     if (!canManageMembers) {
       setMessage('Only Workspace Owners / Company Admins can manage member lifecycle controls.');
@@ -688,17 +705,26 @@ export function SettingsPage() {
                   Workspace access is in billing recovery mode. Owners can still review account recovery controls.
                 </div>
               )}
-              <div className="settings-billing-actions">
-                <button type="button" onClick={() => navigate('/billing')} data-skip-create-action="true">
-                  Manage billing — Coming soon
-                </button>
-                <button type="button" onClick={() => navigate('/billing')} data-skip-create-action="true">
-                  Update payment method — Coming soon
-                </button>
-                <button type="button" onClick={() => navigate('/pricing')} data-skip-create-action="true">
-                  Choose plan — Coming soon
-                </button>
-              </div>
+              {canManageBilling ? (
+                <div className="settings-billing-actions">
+                  <button
+                    className="primary"
+                    type="button"
+                    onClick={() => handleStartCheckout(billingPlan || 'starter')}
+                    disabled={Boolean(billingBusyPlan)}
+                    data-skip-create-action="true"
+                  >
+                    {billingBusyPlan ? 'Opening Stripe…' : billingStatus.normalizedStatus === 'no_subscription' ? 'Start trial' : 'Upgrade plan'}
+                  </button>
+                  <button type="button" onClick={() => navigate('/pricing')} disabled={Boolean(billingBusyPlan)} data-skip-create-action="true">
+                    Compare plans
+                  </button>
+                </div>
+              ) : (
+                <div className="helper">
+                  Payment actions are only available to Workspace Owners / Company Admins.
+                </div>
+              )}
             </div>
           ) : (
             <div className="helper">
@@ -707,7 +733,7 @@ export function SettingsPage() {
           )}
 
           <div className="helper">
-            Stripe billing is not connected yet. This section is prepared for subscription management. Backend/RLS billing enforcement must remain workspace-scoped before live payments are enabled.
+            Stripe Checkout opens only through the secure backend endpoint. If server-side Stripe env vars are missing, PropFlow shows “Stripe billing is not configured yet.” and does not change subscription state in the frontend.
           </div>
         </SettingCard>
 

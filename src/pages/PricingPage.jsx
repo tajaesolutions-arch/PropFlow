@@ -10,7 +10,9 @@ import {
   Users,
 } from 'lucide-react';
 
-import { billingPlanDetails } from '../data/constants.js';
+import { billingPlanDetails, roles } from '../data/constants.js';
+import { hasAnyRole } from '../lib/auth.js';
+import { useApp } from '../lib/AppContext.jsx';
 import { navigate } from '../routes/AppRouter.jsx';
 
 const plans = billingPlanDetails.map((plan) => ({
@@ -43,7 +45,7 @@ const faqs = [
   },
 ];
 
-function PricingCard({ plan }) {
+function PricingCard({ plan, canManageBilling = false, billingBusyPlan = '', onChoosePlan }) {
   return (
     <article className={`pricing-card ${plan.featured ? 'featured' : ''}`}>
       {plan.featured && <span className="pricing-popular-badge">Recommended</span>}
@@ -65,19 +67,44 @@ function PricingCard({ plan }) {
         ))}
       </ul>
 
-      <button className="primary" type="button" onClick={() => navigate('/signup')}>
-        Start setup
+      <button
+        className="primary"
+        type="button"
+        onClick={() => (canManageBilling && plan.key !== 'enterprise' ? onChoosePlan(plan.key) : navigate('/signup'))}
+        disabled={Boolean(billingBusyPlan) || plan.key === 'enterprise'}
+      >
+        {plan.key === 'enterprise' ? 'Contact sales soon' : canManageBilling ? (billingBusyPlan === plan.key ? 'Opening Stripe…' : 'Choose plan') : 'Start setup'}
         <ArrowRight size={16} />
       </button>
 
       <small className="todo">
-        Create an account to start setup. Stripe checkout remains guarded until secure backend endpoints and server-side env vars are configured.
+        {canManageBilling
+          ? 'Checkout opens through PropFlow’s secure server-side Stripe endpoint. No frontend Stripe secrets are used.'
+          : 'Create an account or sign in as a Workspace Owner to choose a plan through Stripe Checkout.'}
       </small>
     </article>
   );
 }
 
 export function PricingPage() {
+  const { currentUser, currentWorkspace, startCheckout } = useApp();
+  const [billingMessage, setBillingMessage] = React.useState('');
+  const [billingBusyPlan, setBillingBusyPlan] = React.useState('');
+  const canManageBilling = Boolean(currentWorkspace?.id && hasAnyRole(currentUser, [roles.OWNER_ADMIN]));
+
+  const handleChoosePlan = async (plan) => {
+    setBillingMessage('');
+    setBillingBusyPlan(plan);
+
+    try {
+      await startCheckout(plan);
+    } catch (error) {
+      const text = String(error?.message || '').toLowerCase();
+      setBillingMessage(text.includes('configured') ? 'Stripe billing is not configured yet.' : (error?.message || 'Checkout could not be started.'));
+      setBillingBusyPlan('');
+    }
+  };
+
   return (
     <div className="public-page pricing-page">
       <nav className="public-nav pricing-nav">
@@ -146,9 +173,21 @@ export function PricingPage() {
         </aside>
       </section>
 
+      {billingMessage && (
+        <div className="helper warning-helper pricing-billing-message" role="status">
+          {billingMessage}
+        </div>
+      )}
+
       <section className="pricing-grid">
         {plans.map((plan) => (
-          <PricingCard key={plan.key} plan={plan} />
+          <PricingCard
+            key={plan.key}
+            plan={plan}
+            canManageBilling={canManageBilling}
+            billingBusyPlan={billingBusyPlan}
+            onChoosePlan={handleChoosePlan}
+          />
         ))}
       </section>
 
@@ -210,13 +249,13 @@ export function PricingPage() {
               <span>
                 <CreditCard size={16} />
                 <strong>Stripe checkout</strong>
-                <small>Provider-not-configured until backend env is set</small>
+                <small>Server-side Checkout Session endpoint ready; provider-not-configured until backend env is set</small>
               </span>
 
               <span>
                 <ShieldCheck size={16} />
                 <strong>Webhooks</strong>
-                <small>Pending signature validation</small>
+                <small>Signature validation and subscription sync foundation ready</small>
               </span>
 
               <span>
