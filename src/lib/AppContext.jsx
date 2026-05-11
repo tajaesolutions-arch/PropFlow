@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
-import { billingAccessRoles, billingEventTypes, billingManageRoles, billingPlans, currencies, deliveryStatuses, directBookingConfirmationModes, directBookingPageStatuses, directBookingPaymentModes, expenseCategories, expensePaymentStatuses, expenseStatuses, invitePermissionLevels, inviteRoleOptions, leasePaymentStatuses, leaseStatuses, leaseTypes, notificationChannels, notificationEventTypes, notificationPreferenceGroups, notificationStatuses, propertyAssignmentRoleOptions, propertyScopedInviteRoles, propertyStatuses, propertyTypes, rentalTypes, rentFrequencies, roles } from '../data/constants.js';
+import { billingAccessRoles, billingEventTypes, billingManageRoles, billingPlans, calendarImportedEventStatuses, calendarImportedEventTypes, calendarImportConflictTypes, calendarImportProviderTypes, calendarImportStatuses, calendarImportSyncStatuses, currencies, deliveryStatuses, directBookingConfirmationModes, directBookingPageStatuses, directBookingPaymentModes, expenseCategories, expensePaymentStatuses, expenseStatuses, invitePermissionLevels, inviteRoleOptions, leasePaymentStatuses, leaseStatuses, leaseTypes, notificationChannels, notificationEventTypes, notificationPreferenceGroups, notificationStatuses, propertyAssignmentRoleOptions, propertyScopedInviteRoles, propertyStatuses, propertyTypes, rentalTypes, rentFrequencies, roles } from '../data/constants.js';
 import { resolvePrimaryRole } from './auth.js';
 import { isSupabaseConfigured, supabase } from './supabase.js';
 
@@ -117,6 +117,11 @@ const emptyData = {
   billingTablesReady: false,
   directBookingPages: [],
   directBookingRequests: [],
+  calendarImportFeeds: [],
+  calendarImportEvents: [],
+  calendarImportSyncRuns: [],
+  calendarImportConflicts: [],
+  calendarImportTablesReady: true,
 };
 
 function firstResult(data) {
@@ -479,6 +484,112 @@ function normalizeDirectBookingRequest(row, properties = []) {
   };
 }
 
+
+function normalizeCalendarImportFeed(row, properties = []) {
+  if (!row) return row;
+
+  const property = properties.find((item) => item.id === row.property_id);
+
+  return {
+    ...row,
+    workspaceId: row.workspace_id,
+    propertyId: row.property_id,
+    property: property?.name || row.property || 'Unassigned property',
+    providerType: row.provider_type,
+    feedUrl: row.feed_url,
+    importAs: row.import_as,
+    autoCreateBookings: row.auto_create_bookings,
+    autoCreateCleaningTasks: row.auto_create_cleaning_tasks,
+    lastSyncStatus: row.last_sync_status,
+    lastSyncAt: row.last_sync_at,
+    lastSuccessfulSyncAt: row.last_successful_sync_at,
+    lastError: row.last_error,
+    createdBy: row.created_by,
+    archivedAt: row.archived_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function normalizeCalendarImportEvent(row, properties = []) {
+  if (!row) return row;
+
+  const property = properties.find((item) => item.id === row.property_id);
+
+  return {
+    ...row,
+    workspaceId: row.workspace_id,
+    propertyId: row.property_id,
+    property: property?.name || row.property || 'Unassigned property',
+    feedId: row.feed_id,
+    externalUid: row.external_uid,
+    externalSequence: row.external_sequence,
+    externalEtag: row.external_etag,
+    eventType: row.event_type,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    allDay: row.all_day,
+    sourcePlatform: row.source_platform,
+    importedBookingId: row.imported_booking_id,
+    rawEvent: row.raw_event,
+    conflictSummary: row.conflict_summary,
+    archivedAt: row.archived_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function normalizeCalendarImportSyncRun(row, feeds = [], properties = []) {
+  if (!row) return row;
+
+  const feed = feeds.find((item) => item.id === row.feed_id);
+  const property = properties.find((item) => item.id === row.property_id) || properties.find((item) => item.id === feed?.propertyId);
+
+  return {
+    ...row,
+    workspaceId: row.workspace_id,
+    feedId: row.feed_id,
+    feedName: feed?.name || 'Calendar feed',
+    propertyId: row.property_id,
+    property: property?.name || row.property || 'Unassigned property',
+    startedAt: row.started_at,
+    completedAt: row.completed_at,
+    eventsFound: row.events_found,
+    eventsCreated: row.events_created,
+    eventsUpdated: row.events_updated,
+    eventsIgnored: row.events_ignored,
+    conflictsFound: row.conflicts_found,
+    errorMessage: row.error_message,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+  };
+}
+
+function normalizeCalendarImportConflict(row, feeds = [], events = [], properties = []) {
+  if (!row) return row;
+
+  const feed = feeds.find((item) => item.id === row.feed_id);
+  const importedEvent = events.find((item) => item.id === row.imported_event_id);
+  const property = properties.find((item) => item.id === row.property_id);
+
+  return {
+    ...row,
+    workspaceId: row.workspace_id,
+    propertyId: row.property_id,
+    property: property?.name || row.property || 'Unassigned property',
+    feedId: row.feed_id,
+    feedName: feed?.name || 'Calendar feed',
+    importedEventId: row.imported_event_id,
+    importedEventTitle: importedEvent?.title || 'Imported calendar block',
+    conflictType: row.conflict_type,
+    relatedBookingId: row.related_booking_id,
+    relatedLeaseId: row.related_lease_id,
+    resolvedBy: row.resolved_by,
+    resolvedAt: row.resolved_at,
+    createdAt: row.created_at,
+  };
+}
+
 function normalizeNotification(row) {
   if (!row) return row;
 
@@ -804,9 +915,18 @@ const workspaceActionRoles = {
   expense: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
   inventory: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
   directBooking: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
+  calendarImport: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
   lease: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
 };
 
+
+const calendarImportProviderTypeValues = calendarImportProviderTypes.map(([value]) => value);
+const calendarImportStatusValues = calendarImportStatuses.map(([value]) => value);
+const calendarImportSyncStatusValues = calendarImportSyncStatuses.map(([value]) => value);
+const calendarImportedEventStatusValues = calendarImportedEventStatuses.map(([value]) => value);
+const calendarImportedEventTypeValues = calendarImportedEventTypes.map(([value]) => value);
+const calendarImportConflictTypeValues = calendarImportConflictTypes.map(([value]) => value);
+const calendarImportManagerRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
 
 const notificationChannelValues = notificationChannels.map(([value]) => value);
 const notificationEventTypeValues = notificationEventTypes.map(([value]) => value);
@@ -830,6 +950,7 @@ function getNotificationEventGroup(eventType) {
   if (['team_invite_created', 'team_invite_accepted', 'member_suspended', 'member_reactivated'].includes(eventType)) return 'team';
   if (String(eventType || '').startsWith('billing_')) return 'billing';
   if (String(eventType || '').startsWith('lease_')) return 'leases';
+  if (String(eventType || '').startsWith('ical_')) return 'calendar_imports';
   return 'workspace_activity';
 }
 
@@ -1282,6 +1403,52 @@ export function AppProvider({ children }) {
         normalize: (rows) => rows.map((row) => normalizeDirectBookingRequest(row, properties)),
       },
       {
+        label: 'calendar import feeds',
+        key: 'calendarImportFeeds',
+        query: supabase
+          .from('calendar_import_feeds')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .is('archived_at', null)
+          .order('created_at', { ascending: false }),
+        normalize: (rows) => rows.map((row) => normalizeCalendarImportFeed(row, properties)),
+      },
+      {
+        label: 'calendar import events',
+        key: 'calendarImportEvents',
+        query: supabase
+          .from('calendar_import_events')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .is('archived_at', null)
+          .order('starts_at', { ascending: true })
+          .limit(500),
+        normalize: (rows) => rows.map((row) => normalizeCalendarImportEvent(row, properties)),
+      },
+      {
+        label: 'calendar import sync runs',
+        key: 'calendarImportSyncRuns',
+        query: supabase
+          .from('calendar_import_sync_runs')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .order('created_at', { ascending: false })
+          .limit(50),
+        normalize: (rows) => rows.map((row) => normalizeCalendarImportSyncRun(row, nextData.calendarImportFeeds, properties)),
+      },
+      {
+        label: 'calendar import conflicts',
+        key: 'calendarImportConflicts',
+        query: supabase
+          .from('calendar_import_conflicts')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .in('status', ['open', 'acknowledged'])
+          .order('created_at', { ascending: false })
+          .limit(100),
+        normalize: (rows) => rows.map((row) => normalizeCalendarImportConflict(row, nextData.calendarImportFeeds, nextData.calendarImportEvents, properties)),
+      },
+      {
         label: 'notifications',
         key: 'notifications',
         query: supabase
@@ -1399,6 +1566,7 @@ export function AppProvider({ children }) {
     });
 
     nextData.billingTablesReady = !results.some((result) => ['subscription', 'billingEvents', 'billingPlanLimits'].includes(result.key) && tableIsMissing(result.error));
+    nextData.calendarImportTablesReady = !results.some((result) => ['calendarImportFeeds', 'calendarImportEvents', 'calendarImportSyncRuns', 'calendarImportConflicts'].includes(result.key) && tableIsMissing(result.error));
     nextData.billingAccessState = getWorkspaceBillingGate(workspace, nextData.subscription, currentUser);
     nextData.unreadNotificationCount = asArray(nextData.notifications).filter(isUnreadNotification).length;
 
@@ -4160,6 +4328,296 @@ export function AppProvider({ children }) {
   };
 
 
+  const requireCalendarImportManager = () => {
+    requireWorkspaceSession(currentWorkspace, session);
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'calendarImport');
+  };
+
+  const cleanCalendarImportUrl = (value) => {
+    const text = cleanText(value);
+    if (!text) throw new Error('Feed URL is required.');
+
+    let url;
+    try {
+      url = new URL(text);
+    } catch {
+      throw new Error('Feed URL must be a valid http:// or https:// URL.');
+    }
+
+    if (!['http:', 'https:'].includes(url.protocol)) {
+      throw new Error('Feed URL must start with http:// or https://.');
+    }
+
+    return url.toString();
+  };
+
+  const createCalendarImportFeed = async (payload = {}) => {
+    const client = requireSupabase();
+    requireCalendarImportManager();
+    const selectedProperty = requireWorkspaceProperty(data.properties, payload.property_id || payload.propertyId);
+    const providerType = payload.provider_type || payload.providerType || 'manual_ical';
+    const status = payload.status || 'active';
+    const importAs = payload.import_as || payload.importAs || 'booking_block';
+    const name = cleanText(payload.name);
+
+    if (!name) throw new Error('Feed name is required.');
+    requireAllowedValue(providerType, calendarImportProviderTypeValues, 'calendar import provider');
+    requireAllowedValue(status, calendarImportStatusValues, 'calendar import status');
+    requireAllowedValue(importAs, calendarImportedEventTypeValues, 'calendar import event type');
+
+    const { data: row, error } = await client
+      .from('calendar_import_feeds')
+      .insert({
+        workspace_id: currentWorkspace.id,
+        property_id: selectedProperty.id,
+        provider_type: providerType,
+        name,
+        feed_url: cleanCalendarImportUrl(payload.feed_url || payload.feedUrl),
+        status,
+        timezone: cleanText(payload.timezone),
+        import_as: importAs,
+        auto_create_bookings: false,
+        auto_create_cleaning_tasks: false,
+        created_by: session.user.id,
+      })
+      .select('*')
+      .single();
+
+    if (error) throw new Error(formatSupabaseError(error, 'Calendar import feed could not be created.'));
+
+    await refreshWorkspaceData();
+    return normalizeCalendarImportFeed(row, data.properties);
+  };
+
+  const updateCalendarImportFeed = async (feedId, payload = {}) => {
+    const client = requireSupabase();
+    requireCalendarImportManager();
+    const existing = asArray(data.calendarImportFeeds).find((feed) => feed.id === feedId);
+    if (!existing) throw new Error('Calendar import feed was not found in this workspace.');
+
+    const allowed = ['property_id', 'propertyId', 'provider_type', 'providerType', 'name', 'feed_url', 'feedUrl', 'status', 'timezone', 'import_as', 'importAs'];
+    const cleanPayload = stripUnsupportedPayloadKeys(payload, allowed);
+    const updates = {};
+
+    if ('property_id' in cleanPayload || 'propertyId' in cleanPayload) {
+      updates.property_id = requireWorkspaceProperty(data.properties, cleanPayload.property_id || cleanPayload.propertyId).id;
+    }
+    if ('provider_type' in cleanPayload || 'providerType' in cleanPayload) {
+      updates.provider_type = cleanPayload.provider_type || cleanPayload.providerType;
+      requireAllowedValue(updates.provider_type, calendarImportProviderTypeValues, 'calendar import provider');
+    }
+    if ('status' in cleanPayload) {
+      updates.status = cleanPayload.status;
+      requireAllowedValue(updates.status, calendarImportStatusValues, 'calendar import status');
+    }
+    if ('import_as' in cleanPayload || 'importAs' in cleanPayload) {
+      updates.import_as = cleanPayload.import_as || cleanPayload.importAs;
+      requireAllowedValue(updates.import_as, calendarImportedEventTypeValues, 'calendar import event type');
+    }
+    if ('name' in cleanPayload) {
+      updates.name = cleanText(cleanPayload.name);
+      if (!updates.name) throw new Error('Feed name is required.');
+    }
+    if ('feed_url' in cleanPayload || 'feedUrl' in cleanPayload) updates.feed_url = cleanCalendarImportUrl(cleanPayload.feed_url || cleanPayload.feedUrl);
+    if ('timezone' in cleanPayload) updates.timezone = cleanText(cleanPayload.timezone);
+
+    const { data: row, error } = await client
+      .from('calendar_import_feeds')
+      .update(updates)
+      .eq('id', feedId)
+      .eq('workspace_id', currentWorkspace.id)
+      .select('*')
+      .single();
+
+    if (error) throw new Error(formatSupabaseError(error, 'Calendar import feed could not be updated.'));
+
+    if (updates.status === 'paused') {
+      await notifyWorkspaceManagers({
+        event_type: 'ical_feed_paused',
+        title: 'iCal feed paused',
+        body: `${row.name} was paused and will not sync until reactivated.`,
+        priority: 'normal',
+        related_property_id: row.property_id,
+        action_url: '/calendar-imports',
+        metadata: { feedId: row.id },
+      });
+    }
+
+    await refreshWorkspaceData();
+    return normalizeCalendarImportFeed(row, data.properties);
+  };
+
+  const archiveCalendarImportFeed = async (feedId, archived = true) => {
+    const client = requireSupabase();
+    requireCalendarImportManager();
+    const existing = asArray(data.calendarImportFeeds).find((feed) => feed.id === feedId);
+    if (!existing) throw new Error('Calendar import feed was not found in this workspace.');
+
+    const updates = archived
+      ? { status: 'archived', archived_at: new Date().toISOString() }
+      : { status: 'active', archived_at: null };
+
+    const { data: row, error } = await client
+      .from('calendar_import_feeds')
+      .update(updates)
+      .eq('id', feedId)
+      .eq('workspace_id', currentWorkspace.id)
+      .select('*')
+      .single();
+
+    if (error) throw new Error(formatSupabaseError(error, 'Calendar import feed archive status could not be updated.'));
+
+    if (archived) {
+      await notifyWorkspaceManagers({
+        event_type: 'ical_feed_archived',
+        title: 'iCal feed archived',
+        body: `${row.name} was archived and hidden from default calendar import views.`,
+        priority: 'normal',
+        related_property_id: row.property_id,
+        action_url: '/calendar-imports',
+        metadata: { feedId: row.id },
+      });
+    }
+
+    await refreshWorkspaceData();
+    return normalizeCalendarImportFeed(row, data.properties);
+  };
+
+  const syncCalendarImportFeed = async (feedId) => {
+    requireCalendarImportManager();
+    const feed = asArray(data.calendarImportFeeds).find((item) => item.id === feedId);
+    if (!feed) throw new Error('Calendar import feed was not found in this workspace.');
+    if (feed.status !== 'active' || feed.archivedAt || feed.archived_at) {
+      throw new Error('Paused or archived feeds cannot be synced.');
+    }
+
+    const accessToken = session?.access_token;
+    if (!accessToken) throw new Error('Your session expired. Sign in again before syncing.');
+
+    const response = await fetch('/api/sync-ical-feed', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ feedId }),
+    });
+
+    const result = await response.json().catch(() => ({}));
+    await refreshWorkspaceData();
+
+    if (!response.ok) {
+      await notifyWorkspaceManagers({
+        event_type: 'ical_sync_failed',
+        title: 'iCal sync failed',
+        body: result.message || 'Calendar feed sync failed. Review the feed URL and latest sync run.',
+        priority: 'high',
+        related_property_id: feed.propertyId || feed.property_id,
+        action_url: '/calendar-imports',
+        metadata: { feedId, code: result.code },
+      });
+      throw new Error(result.message || 'Calendar import sync failed.');
+    }
+
+    if (Number(result.conflictsFound || result.conflicts_found || 0) > 0) {
+      await notifyWorkspaceManagers({
+        event_type: 'ical_sync_conflicts_found',
+        title: 'iCal sync found conflicts',
+        body: `${result.conflictsFound || result.conflicts_found} imported calendar conflict(s) need review.`,
+        priority: 'high',
+        related_property_id: feed.propertyId || feed.property_id,
+        action_url: '/calendar-imports',
+        metadata: { feedId, ...result },
+      });
+    }
+
+    return result;
+  };
+
+  const acknowledgeCalendarImportConflict = async (conflictId, status = 'acknowledged') => {
+    const client = requireSupabase();
+    requireCalendarImportManager();
+    requireAllowedValue(status, ['acknowledged', 'resolved', 'ignored'], 'calendar import conflict status');
+    const conflict = asArray(data.calendarImportConflicts).find((item) => item.id === conflictId);
+    if (!conflict) throw new Error('Calendar import conflict was not found in this workspace.');
+
+    const { data: row, error } = await client
+      .from('calendar_import_conflicts')
+      .update({ status, resolved_by: session.user.id, resolved_at: new Date().toISOString() })
+      .eq('id', conflictId)
+      .eq('workspace_id', currentWorkspace.id)
+      .select('*')
+      .single();
+
+    if (error) throw new Error(formatSupabaseError(error, 'Calendar import conflict could not be updated.'));
+
+    await refreshWorkspaceData();
+    return normalizeCalendarImportConflict(row, data.calendarImportFeeds, data.calendarImportEvents, data.properties);
+  };
+
+  const convertImportedEventToBooking = async (importedEventId) => {
+    const client = requireSupabase();
+    requireCalendarImportManager();
+    const importedEvent = asArray(data.calendarImportEvents).find((item) => item.id === importedEventId);
+    if (!importedEvent) throw new Error('Imported calendar event was not found in this workspace.');
+    if (importedEvent.importedBookingId || importedEvent.imported_booking_id) throw new Error('This imported event is already linked to a booking.');
+    const selectedProperty = requireWorkspaceProperty(data.properties, importedEvent.propertyId || importedEvent.property_id);
+
+    const checkIn = String(importedEvent.startsAt || importedEvent.starts_at || '').slice(0, 10);
+    const checkOut = String(importedEvent.endsAt || importedEvent.ends_at || '').slice(0, 10);
+    if (!checkIn || !checkOut || checkOut <= checkIn) throw new Error('Imported event dates are not valid for booking conversion.');
+
+    const { data: booking, error: bookingError } = await client
+      .from('bookings')
+      .insert({
+        workspace_id: currentWorkspace.id,
+        property_id: selectedProperty.id,
+        guest_name: 'Imported calendar block',
+        check_in: checkIn,
+        check_out: checkOut,
+        guest_count: 1,
+        source: 'ical',
+        status: 'confirmed',
+        payment_status: 'unpaid',
+        currency: selectedProperty.currency || currentWorkspace.defaultCurrency || currentWorkspace.default_currency || 'USD',
+        total_amount: 0,
+        cleaning_fee: 0,
+        taxes_fees: 0,
+        owner_payout: 0,
+        notes: 'Created from an imported iCal block. No payment or guest private details were imported.',
+        auto_create_cleaning: false,
+        created_by: session.user.id,
+      })
+      .select('*')
+      .single();
+
+    if (bookingError) throw new Error(formatSupabaseError(bookingError, 'Imported event could not be converted to a booking.'));
+
+    const { error: updateError } = await client
+      .from('calendar_import_events')
+      .update({ imported_booking_id: booking.id })
+      .eq('id', importedEventId)
+      .eq('workspace_id', currentWorkspace.id);
+
+    if (updateError) throw new Error(formatSupabaseError(updateError, 'Imported event booking link could not be saved.'));
+
+    await notifyWorkspaceManagers({
+      event_type: 'ical_import_converted_to_booking',
+      title: 'Imported iCal block converted',
+      body: 'An imported calendar block was converted to an internal unpaid booking.',
+      priority: 'normal',
+      related_property_id: selectedProperty.id,
+      related_booking_id: booking.id,
+      action_url: '/bookings',
+      metadata: { importedEventId },
+    });
+
+    await refreshWorkspaceData();
+    return normalizeBooking(booking, data.properties);
+  };
+
+
+
   const getBillingAccessState = () => getWorkspaceBillingGate(currentWorkspace, data.subscription, currentUser);
 
   const requireBillingRole = (allowedRoles, message) => {
@@ -4491,6 +4949,12 @@ export function AppProvider({ children }) {
       archiveDirectBookingPage,
       reviewDirectBookingRequest,
       convertDirectBookingRequestToBooking,
+      createCalendarImportFeed,
+      updateCalendarImportFeed,
+      archiveCalendarImportFeed,
+      syncCalendarImportFeed,
+      acknowledgeCalendarImportConflict,
+      convertImportedEventToBooking,
       createLease,
       updateLease,
       archiveLease,

@@ -42,6 +42,7 @@ const PropertyDetailPage = lazyPage(() => import('../pages/PropertyDetailPage.js
 const BookingsPage = lazyPage(() => import('../pages/BookingsPage.jsx'), 'BookingsPage');
 const LeasesPage = lazyPage(() => import('../pages/LeasesPage.jsx'), 'LeasesPage');
 const DirectBookingsPage = lazyPage(() => import('../pages/DirectBookingsPage.jsx'), 'DirectBookingsPage');
+const CalendarImportsPage = lazyPage(() => import('../pages/CalendarImportsPage.jsx'), 'CalendarImportsPage');
 const CalendarPage = lazyPage(() => import('../pages/CalendarPage.jsx'), 'CalendarPage');
 const CleaningPage = lazyPage(() => import('../pages/CleaningPage.jsx'), 'CleaningPage');
 const MaintenancePage = lazyPage(() => import('../pages/MaintenancePage.jsx'), 'MaintenancePage');
@@ -117,6 +118,7 @@ const filesPageRoles = [...operationalRoles, roles.ACCOUNTANT, roles.OWNER];
 const inventoryPageRoles = financeRoles;
 const calendarManagerRoles = operationalRoles;
 const directBookingManagerRoles = operationalRoles;
+const calendarImportManagerRoles = operationalRoles;
 
 const dashboardAccess = {
   '/dashboard': operationalRoles,
@@ -136,6 +138,7 @@ const protectedRoutes = {
   },
   '/leases': { Page: LeasesPage, access: leasePageRoles },
   '/direct-bookings': { Page: DirectBookingsPage, access: directBookingManagerRoles },
+  '/calendar-imports': { Page: CalendarImportsPage, access: calendarImportManagerRoles },
   '/calendar': { Page: CalendarPage, access: calendarManagerRoles },
   '/cleaning': { Page: CleaningPage, access: [...operationalRoles, roles.CLEANER] },
   '/maintenance': { Page: MaintenancePage, access: maintenancePageRoles },

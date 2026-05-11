@@ -7,6 +7,7 @@ import {
   CalendarCheck,
   ClipboardCheck,
   DollarSign,
+  DownloadCloud,
   Edit3,
   Eye,
   FileText,
@@ -617,6 +618,7 @@ export function PropertyDetailPage({ propertyId }) {
 
   const canEdit = hasAnyActiveWorkspaceRole(memberships, currentWorkspace, propertyEditorRoles);
   const canManageDirectBooking = hasAnyActiveWorkspaceRole(memberships, currentWorkspace, taskManagerRoles);
+  const canManageCalendarImports = hasAnyActiveWorkspaceRole(memberships, currentWorkspace, taskManagerRoles);
   const directBookingPage = (data.directBookingPages || []).find((page) => (page.propertyId || page.property_id) === property.id);
   const directBookingUrl = directBookingPage?.slug ? `${window.location.origin}/book/${directBookingPage.slug}` : '';
   const canCreateOperationalRecords = hasAnyActiveWorkspaceRole(memberships, currentWorkspace, taskManagerRoles);
@@ -631,6 +633,14 @@ export function PropertyDetailPage({ propertyId }) {
   const files = (data.fileUploads || data.files || []).filter(
     (file) => getPropertyId(file) === property.id || file.property_id === property.id || file.propertyId === property.id,
   );
+  const calendarImportFeeds = (data.calendarImportFeeds || []).filter((feed) => (feed.propertyId || feed.property_id) === property.id);
+  const calendarImportConflicts = (data.calendarImportConflicts || []).filter((conflict) => (conflict.propertyId || conflict.property_id) === property.id && ['open', 'acknowledged'].includes(conflict.status));
+  const lastCalendarImportSync = calendarImportFeeds
+    .map((feed) => feed.lastSyncAt || feed.last_sync_at)
+    .filter(Boolean)
+    .sort()
+    .at(-1);
+  const lastCalendarImportStatus = calendarImportFeeds.find((feed) => (feed.lastSyncAt || feed.last_sync_at) === lastCalendarImportSync)?.lastSyncStatus || calendarImportFeeds.find((feed) => (feed.last_sync_at) === lastCalendarImportSync)?.last_sync_status || 'not_synced';
 
   const activeBookings = bookings.filter((booking) => !cancelledStatuses.has(booking.status));
   const openCleaning = cleaning.filter((task) => !closedStatuses.has(task.status));
@@ -836,6 +846,35 @@ export function PropertyDetailPage({ propertyId }) {
               Set up direct booking page
             </button>
           )}
+        </section>
+      )}
+
+
+      {canManageCalendarImports && (
+        <section className="card property-direct-booking-card">
+          <div className="card-header">
+            <div>
+              <p className="eyebrow">Calendar imports</p>
+              <h3>{calendarImportFeeds.length ? 'iCal imports configured' : 'Add external iCal blocks'}</h3>
+              <p>Import feeds are scoped to this property. Feed URLs stay restricted to workspace managers and are not shown to owners, cleaners, maintenance, or public guests.</p>
+            </div>
+            <DownloadCloud size={20} className="muted" />
+          </div>
+
+          <div className="property-detail-finance-grid">
+            <span><strong>{calendarImportFeeds.filter((feed) => feed.status === 'active').length}</strong><small>Active feeds</small></span>
+            <span><strong>{lastCalendarImportStatus.replaceAll('_', ' ')}</strong><small>Last sync status</small></span>
+            <span><strong>{calendarImportConflicts.length}</strong><small>Open conflicts</small></span>
+          </div>
+
+          <div className="property-direct-booking-actions">
+            <button type="button" className="primary" onClick={() => navigate('/calendar-imports')} data-skip-create-action="true">
+              Manage imports
+            </button>
+            <button type="button" onClick={() => navigate('/calendar-imports')} data-skip-create-action="true">
+              Add feed
+            </button>
+          </div>
         </section>
       )}
 

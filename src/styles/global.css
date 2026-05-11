@@ -1222,6 +1222,11 @@ small {
   background: var(--purple-soft);
 }
 
+.event-imported {
+  border-left-color: var(--accent);
+  background: #F0FDFA;
+}
+
 .calendar-agenda {
   display: grid;
   gap: 8px;

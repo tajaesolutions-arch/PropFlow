@@ -127,6 +127,61 @@ export const billingPlanDetails = [
 ];
 
 
+
+export const calendarImportProviderTypes = [
+  ['airbnb_ical', 'Airbnb iCal'],
+  ['vrbo_ical', 'Vrbo iCal'],
+  ['booking_com_ical', 'Booking.com iCal'],
+  ['google_calendar_ical', 'Google Calendar iCal'],
+  ['outlook_ical', 'Outlook iCal'],
+  ['manual_ical', 'Manual iCal'],
+  ['other_ical', 'Other iCal'],
+];
+
+export const calendarImportStatuses = [
+  ['active', 'Active'],
+  ['paused', 'Paused'],
+  ['error', 'Error'],
+  ['archived', 'Archived'],
+];
+
+export const calendarImportSyncStatuses = [
+  ['pending', 'Pending'],
+  ['running', 'Running'],
+  ['success', 'Success'],
+  ['partial_success', 'Partial success'],
+  ['failed', 'Failed'],
+  ['skipped', 'Skipped'],
+  ['provider_not_configured', 'Provider not configured'],
+];
+
+export const calendarImportedEventStatuses = [
+  ['imported', 'Imported'],
+  ['changed', 'Changed'],
+  ['cancelled', 'Cancelled'],
+  ['ignored', 'Ignored'],
+  ['conflict', 'Conflict'],
+  ['archived', 'Archived'],
+];
+
+export const calendarImportedEventTypes = [
+  ['booking_block', 'Booking block'],
+  ['unavailable_block', 'Unavailable block'],
+  ['owner_block', 'Owner block'],
+  ['maintenance_block', 'Maintenance block'],
+  ['unknown', 'Unknown'],
+];
+
+export const calendarImportConflictTypes = [
+  ['overlaps_internal_booking', 'Overlaps internal booking'],
+  ['overlaps_direct_booking', 'Overlaps direct booking'],
+  ['overlaps_lease', 'Overlaps lease'],
+  ['invalid_dates', 'Invalid dates'],
+  ['duplicate_external_uid', 'Duplicate external UID'],
+  ['missing_property', 'Missing property'],
+  ['unsupported_event', 'Unsupported event'],
+];
+
 export const directBookingPageStatuses = [
   ['draft', 'Draft'],
   ['published', 'Published'],
@@ -320,6 +375,11 @@ export const notificationEventTypes = [
   ['billing_access_restricted', 'Billing access restricted'],
   ['billing_access_restored', 'Billing access restored'],
   ['billing_provider_not_configured', 'Billing provider not configured'],
+  ['ical_sync_failed', 'iCal sync failed'],
+  ['ical_sync_conflicts_found', 'iCal sync conflicts found'],
+  ['ical_feed_paused', 'iCal feed paused'],
+  ['ical_feed_archived', 'iCal feed archived'],
+  ['ical_import_converted_to_booking', 'iCal import converted to booking'],
   ['lease_created', 'Lease created'],
   ['lease_expiring_soon', 'Lease expiring soon'],
   ['lease_archived', 'Lease archived'],
@@ -338,6 +398,7 @@ export const notificationPreferenceGroups = [
   ['team', 'Team'],
   ['billing', 'Billing'],
   ['leases', 'Long-term rentals / leases'],
+  ['calendar_imports', 'Calendar imports'],
   ['workspace_activity', 'Workspace activity'],
 ];
 
