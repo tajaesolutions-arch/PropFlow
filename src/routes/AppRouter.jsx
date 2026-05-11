@@ -11,7 +11,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 
-import { getPostLoginPath, hasAnyRole } from '../lib/auth.js';
+import { canAccessPlatformAdmin, getPostLoginPath, hasAnyRole } from '../lib/auth.js';
 import { getWorkspaceBillingGate, useApp } from '../lib/AppContext.jsx';
 import { roles } from '../data/constants.js';
 
@@ -445,7 +445,7 @@ function userCanAccessRoute(user, route) {
 }
 
 function isPropFlowAdminUser(user) {
-  return Boolean(user?.roles?.includes(roles.ADMIN));
+  return canAccessPlatformAdmin(user);
 }
 
 function RoleGuard({ allowed, children }) {

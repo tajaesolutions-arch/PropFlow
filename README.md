@@ -536,3 +536,44 @@ PropFlow includes an MVP foundation for manual long-term rental and lease tracki
 - This foundation does **not** add Airbnb, Vrbo, Booking.com, Google, or Outlook API integrations; it only supports iCal URL import.
 - This foundation does **not** add two-way sync/export, channel-manager automation, instant booking confirmation, or payment automation.
 - Apply `supabase/migrations/202605100018_ical_calendar_import_foundation.sql` after the existing workspace, property, booking, direct booking, notification, and lease migrations before using calendar imports.
+
+## Platform Admin / Founder Admin operations
+
+PropFlow Admin is a SaaS/platform-level role for the founder or trusted PropFlow team only. It is **not** a customer workspace role, must not be offered in workspace invite/team forms, and must not be assigned through customer-managed membership flows.
+
+Apply `supabase/migrations/202605100019_platform_admin_foundation.sql` before using `/admin` for platform-wide operations. The migration adds secure admin-only RPCs for platform overview metrics, workspace review, user review, health reporting, audit logs, and internal admin notes. Normal customer workspace RLS remains workspace-scoped; the frontend admin dashboard reads platform-wide data only through those RPCs.
+
+### Manual founder bootstrap
+
+Bootstrap the first founder admin through a trusted Supabase SQL/admin process after the founder has a profile row. Do not expose the service-role key in frontend code and do not let customers update `profiles.is_propflow_admin`.
+
+Example non-destructive bootstrap by email:
+
+```sql
+update public.profiles
+set is_propflow_admin = true,
+    account_status = 'active',
+    status = 'active',
+    updated_at = now()
+where lower(email) = lower('founder@example.com');
+```
+
+Or by user id:
+
+```sql
+update public.profiles
+set is_propflow_admin = true,
+    account_status = 'active',
+    status = 'active',
+    updated_at = now()
+where id = '00000000-0000-0000-0000-000000000000';
+```
+
+Operational warnings:
+
+- Never invite `propflow_admin` through workspace invite forms.
+- Never expose service-role, Stripe, Resend, Twilio, webhook, API key, or provider secrets in frontend code.
+- `/admin` is protected by the PropFlow Admin role and the admin RPCs deny authenticated non-admin users.
+- Platform admin audit logs and notes are visible only to PropFlow Admin profiles.
+- Admin controls do not hard-delete customer data; status changes require audit logs and reasons for restrictive actions.
+- If the migration is missing, `/admin` shows a setup-required state instead of fake/demo platform metrics.
