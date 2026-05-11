@@ -199,8 +199,8 @@ async function assertSafeIcalUrl(rawUrl) {
     throw new Error('iCal feed URL is invalid.');
   }
 
-  if (!['https:', 'http:'].includes(parsed.protocol)) {
-    throw new Error('iCal feed URL must use HTTP or HTTPS.');
+  if (parsed.protocol !== 'https:') {
+    throw new Error('iCal feed URL must use HTTPS.');
   }
 
   if (parsed.username || parsed.password) {
@@ -474,7 +474,15 @@ export default async function handler(request, response) {
 
       if (upsertError) throw upsertError;
       if (existing) summary.eventsUpdated += 1;
-      else summary.eventsCreated += 1;
+      else {
+        summary.eventsCreated += 1;
+        await client.from('activity_logs').insert({
+          workspace_id: feed.workspace_id,
+          actor_user_id: userId,
+          action: 'calendar_event_imported',
+          metadata: { feedId: feed.id, propertyId: feed.property_id, importedEventId: importedRow.id, providerType: feed.provider_type },
+        });
+      }
 
       const conflicts = await detectConflicts(client, feed, importedRow);
       if (uidCounts[event.externalUid] > 1) {

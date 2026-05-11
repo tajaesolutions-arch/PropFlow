@@ -21,7 +21,7 @@ const conflictStatusOptions = ['open', 'acknowledged', 'resolved', 'ignored'];
 
 const emptyForm = {
   property_id: '',
-  provider_type: 'manual_ical',
+  provider_type: 'other_ical',
   name: '',
   feed_url: '',
   import_as: 'booking_block',

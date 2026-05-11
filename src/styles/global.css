@@ -8021,3 +8021,66 @@ label {
     margin-bottom: 0.2rem;
   }
 }
+
+.property-ical-form {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(150px, 0.8fr) minmax(260px, 1.5fr) auto;
+  gap: 0.75rem;
+  align-items: end;
+  margin-top: 1rem;
+}
+
+.property-ical-form label {
+  display: grid;
+  gap: 0.35rem;
+  color: #64748b;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.property-ical-form input,
+.property-ical-form select {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 0.7rem 0.75rem;
+  color: #0f172a;
+  background: #ffffff;
+}
+
+.calendar-feed-list {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.calendar-feed-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  gap: 0.75rem;
+  align-items: center;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 0.85rem;
+  background: #ffffff;
+}
+
+.calendar-feed-row div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.calendar-feed-row small {
+  color: #64748b;
+}
+
+.error-text {
+  color: #dc2626 !important;
+}
+
+@media (max-width: 900px) {
+  .property-ical-form,
+  .calendar-feed-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+}
