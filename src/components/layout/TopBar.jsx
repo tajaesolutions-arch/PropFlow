@@ -16,7 +16,11 @@ function getInitialDateRange() {
 }
 
 function isUnreadNotification(notification) {
-  return !notification?.read_at && !notification?.readAt && notification?.status !== 'read';
+  return notification?.status === 'unread' && !notification?.read_at && !notification?.readAt && !notification?.archived_at && !notification?.archivedAt;
+}
+
+function isArchivedNotification(notification) {
+  return notification?.status === 'archived' || Boolean(notification?.archived_at || notification?.archivedAt);
 }
 
 export function TopBar({
@@ -26,10 +30,12 @@ export function TopBar({
 }) {
   const { data, markNotificationRead, archiveNotification } = useApp();
   const [dateRange, setDateRange] = React.useState(getInitialDateRange);
-  const notifications = React.useMemo(() => (Array.isArray(data?.notifications) ? data.notifications : []), [data?.notifications]);
+  const notifications = React.useMemo(() => (Array.isArray(data?.notifications) ? data.notifications.filter((item) => !isArchivedNotification(item)) : []), [data?.notifications]);
   const recentNotifications = React.useMemo(() => notifications.slice(0, 5), [notifications]);
   const [notificationOpen, setNotificationOpen] = React.useState(false);
-  const unreadNotifications = React.useMemo(() => notifications.filter(isUnreadNotification).length, [notifications]);
+  const unreadNotifications = Number.isFinite(data?.unreadNotificationCount)
+    ? data.unreadNotificationCount
+    : notifications.filter(isUnreadNotification).length;
   const notificationLabel = unreadNotifications
     ? `Open notifications. ${unreadNotifications} unread alert${unreadNotifications === 1 ? '' : 's'}.`
     : 'Open notifications. No unread alerts.';
@@ -136,7 +142,7 @@ export function TopBar({
                 <strong>Notifications</strong>
                 <small>{unreadNotifications} unread</small>
               </span>
-              <button type="button" onClick={() => navigate('/notifications')} data-skip-create-action="true">View all</button>
+              <button type="button" onClick={() => { setNotificationOpen(false); navigate('/notifications'); }} data-skip-create-action="true">View all</button>
             </div>
 
             {recentNotifications.length ? (

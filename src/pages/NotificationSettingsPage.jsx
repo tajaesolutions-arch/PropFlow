@@ -24,6 +24,7 @@ import { StatusBadge } from '../components/StatusBadge.jsx';
 import { useApp } from '../lib/AppContext.jsx';
 import { hasAnyRole } from '../lib/auth.js';
 import { notificationPreferenceGroups, roles } from '../data/constants.js';
+import { isSupabaseConfigured } from '../lib/supabase.js';
 
 const groupMeta = {
   bookings: { title: 'Bookings', description: 'Booking created, updated, check-in due, and check-out due alerts.', icon: CalendarCheck },
@@ -43,6 +44,19 @@ const providerDefinitions = [
   { key: 'sms', channel: 'sms', provider: 'twilio', title: 'Twilio SMS', icon: Smartphone, description: 'SMS delivery will require secure backend Twilio functions.' },
   { key: 'whatsapp', channel: 'whatsapp', provider: 'twilio', title: 'Twilio WhatsApp', icon: MessageSquare, description: 'WhatsApp delivery will require secure backend Twilio functions.' },
 ];
+
+const supportedPreferenceGroups = new Set([
+  'bookings',
+  'cleaning',
+  'maintenance',
+  'owner_reports',
+  'finance',
+  'inventory',
+  'files',
+  'team',
+  'billing',
+  'workspace_activity',
+]);
 
 const channelLabels = [
   ['inAppEnabled', 'In-app'],
@@ -79,8 +93,8 @@ function providerTone(setting) {
 }
 
 function providerStatus(setting) {
-  if (setting?.enabled && setting?.configured) return 'configured';
-  if (setting?.enabled) return 'enabled, setup required';
+  if (setting?.enabled && setting?.configured) return 'backend status ready';
+  if (setting?.enabled) return 'backend setup required';
   return 'not configured';
 }
 
@@ -161,7 +175,9 @@ export function NotificationSettingsPage() {
     );
   }
 
-  const preferenceRows = notificationPreferenceGroups.map(([group]) => ({ group, preference: getPreference(preferences, group) }));
+  const preferenceRows = notificationPreferenceGroups
+    .filter(([group]) => supportedPreferenceGroups.has(group))
+    .map(([group]) => ({ group, preference: getPreference(preferences, group) }));
   const enabledInApp = preferenceRows.filter(({ preference }) => preference.inAppEnabled !== false).length;
   const configuredExternal = providerDefinitions.filter((definition) => {
     const setting = getProviderSetting(providerSettings, definition.provider, definition.channel);
@@ -175,6 +191,9 @@ export function NotificationSettingsPage() {
     setErrorMessage('');
     setStatusMessage('');
     try {
+      if (!isSupabaseConfigured) {
+        throw new Error('Supabase is not configured. Preferences are shown as safe defaults until the database connection is available.');
+      }
       await updateNotificationPreference(group, nextPreference);
       setStatusMessage('Notification preference saved. External channel delivery remains provider-safe and will not send until backend providers are configured.');
     } catch (error) {
@@ -197,6 +216,9 @@ export function NotificationSettingsPage() {
     setErrorMessage('');
     setStatusMessage('');
     try {
+      if (!isSupabaseConfigured) {
+        throw new Error('Supabase is not configured. Provider readiness can be saved after the database connection is available.');
+      }
       await updateNotificationProviderSetting({
         provider: definition.provider,
         channel: definition.channel,
@@ -232,11 +254,11 @@ export function NotificationSettingsPage() {
         <div className="card-header">
           <div>
             <h3>Provider setup required</h3>
-            <p>Email, SMS, and WhatsApp preferences can be saved, but PropFlow will not send externally until secure backend provider functions and server-side secrets are connected.</p>
+            <p>Email, SMS, and WhatsApp preferences can be saved when Supabase is connected, but PropFlow will not send externally until secure backend provider functions and server-side secrets are connected.</p>
           </div>
           <AlertTriangle size={22} className="muted" />
         </div>
-        <div className="helper">This page never asks for API keys, auth tokens, webhook signing secrets, or service-role values. Provider rows store only non-secret status and labels.</div>
+        <div className="helper">This page never asks for API keys, auth tokens, webhook signing secrets, or service-role values. Provider rows store only non-secret readiness/status labels.</div>
       </section>
 
       {(statusMessage || errorMessage) && (
@@ -250,7 +272,7 @@ export function NotificationSettingsPage() {
         <div className="card-header">
           <div>
             <h3>Event preferences</h3>
-            <p>Saved per user and workspace. In-app defaults to enabled; external channels remain provider-safe placeholders.</p>
+            <p>Saved per user and workspace when Supabase is connected. In-app defaults to enabled; external channels remain provider-safe placeholders.</p>
           </div>
           <Bell size={20} className="muted" />
         </div>
@@ -288,7 +310,7 @@ export function NotificationSettingsPage() {
                   {canManageProviders && (
                     <div className="notification-provider-form">
                       <label><input type="checkbox" checked={Boolean(draft.enabled)} onChange={(event) => updateProviderDraft(definition.key, 'enabled', event.target.checked)} /> Enabled flag</label>
-                      <label><input type="checkbox" checked={Boolean(draft.configured)} onChange={(event) => updateProviderDraft(definition.key, 'configured', event.target.checked)} /> Configured flag</label>
+                      <label><input type="checkbox" checked={Boolean(draft.configured)} onChange={(event) => updateProviderDraft(definition.key, 'configured', event.target.checked)} /> Backend setup ready flag</label>
                       {definition.channel === 'email' ? (
                         <>
                           <input placeholder="From name" value={draft.fromName || ''} onChange={(event) => updateProviderDraft(definition.key, 'fromName', event.target.value)} />
