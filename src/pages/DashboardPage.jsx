@@ -29,6 +29,9 @@ import { EmptyState } from '../components/EmptyState.jsx';
 import { StatCard } from '../components/StatCard.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
 import { useApp } from '../lib/AppContext.jsx';
+import { billingManageRoles } from '../data/constants.js';
+import { hasAnyRole } from '../lib/auth.js';
+import { getBillingStatus } from '../lib/billingStatus.js';
 import { navigate } from '../routes/AppRouter.jsx';
 
 const completedStatuses = new Set(['completed', 'cancelled']);
@@ -328,8 +331,10 @@ function filterRecords({ records, selectedPropertyId, dateRange, getRecordDate }
 }
 
 export function DashboardPage() {
-  const { data, currentWorkspace } = useApp();
+  const { data, currentWorkspace, currentUser } = useApp();
   const workspaceCurrency = currentWorkspace?.defaultCurrency || currentWorkspace?.default_currency || 'USD';
+  const billingStatus = getBillingStatus(data.subscription, currentUser);
+  const showBillingWarning = hasAnyRole(currentUser, billingManageRoles) && (billingStatus.isInGracePeriod || billingStatus.isRestricted);
   const [filters, setFilters] = React.useState({
     propertyId: 'all',
     dateRange: 'last_30_days',
@@ -453,6 +458,16 @@ export function DashboardPage() {
       title="Dashboard"
       subtitle="Workspace owner, property manager, and host command center"
     >
+      {showBillingWarning && (
+        <section className={`workspace-load-warning ${billingStatus.isRestricted ? 'error' : ''}`} role="alert">
+          <strong>{billingStatus.isRestricted ? 'Billing recovery required' : 'Billing grace period'}</strong>
+          <span>{billingStatus.userMessage}</span>
+          <button type="button" onClick={() => navigate('/billing')} data-skip-create-action="true">
+            Manage billing — Coming soon
+          </button>
+        </section>
+      )}
+
       {!hasWorkspaceData && (
         <section className="card">
           <div className="card-header">

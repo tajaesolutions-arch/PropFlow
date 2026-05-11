@@ -4,6 +4,7 @@ import { billingAccessRoles, billingEventTypes, billingManageRoles, billingPlans
 import { canAccessPlatformAdmin, resolvePrimaryRole } from './auth.js';
 import { logActivity } from './activityLogs.js';
 import { isSupabaseConfigured, supabase } from './supabase.js';
+import { getBillingStatus } from './billingStatus.js';
 
 const AppContext = createContext(null);
 
@@ -761,32 +762,30 @@ function userHasAnyWorkspaceRole(currentUser, memberships, currentWorkspace, all
 
 export function getWorkspaceBillingGate(currentWorkspace, subscription, currentUser) {
   if (!currentWorkspace?.id || !subscription) {
-    return { allowed: true, warning: false, restricted: false, recoveryOnly: false, reason: 'not_configured', gracePeriodEndsAt: null };
+    return { allowed: true, warning: false, restricted: false, recoveryOnly: false, reason: 'no_subscription', gracePeriodEndsAt: null };
   }
 
   if (currentUser?.roles?.includes(roles.ADMIN)) {
     return { allowed: true, warning: false, restricted: false, recoveryOnly: false, reason: 'platform_admin', gracePeriodEndsAt: null };
   }
 
-  const status = String(subscription.status || 'not_configured').toLowerCase();
-  const gracePeriodEndsAt = subscription.gracePeriodEndsAt || subscription.grace_period_ends_at || null;
-  const graceEnds = gracePeriodEndsAt ? new Date(gracePeriodEndsAt) : null;
-  const graceActive = graceEnds && !Number.isNaN(graceEnds.getTime()) && graceEnds.getTime() > Date.now();
+  const billingStatus = getBillingStatus(subscription, currentUser);
+  const rawStatus = String(subscription.status || '').toLowerCase();
   const isBillingRole = currentUser?.roles?.some((role) => billingAccessRoles.includes(role));
 
-  if (['trialing', 'active'].includes(status)) {
-    return { allowed: true, warning: false, restricted: false, recoveryOnly: false, reason: status, gracePeriodEndsAt };
+  if (['trialing', 'active', 'no_subscription'].includes(billingStatus.normalizedStatus)) {
+    return { allowed: true, warning: false, restricted: false, recoveryOnly: false, reason: billingStatus.normalizedStatus, gracePeriodEndsAt: billingStatus.gracePeriodEndsAt };
   }
 
-  if (['past_due', 'unpaid', 'grace_period'].includes(status) && graceActive) {
-    return { allowed: true, warning: true, restricted: false, recoveryOnly: false, reason: 'grace_period', gracePeriodEndsAt };
+  if (billingStatus.isInGracePeriod) {
+    return { allowed: true, warning: true, restricted: false, recoveryOnly: false, reason: 'grace_period', gracePeriodEndsAt: billingStatus.gracePeriodEndsAt };
   }
 
-  if (status === 'restricted' || ['past_due', 'unpaid', 'grace_period'].includes(status)) {
-    return { allowed: Boolean(isBillingRole), warning: true, restricted: true, recoveryOnly: Boolean(isBillingRole), reason: 'billing_restricted', gracePeriodEndsAt };
+  if (billingStatus.isRestricted || ['restricted', 'past_due', 'unpaid', 'grace_period'].includes(rawStatus)) {
+    return { allowed: Boolean(isBillingRole), warning: true, restricted: true, recoveryOnly: Boolean(isBillingRole), reason: 'billing_restricted', gracePeriodEndsAt: billingStatus.gracePeriodEndsAt };
   }
 
-  return { allowed: true, warning: ['incomplete', 'paused', 'canceled', 'cancelled'].includes(status), restricted: false, recoveryOnly: false, reason: status, gracePeriodEndsAt };
+  return { allowed: true, warning: ['incomplete', 'canceled'].includes(billingStatus.normalizedStatus), restricted: false, recoveryOnly: false, reason: billingStatus.normalizedStatus, gracePeriodEndsAt: billingStatus.gracePeriodEndsAt };
 }
 
 function requireSupabase() {

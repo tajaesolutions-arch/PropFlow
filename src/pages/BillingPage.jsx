@@ -20,6 +20,7 @@ import { useApp } from '../lib/AppContext.jsx';
 import { billingAccessRoles, billingManageRoles, billingPlanDetails } from '../data/constants.js';
 import { hasAnyRole } from '../lib/auth.js';
 import { formatCurrency } from '../lib/formatters.js';
+import { getBillingStatus } from '../lib/billingStatus.js';
 
 function formatDate(value) {
   if (!value) return '—';
@@ -46,14 +47,6 @@ function getGracePeriodStatus(subscription) {
 
 function getPlan(currentPlan) {
   return billingPlanDetails.find((plan) => plan.key === currentPlan) || billingPlanDetails[0];
-}
-
-function statusTone(status) {
-  const value = String(status || '').toLowerCase();
-  if (['active', 'trialing'].includes(value)) return 'success';
-  if (['past_due', 'unpaid', 'incomplete', 'paused', 'grace_period', 'not_configured'].includes(value)) return 'warning';
-  if (['cancelled', 'canceled', 'restricted'].includes(value)) return 'error';
-  return 'info';
 }
 
 function limitText(value) {
@@ -95,6 +88,7 @@ export function BillingPage() {
   const billingEvents = data?.billingEvents || [];
   const billingPlanLimits = data?.billingPlanLimits || [];
   const billingAccessState = getBillingAccessState?.() || data?.billingAccessState || {};
+  const billingStatus = getBillingStatus(subscription, currentUser);
   const currentPlan = getWorkspacePlan(currentWorkspace, subscription);
   const selectedPlan = getPlan(currentPlan);
   const currency = currentWorkspace?.defaultCurrency || currentWorkspace?.default_currency || 'USD';
@@ -158,14 +152,14 @@ export function BillingPage() {
                   : `Payment needs attention before ${formatDate(billingAccessState.gracePeriodEndsAt)}.`}
               </p>
             </div>
-            <StatusBadge tone={billingAccessState.restricted ? 'error' : 'warning'}>{billingAccessState.reason}</StatusBadge>
+            <StatusBadge tone={billingStatus.tone}>{billingStatus.label}</StatusBadge>
           </div>
         </section>
       )}
 
       <section className="stat-grid dense">
         <StatCard label="Current plan" value={selectedPlan.title} subtitle={selectedPlan.price} icon={CreditCard} />
-        <StatCard label="Subscription status" value={subscription?.status || 'not configured'} subtitle={subscription ? 'Stored in workspace_subscriptions' : 'No row yet'} icon={ShieldCheck} tone={statusTone(subscription?.status || 'not_configured')} />
+        <StatCard label="Subscription status" value={billingStatus.label} subtitle={subscription ? billingStatus.userMessage : 'No workspace subscription row yet'} icon={ShieldCheck} tone={billingStatus.tone} />
         <StatCard label="Trial ends" value={formatDate(subscription?.trialEndsAt || subscription?.trial_ends_at)} subtitle="14-day default trial" icon={CalendarDays} />
         <StatCard label="Grace period" value={getGracePeriodStatus(subscription)} icon={AlertTriangle} tone={subscription?.gracePeriodEndsAt || subscription?.grace_period_ends_at ? 'warning' : 'accent'} />
       </section>
@@ -183,11 +177,11 @@ export function BillingPage() {
           {subscription ? (
             <div className="billing-metadata-grid">
               <span><CreditCard size={16} /><strong>Plan</strong><small>{subscription.plan}</small></span>
-              <span><ShieldCheck size={16} /><strong>Status</strong><StatusBadge tone={statusTone(subscription.status)}>{subscription.status}</StatusBadge></span>
+              <span><ShieldCheck size={16} /><strong>Status</strong><StatusBadge tone={billingStatus.tone}>{billingStatus.label}</StatusBadge></span>
               <span><CalendarDays size={16} /><strong>Trial started</strong><small>{formatDate(subscription.trialStartedAt || subscription.trial_started_at)}</small></span>
               <span><CalendarDays size={16} /><strong>Trial ends</strong><small>{formatDate(subscription.trialEndsAt || subscription.trial_ends_at)}</small></span>
               <span><CalendarDays size={16} /><strong>Period ends</strong><small>{formatDate(subscription.currentPeriodEnd || subscription.current_period_end)}</small></span>
-              <span><AlertTriangle size={16} /><strong>Grace period</strong><small>{getGracePeriodStatus(subscription)}</small></span>
+              <span><AlertTriangle size={16} /><strong>Customer message</strong><small>{billingStatus.userMessage}</small></span>
               <span><Lock size={16} /><strong>Stripe customer</strong><small>{subscription.stripeCustomerId ? 'Stored server-side reference' : 'Not created yet'}</small></span>
               <span><Database size={16} /><strong>Updated</strong><small>{formatDateTime(subscription.updatedAt || subscription.updated_at)}</small></span>
             </div>
@@ -206,7 +200,7 @@ export function BillingPage() {
           )}
 
           <div className="form-actions compact">
-            {canViewBilling && <button type="button" onClick={() => runAction('portal', openBillingPortal)} disabled={Boolean(busyAction)} data-skip-create-action="true">Open billing portal</button>}
+            {canViewBilling && <button type="button" onClick={() => runAction('portal', openBillingPortal)} disabled={Boolean(busyAction)} data-skip-create-action="true">Manage billing — Coming soon</button>}
             <button type="button" onClick={() => runAction('refresh', refreshBillingStatus)} disabled={Boolean(busyAction)} data-skip-create-action="true"><RefreshCw size={16} /> Refresh billing</button>
           </div>
         </section>
@@ -250,7 +244,7 @@ export function BillingPage() {
                 </ul>
                 {canManageBilling && (
                   <button className="primary" type="button" disabled={Boolean(busyAction) || plan.key === currentPlan} onClick={() => runAction(`checkout-${plan.key}`, () => startCheckout(plan.key))} data-skip-create-action="true">
-                    {plan.key === currentPlan ? 'Current plan' : 'Start secure checkout'}
+                    {plan.key === currentPlan ? 'Current plan' : 'Choose plan — Coming soon'}
                   </button>
                 )}
                 {!canManageBilling && <small className="helper">Accountants can review billing but cannot change plans.</small>}

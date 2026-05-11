@@ -13,7 +13,7 @@ import { TeamWorkspaceSafetyNotice } from '../TeamWorkspaceSafetyNotice.jsx';
 import { UploadSafetyNotice } from '../UploadSafetyNotice.jsx';
 import { useApp } from '../../lib/AppContext.jsx';
 import { hasAnyRole } from '../../lib/auth.js';
-import { roles } from '../../data/constants.js';
+import { billingAccessRoles, roles } from '../../data/constants.js';
 import { Sidebar } from './Sidebar.jsx';
 import { TopBar } from './TopBar.jsx';
 
@@ -87,6 +87,7 @@ export function AppLayout({ title = 'Dashboard', subtitle = 'Workspace-scoped op
   const showInventorySafetyNotice = shouldShowInventorySafetyNotice();
   const showOwnerAssignmentSafetyNotice = shouldShowOwnerAssignmentSafetyNotice(currentUser);
   const billingAccessState = data?.billingAccessState;
+  const canSeeBillingWarning = hasAnyRole(currentUser, billingAccessRoles) && getCurrentPath() !== '/dashboard';
 
   React.useEffect(() => {
     window.localStorage.setItem(sidebarStorageKey, String(collapsed));
@@ -129,7 +130,7 @@ export function AppLayout({ title = 'Dashboard', subtitle = 'Workspace-scoped op
         <TopBar title={title} subtitle={subtitle} setMobileOpen={setMobileOpen} />
         <div className="page-content">
           {error && <section className="workspace-load-warning" role="alert"><strong>Workspace data warning</strong><span>{error}</span></section>}
-          {billingAccessState?.warning && <section className="workspace-load-warning" role="alert"><strong>{billingAccessState.restricted ? 'Billing recovery mode' : 'Billing grace period'}</strong><span>{billingAccessState.restricted ? 'Workspace access may be limited until billing is resolved. Billing recovery remains available to owners and accountants.' : 'Payment needs attention before the grace period ends.'}</span></section>}
+          {canSeeBillingWarning && billingAccessState?.warning && <section className="workspace-load-warning" role="alert"><strong>{billingAccessState.restricted ? 'Billing recovery mode' : 'Billing grace period'}</strong><span>{billingAccessState.restricted ? 'Workspace access may be limited until billing is resolved. Billing recovery remains available to owners and accountants.' : 'Payment needs attention before the grace period ends.'}</span></section>}
           {showEnvironmentSetupNotice && <EnvironmentSetupNotice compact />}
           {showOnboardingSetupNotice && <OnboardingSetupNotice />}
           {showCalendarScheduleSafetyNotice && <CalendarScheduleSafetyNotice />}
