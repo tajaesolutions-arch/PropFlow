@@ -1,5 +1,8 @@
 import { normalizeBillingStatus } from './billingStatus.js';
 
+// Frontend plan limits are for UX only; database/backend helpers enforce paid limits.
+// Keep both in sync until plan config is centralized.
+
 export const PLAN_KEYS = Object.freeze(['starter', 'pro', 'business']);
 
 export const FEATURE_KEYS = Object.freeze({

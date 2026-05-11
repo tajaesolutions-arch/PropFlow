@@ -798,11 +798,26 @@ function requireSupabase() {
   return supabase;
 }
 
+const PLAN_LIMIT_ERROR_MESSAGES = [
+  'Plan property limit reached. Upgrade your plan to add more properties.',
+  'Plan team member limit reached. Upgrade your plan to invite more team members.',
+  'Monthly owner report limit reached. Upgrade your plan or wait until next month.',
+  'Direct booking pages are available on Pro and Business plans.',
+  'Billing recovery is required before premium workspace operations can continue.',
+];
+
 function formatSupabaseError(error, fallback = 'The database action failed.') {
   if (!error) return fallback;
 
   const parts = [error.message, error.details, error.hint].filter(Boolean);
   const message = parts.join(' ');
+
+  const planLimitMessage = PLAN_LIMIT_ERROR_MESSAGES.find((safeMessage) => message.includes(safeMessage));
+  if (planLimitMessage) return planLimitMessage;
+
+  if (error.code === 'P0001' && message.toLowerCase().includes('plan')) {
+    return 'This action is blocked by your workspace plan limits. Upgrade your plan to continue.';
+  }
 
   return message || fallback;
 }
@@ -2157,8 +2172,7 @@ export function AppProvider({ children }) {
     requireAllowedValue(propertyPayload.rental_type, rentalTypes, 'rental type');
     requireAllowedValue(propertyPayload.currency, currencies, 'currency');
     requireAllowedValue(propertyPayload.status, propertyStatuses, 'property status');
-    // TODO(plan-enforcement): enforce maxProperties with a database transaction/RLS-safe RPC before insert.
-    // The current UI gate is MVP polish only and must not be treated as production-grade limit enforcement.
+    // Database triggers enforce paid property limits; frontend gating remains UX guidance only.
     assertAssignedOwnerIsWorkspaceMember(memberships, currentWorkspace.id, propertyPayload.assigned_owner_id);
     propertyPayload.nightly_rate = cleanNonNegativeNumber(propertyPayload.nightly_rate, 'Nightly rate');
     propertyPayload.monthly_rent = cleanNonNegativeNumber(propertyPayload.monthly_rent, 'Monthly rent');
@@ -2531,8 +2545,7 @@ export function AppProvider({ children }) {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'directBooking');
-    // TODO(plan-enforcement): enforce direct_booking_pages entitlement server-side before create/update/publish.
-    // Frontend gating preserves UX but cannot be the final source of subscription authorization.
+    // Database triggers enforce direct booking plan access; frontend gating remains UX guidance only.
 
     const propertyId = payload.property_id || payload.propertyId;
     const property = requireWorkspaceProperty(data.properties, propertyId);
@@ -3562,8 +3575,7 @@ export function AppProvider({ children }) {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'invite');
-    // TODO(plan-enforcement): enforce maxTeamMembers in a database-backed invite/member creation path.
-    // The Settings UI blocks obvious over-limit invites, but concurrent/server-side checks are still required.
+    // Database triggers enforce team member and pending invite limits; frontend gating remains UX guidance only.
 
     const email = cleanEmail(payload.email);
     const rawInviteRoles = Array.isArray(payload.roles || payload.role) ? payload.roles || payload.role : [payload.roles || payload.role];
