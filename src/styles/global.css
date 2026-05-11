@@ -5329,7 +5329,7 @@ label {
 
 .notifications-filters {
   display: grid;
-  grid-template-columns: minmax(280px, 1.5fr) repeat(2, minmax(145px, 0.7fr));
+  grid-template-columns: minmax(280px, 1fr) auto;
   gap: 12px;
   align-items: end;
 }
@@ -5363,6 +5363,26 @@ label {
 
 .notifications-search input:focus {
   box-shadow: none;
+}
+
+.notification-filter-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.notification-filter-pills button {
+  min-height: 38px;
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.notification-filter-pills button.active {
+  border-color: rgba(27, 153, 139, 0.35);
+  background: rgba(27, 153, 139, 0.1);
+  color: var(--accent);
 }
 
 .notifications-list {
@@ -5510,7 +5530,8 @@ label {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .notifications-search {
+  .notifications-search,
+  .notification-filter-pills {
     grid-column: 1 / -1;
   }
 }
@@ -5522,6 +5543,7 @@ label {
   }
 
   .notifications-toolbar-actions,
+  .notification-filter-pills,
   .notifications-filters,
   .notification-row,
   .notification-provider-summary span,

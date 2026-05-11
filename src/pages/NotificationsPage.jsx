@@ -5,13 +5,10 @@ import {
   CalendarCheck,
   CheckCircle2,
   CreditCard,
-  Mail,
-  MessageCircle,
   Package,
   Search,
   Settings,
   ShieldCheck,
-  Smartphone,
   Users,
   Wrench,
   X,
@@ -234,7 +231,7 @@ function sortNotifications(notifications) {
   });
 }
 
-function NotificationRow({ notification, onMarkRead, onArchive, actionBusy }) {
+function NotificationRow({ notification, onMarkRead, onArchive, actionBusy, canUpdateReadState }) {
   const type = getNotificationType(notification);
   const Icon = getIcon(type);
   const unread = isUnread(notification);
@@ -259,7 +256,7 @@ function NotificationRow({ notification, onMarkRead, onArchive, actionBusy }) {
 
         {actionUrl && (
           <button type="button" className="link-button inline" onClick={() => navigate(actionUrl)} data-skip-create-action="true">
-            Open related record
+            View
           </button>
         )}
       </div>
@@ -267,12 +264,12 @@ function NotificationRow({ notification, onMarkRead, onArchive, actionBusy }) {
       <div className="notification-row-status">
         <StatusBadge tone={archived ? 'info' : unread ? 'warning' : 'success'}>{archived ? 'archived' : unread ? 'unread' : 'read'}</StatusBadge>
         <StatusBadge tone={getTone(notification)}>{formatLabel(notification.priority || type)}</StatusBadge>
-        {!archived && (
+        {!archived && canUpdateReadState && (
           <button type="button" onClick={() => onMarkRead(notification, unread)} disabled={actionBusy} data-skip-create-action="true">
             {unread ? 'Mark read' : 'Mark unread'}
           </button>
         )}
-        {!archived && (
+        {!archived && canUpdateReadState && (
           <button type="button" onClick={() => onArchive(notification)} disabled={actionBusy} data-skip-create-action="true">
             Archive
           </button>
@@ -296,8 +293,7 @@ export function NotificationsPage() {
 
   const [filters, setFilters] = React.useState({
     query: '',
-    type: 'all',
-    status: 'all',
+    category: 'all',
   });
   const [actionBusy, setActionBusy] = React.useState(false);
   const [actionMessage, setActionMessage] = React.useState('');
@@ -312,23 +308,17 @@ export function NotificationsPage() {
   const visibleTypes = Array.from(new Set([...baseVisibleTypes, ...notifications.map(getNotificationType)])).filter(Boolean);
   const notificationWarnings = (dataWarnings || []).filter((warning) => String(warning).toLowerCase().includes('notification'));
 
-  React.useEffect(() => {
-    if (filters.type !== 'all' && !visibleTypes.includes(filters.type)) {
-      setFilters((current) => ({ ...current, type: 'all' }));
-    }
-  }, [filters.type, visibleTypes]);
-
   const unreadCount = notifications.filter(isUnread).length;
+  const ownUnreadCount = notifications.filter((notification) => isUnread(notification) && getRecipientId(notification) === currentUser?.id).length;
   const billingCount = notifications.filter((notification) => getNotificationType(notification) === 'billing').length;
-  const maintenanceCount = notifications.filter((notification) => getNotificationType(notification) === 'maintenance').length;
-  const teamCount = notifications.filter((notification) => getNotificationType(notification) === 'team').length;
+  const highPriorityCount = notifications.filter((notification) => ['high', 'urgent'].includes(notification.priority)).length;
 
   const filteredNotifications = notifications
-    .filter((notification) => filters.type === 'all' || getNotificationType(notification) === filters.type)
     .filter((notification) => {
-      if (filters.status === 'unread') return isUnread(notification);
-      if (filters.status === 'read') return !isUnread(notification) && !isArchived(notification);
-      if (filters.status === 'archived') return isArchived(notification);
+      if (filters.category === 'unread') return isUnread(notification);
+      if (filters.category === 'high') return ['high', 'urgent'].includes(notification.priority);
+      if (filters.category === 'billing') return getNotificationType(notification) === 'billing';
+      if (filters.category === 'operations') return ['booking', 'cleaning', 'maintenance', 'owner_report', 'team', 'inventory_alert', 'system'].includes(getNotificationType(notification));
       return true;
     })
     .filter((notification) => matchesSearch(notification, filters.query));
@@ -343,8 +333,7 @@ export function NotificationsPage() {
   const clearFilters = () => {
     setFilters({
       query: '',
-      type: 'all',
-      status: 'all',
+      category: 'all',
     });
   };
 
@@ -397,7 +386,7 @@ export function NotificationsPage() {
       <section className="stat-grid dense">
         <StatCard label="Visible notifications" value={dataLoading ? 'Loading' : notifications.length} icon={Bell} />
         <StatCard label="Unread" value={unreadCount} icon={AlertTriangle} tone={unreadCount ? 'warning' : 'accent'} />
-        <StatCard label="Maintenance alerts" value={maintenanceCount} icon={Wrench} />
+        <StatCard label="High priority" value={highPriorityCount} icon={AlertTriangle} tone={highPriorityCount ? 'warning' : 'info'} />
         <StatCard label="Billing alerts" value={canSeeProviderDetails ? billingCount : 'Hidden'} icon={CreditCard} />
       </section>
 
@@ -417,7 +406,7 @@ export function NotificationsPage() {
             </button>
           )}
 
-          <button type="button" onClick={handleMarkAllRead} disabled={!unreadCount || actionBusy} data-skip-create-action="true">
+          <button type="button" onClick={handleMarkAllRead} disabled={!ownUnreadCount || actionBusy} data-skip-create-action="true">
             Mark all read
           </button>
 
@@ -464,27 +453,25 @@ export function NotificationsPage() {
             )}
           </label>
 
-          <label>
-            Type
-            <select value={filters.type} onChange={setFilter('type')}>
-              <option value="all">All visible types</option>
-              {visibleTypes.map((type) => (
-                <option key={type} value={type}>
-                  {formatLabel(type)}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            Status
-            <select value={filters.status} onChange={setFilter('status')}>
-              <option value="all">All statuses</option>
-              <option value="unread">Unread</option>
-              <option value="read">Read</option>
-              <option value="archived">Archived</option>
-            </select>
-          </label>
+          <div className="notification-filter-pills" role="group" aria-label="Notification filters">
+            {[
+              ['all', 'All'],
+              ['unread', 'Unread'],
+              ['high', 'High priority'],
+              ['billing', 'Billing'],
+              ['operations', 'Operations'],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={filters.category === value ? 'active' : ''}
+                onClick={() => setFilters((current) => ({ ...current, category: value }))}
+                data-skip-create-action="true"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -521,82 +508,32 @@ export function NotificationsPage() {
         ) : filteredNotifications.length ? (
           <div className="notifications-list">
             {filteredNotifications.map((notification) => (
-              <NotificationRow key={notification.id} notification={notification} onMarkRead={handleMarkRead} onArchive={handleArchive} actionBusy={actionBusy} />
+              <NotificationRow key={notification.id} notification={notification} onMarkRead={handleMarkRead} onArchive={handleArchive} actionBusy={actionBusy} canUpdateReadState={getRecipientId(notification) === currentUser?.id} />
             ))}
           </div>
         ) : (
           <EmptyState
             eyebrow="Notifications"
             icon={Bell}
-            title={notifications.length ? 'No visible notifications match the current filters' : 'No visible notifications yet'}
+            title={notifications.length ? 'No notifications match the current filters' : 'No notifications yet'}
             description={
               notifications.length
-                ? 'Adjust the search, type, or status filters to view more visible in-app notification records.'
-                : isSupabaseConfigured
-                  ? 'No notification records were returned for this user and workspace. PropFlow will show real in-app alerts here when RLS-visible records exist. Email, SMS, and WhatsApp delivery are not active yet.'
-                  : 'Supabase is not configured, so real notification records are not loaded in local/demo mode. Add Supabase environment variables to connect the notification foundation.'
+                ? 'Adjust the search or filter selection to view more in-app notification records.'
+                : 'No notifications yet. Important workspace updates will appear here.'
             }
           />
         )}
       </section>
 
-      <section className="panel-grid two">
-        {canSeeProviderDetails ? (
-          <section className="card">
-            <div className="card-header">
-              <div>
-                <h3>Provider status</h3>
-                <p>Email, SMS, and WhatsApp providers planned for the MVP notification system.</p>
-              </div>
-            </div>
-
-            <div className="notification-provider-summary">
-              <span>
-                <Mail size={18} />
-                <strong>Email via Resend</strong>
-                <small>Transactional email provider should be configured server-side.</small>
-                <StatusBadge tone="warning">pending</StatusBadge>
-              </span>
-
-              <span>
-                <Smartphone size={18} />
-                <strong>SMS via Twilio</strong>
-                <small>SMS notifications should use secure backend credentials.</small>
-                <StatusBadge tone="warning">pending</StatusBadge>
-              </span>
-
-              <span>
-                <MessageCircle size={18} />
-                <strong>WhatsApp via Twilio</strong>
-                <small>WhatsApp alerts should use secure backend credentials.</small>
-                <StatusBadge tone="warning">pending</StatusBadge>
-              </span>
-            </div>
-          </section>
-        ) : (
-          <section className="card">
-            <div className="card-header">
-              <div>
-                <h3>Delivery status</h3>
-                <p>External delivery is not active yet. This role sees in-app notifications only.</p>
-              </div>
-            </div>
-
-            <div className="helper">
-              Email, SMS, and WhatsApp setup details are managed by authorized workspace administrators.
-            </div>
-          </section>
-        )}
-
-        <section className="card">
-          <div className="card-header">
+      <section className="card">
+        <div className="card-header">
             <div>
               <h3>Visible notification categories</h3>
               <p>Alert types available for this role.</p>
             </div>
-          </div>
+        </div>
 
-          <div className="notification-category-grid">
+        <div className="notification-category-grid">
             {visibleTypes.includes('booking') && (
               <span>
                 <CalendarCheck size={16} />
@@ -647,10 +584,9 @@ export function NotificationsPage() {
             )}
           </div>
 
-          <div className="helper">
-            Provider delivery logic should be added after the in-app notification records are stable.
-          </div>
-        </section>
+        <div className="helper">
+          Provider delivery logic should be added after the in-app notification records are stable.
+        </div>
       </section>
     </AppLayout>
   );

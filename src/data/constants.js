@@ -347,6 +347,7 @@ export const notificationChannels = [
 ];
 
 export const notificationEventTypes = [
+  ['property_created', 'Property created'],
   ['booking_created', 'Booking created'],
   ['booking_updated', 'Booking updated'],
   ['booking_checkin_due', 'Booking check-in due'],
@@ -356,6 +357,7 @@ export const notificationEventTypes = [
   ['cleaning_task_completed', 'Cleaning task completed'],
   ['cleaning_task_issue_reported', 'Cleaning task issue reported'],
   ['maintenance_work_order_created', 'Maintenance work order created'],
+  ['maintenance_issue_reported', 'Maintenance issue reported'],
   ['maintenance_work_order_assigned', 'Maintenance work order assigned'],
   ['maintenance_work_order_urgent', 'Urgent maintenance work order'],
   ['maintenance_work_order_completed', 'Maintenance work order completed'],
@@ -365,14 +367,17 @@ export const notificationEventTypes = [
   ['low_stock_alert', 'Low-stock alert'],
   ['file_uploaded', 'File uploaded'],
   ['team_invite_created', 'Team invite created'],
+  ['team_member_invited', 'Team member invited'],
   ['team_invite_accepted', 'Team invite accepted'],
   ['member_suspended', 'Member suspended'],
   ['member_reactivated', 'Member reactivated'],
   ['billing_payment_failed', 'Billing payment failed'],
+  ['payment_failed', 'Payment failed'],
   ['billing_trial_ending', 'Billing trial ending'],
   ['billing_grace_period_started', 'Billing grace period started'],
   ['billing_grace_period_warning', 'Billing grace period warning'],
   ['billing_access_restricted', 'Billing access restricted'],
+  ['workspace_billing_restricted', 'Workspace billing restricted'],
   ['billing_access_restored', 'Billing access restored'],
   ['billing_provider_not_configured', 'Billing provider not configured'],
   ['ical_sync_failed', 'iCal sync failed'],

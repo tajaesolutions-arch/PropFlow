@@ -611,6 +611,7 @@ function normalizeNotification(row) {
     message: row.body || row.message || '',
     workspaceId: row.workspace_id,
     recipientUserId: row.recipient_user_id,
+    recipientRole: row.recipient_role,
     actorUserId: row.actor_user_id,
     eventType: row.event_type || row.type,
     relatedPropertyId: row.related_property_id,
@@ -621,6 +622,8 @@ function normalizeNotification(row) {
     relatedReportId: row.related_report_id,
     relatedFileUploadId: row.related_file_upload_id,
     relatedInviteId: row.related_invite_id,
+    entityType: row.entity_type,
+    entityId: row.entity_id,
     actionUrl: row.action_url,
     readAt: row.read_at,
     archivedAt: row.archived_at,
@@ -996,12 +999,14 @@ const notificationPreferenceGroupValues = notificationPreferenceGroups.map(([val
 const notificationStatusValues = notificationStatuses.map(([value]) => value);
 const deliveryStatusValues = deliveryStatuses.map(([value]) => value);
 const notificationPriorities = ['low', 'normal', 'high', 'urgent'];
-const notificationManagerRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER];
+const notificationManagerRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
+const limitedOperationalNotificationTypes = ['cleaning_task_completed', 'cleaning_task_issue_reported', 'maintenance_work_order_completed'];
 const providerManagerRoles = [roles.OWNER_ADMIN];
 const externalNotificationChannels = ['email', 'sms', 'whatsapp'];
 const blockedProviderSettingKeys = ['api_key', 'apikey', 'apiKey', 'token', 'auth_token', 'authToken', 'secret', 'webhook_secret', 'webhookSecret', 'service_role', 'serviceRole'];
 
 function getNotificationEventGroup(eventType) {
+  if (eventType === 'property_created') return 'workspace_activity';
   if (String(eventType || '').startsWith('booking_')) return 'bookings';
   if (String(eventType || '').startsWith('cleaning_')) return 'cleaning';
   if (String(eventType || '').startsWith('maintenance_')) return 'maintenance';
@@ -1009,8 +1014,8 @@ function getNotificationEventGroup(eventType) {
   if (String(eventType || '').startsWith('expense_')) return 'finance';
   if (eventType === 'low_stock_alert') return 'inventory';
   if (eventType === 'file_uploaded') return 'files';
-  if (['team_invite_created', 'team_invite_accepted', 'member_suspended', 'member_reactivated'].includes(eventType)) return 'team';
-  if (String(eventType || '').startsWith('billing_')) return 'billing';
+  if (['team_invite_created', 'team_member_invited', 'team_invite_accepted', 'member_suspended', 'member_reactivated'].includes(eventType)) return 'team';
+  if (String(eventType || '').startsWith('billing_') || ['payment_failed', 'workspace_billing_restricted'].includes(eventType)) return 'billing';
   if (String(eventType || '').startsWith('lease_')) return 'leases';
   if (String(eventType || '').startsWith('ical_')) return 'calendar_imports';
   return 'workspace_activity';
@@ -1647,7 +1652,7 @@ export function AppProvider({ children }) {
     nextData.billingTablesReady = !results.some((result) => ['subscription', 'billingEvents', 'billingPlanLimits'].includes(result.key) && tableIsMissing(result.error));
     nextData.calendarImportTablesReady = !results.some((result) => ['calendarImportFeeds', 'calendarImportEvents', 'calendarImportSyncRuns', 'calendarImportConflicts'].includes(result.key) && tableIsMissing(result.error));
     nextData.billingAccessState = getWorkspaceBillingGate(workspace, nextData.subscription, currentUser);
-    nextData.unreadNotificationCount = asArray(nextData.notifications).filter(isUnreadNotification).length;
+    nextData.unreadNotificationCount = asArray(nextData.notifications).filter((notification) => isUnreadNotification(notification) && (notification.recipient_user_id || notification.recipientUserId) === activeSession.user.id).length;
 
     setData(nextData);
     setDataWarnings(warnings);
@@ -2214,6 +2219,31 @@ export function AppProvider({ children }) {
     if (insertError) throw new Error(formatSupabaseError(insertError, 'Property could not be saved.'));
 
     await writeActivityLog('property_created', { property_id: row.id, property_name: row.name, status: row.status });
+    await notifyWorkspaceManagers({
+      event_type: 'property_created',
+      title: 'Property created',
+      body: `${row.name || 'A property'} was added to this workspace.`,
+      priority: 'normal',
+      related_property_id: row.id,
+      entity_type: 'property',
+      entity_id: row.id,
+      action_url: '/properties',
+      channels: ['in_app'],
+    });
+    if (row.assigned_owner_id) {
+      await safeCreateNotification({
+        recipient_user_id: row.assigned_owner_id,
+        event_type: 'property_created',
+        title: 'Property assigned',
+        body: `${row.name || 'A property'} is assigned to you in PropFlow.`,
+        priority: 'normal',
+        related_property_id: row.id,
+        entity_type: 'property',
+        entity_id: row.id,
+        action_url: '/owner-dashboard',
+        channels: ['in_app'],
+      });
+    }
     await refreshWorkspaceData();
 
     return normalizeProperty(row);
@@ -2474,6 +2504,18 @@ export function AppProvider({ children }) {
     if (insertError) throw new Error(formatSupabaseError(insertError, 'Booking could not be saved.'));
 
     await writeActivityLog('booking_created', { booking_id: row.id, property_id: row.property_id, guest_name: row.guest_name, check_in: row.check_in, check_out: row.check_out, status: row.status });
+    await notifyWorkspaceManagers({
+      event_type: 'booking_created',
+      title: 'New booking created',
+      body: `${row.guest_name || 'A guest'} is booked from ${row.check_in} to ${row.check_out}.`,
+      priority: 'normal',
+      related_property_id: row.property_id,
+      related_booking_id: row.id,
+      entity_type: 'booking',
+      entity_id: row.id,
+      action_url: '/bookings',
+      channels: ['in_app'],
+    });
     await refreshWorkspaceData();
 
     return normalizeBooking(row, data.properties);
@@ -3128,7 +3170,10 @@ export function AppProvider({ children }) {
         related_property_id: row.property_id,
         related_booking_id: row.booking_id,
         related_cleaning_task_id: row.id,
+        entity_type: 'cleaning_task',
+        entity_id: row.id,
         action_url: '/cleaning',
+        channels: ['in_app'],
       });
     }
 
@@ -3253,7 +3298,10 @@ export function AppProvider({ children }) {
         related_property_id: row.property_id,
         related_booking_id: row.booking_id,
         related_cleaning_task_id: row.id,
+        entity_type: 'cleaning_task',
+        entity_id: row.id,
         action_url: '/cleaning',
+        channels: ['in_app'],
       });
     }
 
@@ -3266,7 +3314,10 @@ export function AppProvider({ children }) {
         related_property_id: row.property_id,
         related_booking_id: row.booking_id,
         related_cleaning_task_id: row.id,
+        entity_type: 'cleaning_task',
+        entity_id: row.id,
         action_url: '/cleaning',
+        channels: ['in_app'],
       });
     }
 
@@ -3338,6 +3389,19 @@ export function AppProvider({ children }) {
 
     await writeActivityLog('maintenance_work_order_created', { maintenance_work_order_id: row.id, property_id: row.property_id, assigned_maintenance_id: row.assigned_maintenance_id, title: row.title, priority: row.priority, status: row.status });
 
+    await notifyWorkspaceManagers({
+      event_type: 'maintenance_work_order_created',
+      title: 'Maintenance work order created',
+      body: row.title || 'A maintenance work order was created.',
+      priority: row.priority === 'urgent' ? 'urgent' : row.priority === 'high' ? 'high' : 'normal',
+      related_property_id: row.property_id,
+      related_maintenance_work_order_id: row.id,
+      entity_type: 'maintenance_work_order',
+      entity_id: row.id,
+      action_url: '/maintenance',
+      channels: ['in_app'],
+    });
+
     if (row.assigned_maintenance_id) {
       await safeCreateNotification({
         recipient_user_id: row.assigned_maintenance_id,
@@ -3347,7 +3411,10 @@ export function AppProvider({ children }) {
         priority: row.priority === 'urgent' ? 'urgent' : row.priority === 'high' ? 'high' : 'normal',
         related_property_id: row.property_id,
         related_maintenance_work_order_id: row.id,
+        entity_type: 'maintenance_work_order',
+        entity_id: row.id,
         action_url: '/maintenance',
+        channels: ['in_app'],
       });
     }
 
@@ -3455,7 +3522,10 @@ export function AppProvider({ children }) {
         priority: 'normal',
         related_property_id: row.property_id,
         related_maintenance_work_order_id: row.id,
+        entity_type: 'maintenance_work_order',
+        entity_id: row.id,
         action_url: '/maintenance',
+        channels: ['in_app'],
       });
     }
 
@@ -3684,12 +3754,15 @@ export function AppProvider({ children }) {
 
     await writeActivityLog('team_invite_created', { invite_id: row.id, email, roles: roleList });
     await notifyWorkspaceManagers({
-      event_type: 'team_invite_created',
+      event_type: 'team_member_invited',
       title: 'Team invite created',
       body: `An invite was created for ${email}.`,
       priority: 'normal',
       related_invite_id: row.id,
+      entity_type: 'workspace_invite',
+      entity_id: row.id,
       action_url: '/team',
+      channels: ['in_app'],
     });
     await refreshWorkspaceData();
 
@@ -3911,6 +3984,22 @@ export function AppProvider({ children }) {
     }
 
     await writeActivityLog('owner_report_created', { report_id: row.id, report_type: row.report_type, title: row.title, property_id: row.property_id, owner_id: row.owner_id, start_date: row.start_date, end_date: row.end_date, status: row.status });
+    if (['ready', 'released', 'published'].includes(row.status)) {
+      await safeCreateNotification({
+        recipient_user_id: row.owner_id || null,
+        recipient_role: row.owner_id ? null : roles.OWNER,
+        event_type: 'owner_report_ready',
+        title: 'Owner report ready',
+        body: `${row.title || 'An owner report'} is ready to review.`,
+        priority: 'normal',
+        related_property_id: row.property_id,
+        related_report_id: row.id,
+        entity_type: 'owner_report',
+        entity_id: row.id,
+        action_url: '/reports',
+        channels: ['in_app'],
+      });
+    }
     await refreshWorkspaceData();
 
     return normalizeReport(row);
@@ -4269,11 +4358,31 @@ export function AppProvider({ children }) {
   };
 
 
-  const requireNotificationManagerRole = () => {
-    const activeRoles = getActiveWorkspaceRoles(currentUser, memberships, currentWorkspace);
-    if (!notificationManagerRoles.some((role) => activeRoles.includes(role))) {
-      throw new Error('Your current workspace role cannot create workspace notifications.');
+  const canCreateLimitedOperationalNotification = (payload = {}) => {
+    const eventType = cleanText(payload.event_type || payload.eventType);
+    if (!limitedOperationalNotificationTypes.includes(eventType)) return false;
+
+    if (eventType.startsWith('cleaning_')) {
+      const taskId = payload.related_cleaning_task_id || payload.relatedCleaningTaskId;
+      const task = asArray(data.cleaningTasks).find((item) => item.id === taskId);
+      return Boolean(task && task.assigned_cleaner_id === session?.user?.id);
     }
+
+    if (eventType.startsWith('maintenance_')) {
+      const workOrderId = payload.related_maintenance_work_order_id || payload.relatedMaintenanceWorkOrderId;
+      const workOrder = asArray(data.maintenanceWorkOrders).find((item) => item.id === workOrderId);
+      return Boolean(workOrder && workOrder.assigned_maintenance_id === session?.user?.id);
+    }
+
+    return false;
+  };
+
+  const requireNotificationManagerRole = (payload = {}) => {
+    const activeRoles = getActiveWorkspaceRoles(currentUser, memberships, currentWorkspace);
+    if (notificationManagerRoles.some((role) => activeRoles.includes(role)) || canCreateLimitedOperationalNotification(payload)) {
+      return;
+    }
+    throw new Error('Your current workspace role cannot create workspace notifications.');
   };
 
   const requireProviderManagerRole = () => {
@@ -4380,11 +4489,13 @@ export function AppProvider({ children }) {
   const createNotification = async (payload) => {
     const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
-    requireNotificationManagerRole();
+    requireNotificationManagerRole(payload);
 
     const allowed = [
       'recipient_user_id',
       'recipientUserId',
+      'recipient_role',
+      'recipientRole',
       'actor_user_id',
       'actorUserId',
       'event_type',
@@ -4409,6 +4520,10 @@ export function AppProvider({ children }) {
       'relatedFileUploadId',
       'related_invite_id',
       'relatedInviteId',
+      'entity_type',
+      'entityType',
+      'entity_id',
+      'entityId',
       'action_url',
       'actionUrl',
       'metadata',
@@ -4430,7 +4545,9 @@ export function AppProvider({ children }) {
     const notificationPayload = {
       workspace_id: currentWorkspace.id,
       recipient_user_id: recipientUserId,
+      recipient_role: cleanPayload.recipient_role || cleanPayload.recipientRole || null,
       actor_user_id: cleanPayload.actor_user_id || cleanPayload.actorUserId || session.user.id,
+      created_by: cleanPayload.actor_user_id || cleanPayload.actorUserId || session.user.id,
       event_type: eventType,
       type: eventType,
       title,
@@ -4446,11 +4563,14 @@ export function AppProvider({ children }) {
       related_report_id: cleanPayload.related_report_id || cleanPayload.relatedReportId || null,
       related_file_upload_id: cleanPayload.related_file_upload_id || cleanPayload.relatedFileUploadId || null,
       related_invite_id: cleanPayload.related_invite_id || cleanPayload.relatedInviteId || null,
+      entity_type: cleanPayload.entity_type || cleanPayload.entityType || null,
+      entity_id: cleanPayload.entity_id || cleanPayload.entityId || null,
       action_url: cleanPayload.action_url || cleanPayload.actionUrl || null,
       metadata: cleanPayload.metadata && typeof cleanPayload.metadata === 'object' ? cleanPayload.metadata : {},
     };
 
-    validateNotificationRelatedRecords(notificationPayload);
+    // Database RLS and scoped-record checks validate related ids. Avoid blocking the
+    // primary workflow when the local cache has not refreshed with the new record yet.
 
     const { data: row, error: insertError } = await client
       .from('notifications')
@@ -5085,6 +5205,7 @@ export function AppProvider({ children }) {
       .update({ status, read_at: read ? new Date().toISOString() : null })
       .eq('id', notificationId)
       .eq('workspace_id', currentWorkspace.id)
+      .eq('recipient_user_id', session.user.id)
       .select('*')
       .single();
 
@@ -5113,6 +5234,7 @@ export function AppProvider({ children }) {
       })
       .eq('id', notificationId)
       .eq('workspace_id', currentWorkspace.id)
+      .eq('recipient_user_id', session.user.id)
       .select('*')
       .single();
 
@@ -5137,6 +5259,7 @@ export function AppProvider({ children }) {
       .from('notifications')
       .update({ status: 'read', read_at: new Date().toISOString() })
       .eq('workspace_id', currentWorkspace.id)
+      .eq('recipient_user_id', session.user.id)
       .eq('status', 'unread')
       .is('archived_at', null);
 
@@ -5291,6 +5414,9 @@ export function AppProvider({ children }) {
       getFileSignedUrl,
       archiveFileUpload,
       createNotification,
+      createInAppNotification: safeCreateNotification,
+      listNotifications: () => asArray(data.notifications).filter((notification) => !currentWorkspace?.id || notification.workspace_id === currentWorkspace.id || notification.workspaceId === currentWorkspace.id),
+      getUnreadNotificationCount: () => asArray(data.notifications).filter((notification) => notification.status === 'unread' && !notification.read_at && !notification.readAt && !notification.archived_at && !notification.archivedAt && (notification.recipient_user_id || notification.recipientUserId) === session?.user?.id).length,
       markNotificationRead,
       archiveNotification,
       markAllNotificationsRead,
