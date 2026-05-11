@@ -31,7 +31,7 @@ import { roles, roleLabels } from '../../data/constants.js';
 import { getPostLoginPath, hasAnyRole, resolvePrimaryRole } from '../../lib/auth.js';
 
 const operationalRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
-const billingAccessRoles = [roles.ADMIN, roles.OWNER_ADMIN, roles.ACCOUNTANT];
+const billingAccessRoles = [roles.OWNER_ADMIN, roles.ACCOUNTANT];
 const teamAccessRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER];
 
 const operationalNav = [
@@ -154,13 +154,7 @@ const adminNav = [
     section: 'Platform',
     items: [
       ['/admin', 'Admin Dashboard', Shield],
-      ['/billing', 'Billing', CreditCard],
-      ['/notifications', 'Notifications', Bell],
     ],
-  },
-  {
-    section: 'Account',
-    items: [['/account', 'Account', Settings]],
   },
 ];
 
@@ -216,15 +210,14 @@ function getSidebarSearchLabel(currentUser) {
 }
 
 function getSidebarWorkspaceTarget(currentUser, currentWorkspace) {
-  if (!currentWorkspace?.id) return '/workspace-setup';
-
   const primaryRole = resolvePrimaryRole(currentUser);
+
+  if (primaryRole === roles.ADMIN) return '/admin';
+  if (!currentWorkspace?.id) return '/workspace-setup';
 
   if ([roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST].includes(primaryRole)) {
     return '/settings';
   }
-
-  if (primaryRole === roles.ADMIN) return '/admin';
 
   return '/account';
 }

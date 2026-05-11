@@ -226,7 +226,11 @@ export function PublicDirectBookingPage() {
     setSaving(false);
 
     if (insertError) {
-      setErrors([insertError.message || 'Request could not be sent. Please try again.']);
+      const message = String(insertError.message || '').toLowerCase();
+      const friendlyMessage = message.includes('row-level security') || message.includes('violates')
+        ? 'Request could not be sent because the dates, stay rules, or page availability no longer pass server validation. Refresh the page and choose different dates.'
+        : insertError.message || 'Request could not be sent. Please try again.';
+      setErrors([friendlyMessage]);
       return;
     }
 

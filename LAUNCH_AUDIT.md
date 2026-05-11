@@ -1,162 +1,70 @@
-# PropFlow Launch Audit
+# PropFlow Production Readiness QA Audit
 
 ## Audit date
-2026-05-06
+2026-05-11
 
-## Current application status
-PropFlow is currently a strong Supabase-first MVP foundation with real authentication, multi-workspace architecture, role-based routing, workspace-scoped queries, and operational modules for properties, cleaning, maintenance, bookings, leases, and calendar operations.
+## Audit scope
+This launch-readiness pass inspected the React/Vite app shell, route map, shared context/data layer, layout/navigation components, create-action provider, public direct booking page, API serverless functions, README/runbook, and Supabase migrations under `supabase/migrations/`.
 
-The application is not fully production-ready for public paid SaaS launch yet.
+## Validation summary
+- `npm install` completed with the checked-in dependency set.
+- `npm run build` completed successfully with Vite.
+- `git diff --check` completed successfully.
+- Supabase CLI was not available in this container, so SQL migrations were reviewed statically and the new patch migration was kept non-destructive.
 
----
+## Route audit results
+- Public routes `/`, `/pricing`, `/login`, `/signup`, `/join`, `/suspended`, and `/book/:slug` remain public-safe and outside the private dashboard layout where appropriate.
+- Protected routes continue to require an authenticated user and an active workspace unless the user is a PropFlow Admin entering `/admin`.
+- Platform Admin users are now redirected to `/admin` instead of customer workspace routes.
+- Customer billing recovery routes remain limited to Workspace Owners and Accountants.
 
-# Systems currently implemented
+## Role access matrix findings
+- PropFlow Admin is treated as a SaaS platform role and no longer receives normal customer workspace navigation.
+- Workspace Owners / Company Admins retain full workspace operations and billing/team/settings access.
+- Property Managers and Hosts retain operational routes but not platform admin or billing management.
+- Property Owners, Cleaners, Maintenance Crew, and Accountants retain their role-specific dashboards and route-limited access.
+- Customer invite role validation continues to reject `propflow_admin`.
 
-## Authentication and workspace foundation
-- Real Supabase Auth login/signup
-- No demo login in production UI
-- Workspace creation flow
-- Invite/code-based workspace join flow
-- Role-based routing
-- Suspended-account routing
-- Workspace-scoped data loading
-- RLS-based backend access control
+## Workspace scoping findings
+- AppContext workspace-owned reads are scoped by `currentWorkspace.id` or handled through dedicated RPCs.
+- Create/update flows reviewed during this pass continue to include workspace or property scoping and defensive role checks.
+- The new RLS patch removes implicit platform-admin access from generic workspace helper functions so admin operations use dedicated platform RPCs instead of customer table access.
 
-## Operational foundation
-- Properties
-- Property detail pages
-- Cleaning tasks
-- Maintenance work orders
-- Calendar operations view
-- Bookings foundation
-- Lease foundation
-- Contacts foundation
-- File upload foundation
-- Activity log foundation
-- Notification table foundation
+## RLS findings
+- No broad `USING (true)` or `WITH CHECK (true)` policies were found.
+- Added `supabase/migrations/202605100020_production_readiness_rls_patch.sql` to harden public direct booking table access and direct request insert validation.
+- The patch removes public direct table select access in favor of safe public RPC reads.
+- The patch validates direct booking requests against published pages, min/max nights, guest count, existing bookings, active direct requests, leases, and imported iCal blocks.
+- RLS was not weakened.
 
-## Dashboards
-- PropFlow Admin dashboard route
-- Workspace Owner dashboard route
-- Property Manager / Host dashboard route
-- Property Owner dashboard route
-- Cleaner dashboard route
-- Maintenance dashboard route
-- Accountant dashboard route
+## Placeholder honesty findings
+- README now explicitly documents that Stripe checkout/portal/webhooks, Resend/Twilio delivery, direct booking payments, CSV/PDF exports, receipt OCR, AI tools, rent automation, e-signature/legal generation, scheduled owner reports, and channel-manager/two-way iCal integrations are not live.
+- Public direct booking copy remains request-only and does not imply online payment collection.
 
----
+## Dashboard safety findings
+- Dashboards were reviewed for role routing and empty-state safety; no fake/demo data was added.
+- Platform Admin dashboard continues to rely on audited platform RPCs and setup-required messaging.
 
-# Systems not fully production-ready yet
+## Public direct booking findings
+- `/book/:slug` renders without the private sidebar.
+- Public reads use safe RPCs for page data and unavailable ranges.
+- Public inserts are now backed by stronger RLS validation and friendlier server-validation error copy.
+- Private files, owner financials, team data, and operational details are not exposed by the public page.
 
-## Billing
-Status: placeholder
+## API endpoint security findings
+- Stripe checkout and billing portal endpoints remain disabled stubs that return provider-not-configured responses.
+- Stripe webhook endpoint requires server-side Stripe configuration before any processing and still does not process live events.
+- iCal sync requires an authenticated bearer token and now adds DNS/IP SSRF checks, redirect revalidation, request body size limits, fetch timeouts, and response byte limits.
+- No service-role keys were added or exposed.
 
-Missing:
-- Stripe checkout
-- Stripe customer portal
-- Subscription enforcement
-- Grace-period enforcement
-- Payment failure recovery
-- Billing webhooks
+## Mobile/responsive findings
+- Existing mobile table/modal/sidebar safeguards remain in place.
+- No architecture-level layout rebuild was performed in this stabilization PR.
 
-## Notifications automation
-Status: partially implemented
-
-Missing:
-- Resend email integration
-- Twilio SMS integration
-- Twilio WhatsApp integration
-- Scheduled reminders/jobs
-- Notification preferences
-- Real provider delivery status
-
-## Reports
-Status: placeholder
-
-Missing:
-- PDF exports
-- CSV exports
-- Owner statements
-- Financial exports
-- Scheduled reports
-
-## Direct booking tools
-Status: not implemented
-
-Missing:
-- Public booking pages
-- Stripe guest payments
-- Booking request flow
-- Public property pages
-- Booking approval flow
-
-## Supplies / inventory
-Status: placeholder
-
-Missing:
-- Real inventory table
-- CRUD UI
-- Low-stock alerts
-- Inventory tracking
-
-## QA and testing
-Status: not implemented
-
-Missing:
-- ESLint
-- Automated tests
-- E2E tests
-- CI validation
-
----
-
-# Risks identified
-
-1. Public repository
-- Verify secrets are never committed.
-- Verify Vercel environment variables are configured securely.
-
-2. Missing automated tests
-- Runtime regressions are possible.
-
-3. Placeholder routes
-- Billing, reports, guest CRM, and inventory are not launch-complete.
-
-4. No backend automation layer yet
-- Notification providers and Stripe webhooks still need backend/serverless implementation.
-
-5. Build validation still required
-- npm install
-- npm run build
-- deployment smoke test
-- Supabase migration verification
-must still be run in a real execution environment.
-
----
-
-# Recommended next implementation order
-
-1. Launch stability + build validation
-2. Supplies / inventory module
-3. Stripe billing foundation
-4. Notification provider foundation
-5. Direct booking MVP
-6. Reporting/export system
-7. Automated testing and CI
-
----
-
-# Required production validation before launch
-
-- Verify all Supabase migrations are applied.
-- Verify all RLS policies work with real users.
-- Verify file uploads use private storage buckets.
-- Verify no service role keys exist in frontend code.
-- Verify all protected routes redirect correctly.
-- Verify suspended users cannot access workspace data.
-- Verify workspace isolation between customers.
-- Verify Vercel production environment variables.
-- Verify Stripe sandbox flow.
-- Verify mobile responsiveness.
-- Verify loading/error/empty states.
-- Verify no sample/demo data appears in production.
+## Remaining manual Supabase/Vercel runtime tests
+- Apply all migrations to a real Supabase project and verify PostgREST schema cache refresh.
+- Bootstrap a founder profile with `is_propflow_admin = true` from a trusted SQL console.
+- Create the private `workspace-files` storage bucket and test signed URL upload/download flows.
+- Smoke test every listed public and protected route with real users for each role.
+- Exercise direct booking request submission against real published pages with overlapping dates and imported iCal blocks.
+- Verify Vercel Preview/Production env vars and serverless function responses.

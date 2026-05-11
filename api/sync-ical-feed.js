@@ -1,6 +1,10 @@
+import dns from 'node:dns/promises';
+import net from 'node:net';
+
 import { createClient } from '@supabase/supabase-js';
 
 const MAX_ICAL_BYTES = 2 * 1024 * 1024;
+const MAX_REQUEST_BYTES = 32 * 1024;
 const FETCH_TIMEOUT_MS = 15000;
 const MAX_EVENTS_PER_SYNC = 500;
 
@@ -31,7 +35,13 @@ async function readJsonBody(request) {
   if (request.body && typeof request.body === 'object') return request.body;
 
   const chunks = [];
-  for await (const chunk of request) chunks.push(Buffer.from(chunk));
+  let total = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.from(chunk);
+    total += buffer.byteLength;
+    if (total > MAX_REQUEST_BYTES) throw new Error('request_body_too_large');
+    chunks.push(buffer);
+  }
   const raw = Buffer.concat(chunks).toString('utf8');
   if (!raw.trim()) return {};
   return JSON.parse(raw);
@@ -159,48 +169,150 @@ function parseIcalEvents(icalText) {
     .slice(0, MAX_EVENTS_PER_SYNC);
 }
 
+
+function isPrivateIpv4(address) {
+  const parts = String(address || '').split('.').map((part) => Number(part));
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return true;
+
+  const [a, b] = parts;
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    a >= 224
+  );
+}
+
+function isPrivateIpv6(address) {
+  const value = String(address || '').toLowerCase();
+  return (
+    value === '::1' ||
+    value === '::' ||
+    value.startsWith('fc') ||
+    value.startsWith('fd') ||
+    value.startsWith('fe80') ||
+    value.startsWith('::ffff:127.') ||
+    value.startsWith('::ffff:10.') ||
+    value.startsWith('::ffff:192.168.') ||
+    /^::ffff:172\.(1[6-9]|2\d|3[0-1])\./.test(value)
+  );
+}
+
+function hostnameLooksInternal(hostname) {
+  const host = String(hostname || '').toLowerCase().replace(/\.$/, '');
+  return (
+    !host ||
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    host.endsWith('.local') ||
+    host.endsWith('.internal') ||
+    host.endsWith('.home.arpa') ||
+    host === 'metadata.google.internal'
+  );
+}
+
+async function assertSafeIcalUrl(rawUrl) {
+  let parsed;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error('iCal feed URL is invalid.');
+  }
+
+  if (!['https:', 'http:'].includes(parsed.protocol)) {
+    throw new Error('iCal feed URL must use HTTP or HTTPS.');
+  }
+
+  if (parsed.username || parsed.password) {
+    throw new Error('iCal feed URL must not include embedded credentials.');
+  }
+
+  if (hostnameLooksInternal(parsed.hostname)) {
+    throw new Error('iCal feed URL points to a private or internal host and was blocked.');
+  }
+
+  const literalFamily = net.isIP(parsed.hostname);
+  if (literalFamily === 4 && isPrivateIpv4(parsed.hostname)) {
+    throw new Error('iCal feed URL points to a private IPv4 address and was blocked.');
+  }
+  if (literalFamily === 6 && isPrivateIpv6(parsed.hostname)) {
+    throw new Error('iCal feed URL points to a private IPv6 address and was blocked.');
+  }
+
+  const records = await dns.lookup(parsed.hostname, { all: true, verbatim: true });
+  if (!records.length) throw new Error('iCal feed host could not be resolved.');
+
+  const unsafeRecord = records.find((record) => (
+    record.family === 4 ? isPrivateIpv4(record.address) : isPrivateIpv6(record.address)
+  ));
+
+  if (unsafeRecord) {
+    throw new Error('iCal feed host resolves to a private or internal address and was blocked.');
+  }
+
+  return parsed.toString();
+}
+
 function looksLikeIcalendar(contentType, body) {
   const type = String(contentType || '').toLowerCase();
   const sample = String(body || '').slice(0, 5000).toUpperCase();
   return type.includes('text/calendar') || type.includes('application/octet-stream') || sample.includes('BEGIN:VCALENDAR') || sample.includes('BEGIN:VEVENT');
 }
 
-async function fetchIcal(url) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+async function fetchIcal(rawUrl) {
+  let nextUrl = await assertSafeIcalUrl(rawUrl);
 
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        Accept: 'text/calendar, application/calendar, text/plain;q=0.9, */*;q=0.5',
-        'User-Agent': 'PropFlow-iCal-Importer/1.0',
-      },
-    });
+  for (let redirectCount = 0; redirectCount <= 3; redirectCount += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
-    if (!response.ok) throw new Error(`Feed fetch failed with HTTP ${response.status}.`);
+    try {
+      const response = await fetch(nextUrl, {
+        signal: controller.signal,
+        redirect: 'manual',
+        headers: {
+          Accept: 'text/calendar, application/calendar, text/plain;q=0.9, */*;q=0.5',
+          'User-Agent': 'PropFlow-iCal-Importer/1.0',
+        },
+      });
 
-    const reader = response.body?.getReader();
-    if (!reader) {
-      const text = await response.text();
-      if (Buffer.byteLength(text, 'utf8') > MAX_ICAL_BYTES) throw new Error('iCal feed exceeds the 2 MB sync limit.');
-      return { body: text, contentType: response.headers.get('content-type') || '' };
+      if ([301, 302, 303, 307, 308].includes(response.status)) {
+        const location = response.headers.get('location');
+        if (!location) throw new Error('Feed redirect did not include a destination.');
+        nextUrl = await assertSafeIcalUrl(new URL(location, nextUrl).toString());
+        continue;
+      }
+
+      if (!response.ok) throw new Error(`Feed fetch failed with HTTP ${response.status}.`);
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        const text = await response.text();
+        if (Buffer.byteLength(text, 'utf8') > MAX_ICAL_BYTES) throw new Error('iCal feed exceeds the 2 MB sync limit.');
+        return { body: text, contentType: response.headers.get('content-type') || '' };
+      }
+
+      const chunks = [];
+      let total = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > MAX_ICAL_BYTES) throw new Error('iCal feed exceeds the 2 MB sync limit.');
+        chunks.push(Buffer.from(value));
+      }
+
+      return { body: Buffer.concat(chunks).toString('utf8'), contentType: response.headers.get('content-type') || '' };
+    } finally {
+      clearTimeout(timeout);
     }
-
-    const chunks = [];
-    let total = 0;
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      total += value.byteLength;
-      if (total > MAX_ICAL_BYTES) throw new Error('iCal feed exceeds the 2 MB sync limit.');
-      chunks.push(Buffer.from(value));
-    }
-
-    return { body: Buffer.concat(chunks).toString('utf8'), contentType: response.headers.get('content-type') || '' };
-  } finally {
-    clearTimeout(timeout);
   }
+
+  throw new Error('Feed redirected too many times.');
 }
 
 function dateRangesOverlap(startA, endA, startB, endB) {
@@ -316,7 +428,10 @@ export default async function handler(request, response) {
   let body;
   try {
     body = await readJsonBody(request);
-  } catch {
+  } catch (bodyError) {
+    if (bodyError?.message === 'request_body_too_large') {
+      return json(response, 413, { code: 'request_body_too_large', message: 'Request body exceeds the 32 KB limit.' });
+    }
     return json(response, 400, { code: 'invalid_json', message: 'Request body must be valid JSON.' });
   }
 
