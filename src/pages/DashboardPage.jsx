@@ -481,7 +481,7 @@ export function DashboardPage() {
           </div>
 
           <div className="action-row">
-            <button className="primary" type="button" onClick={() => navigate('/properties')}>
+            <button className="primary" type="button" data-create-action="property">
               Add first property
             </button>
             <button type="button" onClick={() => navigate('/settings')}>

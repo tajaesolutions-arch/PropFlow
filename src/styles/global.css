@@ -8405,3 +8405,16 @@ label {
     height: 220px;
   }
 }
+
+.modal-guidance {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-2);
+  color: var(--muted);
+  margin-bottom: 14px;
+  padding: 12px 14px;
+}
+
+.modal-guidance strong {
+  color: var(--text);
+}

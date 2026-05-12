@@ -421,7 +421,7 @@ export function SettingsPage() {
 
       setLastLink(link);
       setInvite(defaultInvite);
-      setMessage('Invite created. Email sending is not wired yet, so copy the one-time invite link and send it only to the invited email.');
+      setMessage('Invite created. If email delivery is not configured, copy the one-time invite link below and send it only to the invited email.');
       clearMessageSoon();
     } catch (error) {
       setMessage(error.message || 'Invite creation failed.');
@@ -836,16 +836,16 @@ export function SettingsPage() {
             </span>
             <span>
               <strong>SMS provider: Twilio</strong>
-              <StatusBadge tone="info">Coming soon</StatusBadge>
+              <StatusBadge tone="info">Setup required</StatusBadge>
             </span>
             <span>
               <strong>WhatsApp provider: Twilio</strong>
-              <StatusBadge tone="info">Coming soon</StatusBadge>
+              <StatusBadge tone="info">Setup required</StatusBadge>
             </span>
           </div>
 
           <div className="helper">
-            Resend email sends only from server-side API routes when production env vars are configured. API keys, provider errors, email bodies, SMS, and WhatsApp secrets are not exposed here.
+            External delivery sends only from secure server-side routes after provider setup is completed. API keys, provider errors, email bodies, SMS, and WhatsApp secrets are not exposed here.
           </div>
         </SettingCard>
 

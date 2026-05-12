@@ -297,7 +297,7 @@ export function DirectBookingsPage() {
           <div>
             <p className="eyebrow">Page setup</p>
             <h2>{form.id ? 'Edit direct booking page' : 'Create direct booking page'}</h2>
-            <p>Manual approval is the safe default. Full-payment instant booking starts Stripe Checkout only from the public server endpoint.</p>
+            <p>Manual approval is the safe default. Full-payment instant booking uses the existing server Stripe flow; keep payment mode optional until Stripe is configured.</p>
           </div>
           <button type="button" onClick={() => setForm(toPageForm(null, properties, currentWorkspace))} disabled={directBookingLocked} title={directBookingLocked ? getUpgradeMessage(FEATURE_KEYS.DIRECT_BOOKING_PAGES, workspacePlan.key) : undefined}><Plus size={16} /> New page</button>
         </div>
@@ -305,7 +305,7 @@ export function DirectBookingsPage() {
         {directBookingLocked ? (
           <EmptyState compact eyebrow="Locked feature" icon={LockIcon} title="Direct booking pages require Pro or Business" description={directBookingAccess.message || getUpgradeMessage(FEATURE_KEYS.DIRECT_BOOKING_PAGES, workspacePlan.key)} />
         ) : !properties.length ? (
-          <EmptyState compact eyebrow="Dependency" icon={Home} title="Create a property first" description="Direct booking pages are linked one-to-one with existing workspace properties." />
+          <EmptyState compact eyebrow="Dependency" icon={Home} title="Create a property first" description="Direct booking pages are linked one-to-one with existing workspace properties." action={<button type="button" className="primary" data-create-action="property"><Plus size={16} /> Add Property</button>} />
         ) : (
           <form className="modal-form direct-booking-form" onSubmit={savePage}>
             <div className="form-grid three">

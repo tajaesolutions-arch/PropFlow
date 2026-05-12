@@ -173,7 +173,7 @@ export function JoinWorkspacePage() {
     }
 
     if (!isSupabaseConfigured) {
-      setMessage('Supabase is not configured. Workspace records require a connected Supabase project.');
+      setMessage('Workspace setup is not connected for this deployment yet. Ask PropFlow support to finish setup.');
       return;
     }
 
@@ -231,7 +231,7 @@ export function JoinWorkspacePage() {
 
   const runJoin = async (rawCode) => {
     if (!isSupabaseConfigured) {
-      setMessage('Supabase is not configured. Invite validation requires Supabase.');
+      setMessage('Invite validation is not connected for this deployment yet. Ask PropFlow support to finish setup.');
       return;
     }
 
@@ -332,8 +332,7 @@ export function JoinWorkspacePage() {
         {!isSupabaseConfigured && (
           <div className="helper error-helper">
             <AlertTriangle size={16} />
-            Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY before
-            using workspace setup.
+            Workspace setup is not connected for this deployment yet. Ask PropFlow support to finish setup.
           </div>
         )}
 
