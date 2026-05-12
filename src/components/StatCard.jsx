@@ -15,7 +15,7 @@ export function StatCard({
   return (
     <CardTag
       type={typeof onClick === 'function' ? 'button' : undefined}
-      className={`stat-card ${onClick ? 'clickable-stat-card' : ''} ${className}`}
+      className={`stat-card stat-card-${tone} ${onClick ? 'clickable-stat-card' : ''} ${className}`}
       onClick={onClick}
     >
       <div>
@@ -28,7 +28,7 @@ export function StatCard({
       </div>
 
       {Icon && (
-        <div className="stat-icon">
+        <div className={`stat-icon stat-icon-${tone}`}>
           <Icon size={20} />
         </div>
       )}
