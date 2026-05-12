@@ -424,7 +424,7 @@ export function NotificationsPage() {
             </button>
           )}
 
-          <button type="button" onClick={handleMarkAllRead} disabled={!ownUnreadCount || actionBusy} data-skip-create-action="true">
+          <button type="button" onClick={handleMarkAllRead} disabled={!ownUnreadCount || actionBusy} title={!ownUnreadCount ? 'You have no unread notifications to mark read.' : actionBusy ? 'Updating notifications…' : undefined} data-skip-create-action="true">
             Mark all read
           </button>
 

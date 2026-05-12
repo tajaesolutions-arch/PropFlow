@@ -270,3 +270,83 @@ canvas {
     margin: 6px 0;
   }
 }
+
+/* Production QA cleanup: keep common SaaS actions readable at founder-test widths. */
+button,
+.button,
+[role="button"] {
+  min-width: 0;
+}
+
+button:disabled,
+button[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+  .topbar {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+
+  .topbar .search-box,
+  .workspace-switcher-wrap,
+  .topbar-date-filter,
+  .topbar-filter,
+  .account-menu-wrap {
+    min-width: 0;
+  }
+
+  .reports-toolbar-actions,
+  .properties-toolbar-actions,
+  .notifications-toolbar-actions,
+  .finance-actions-toolbar .reports-toolbar-actions,
+  .direct-booking-actions,
+  .settings-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .reports-toolbar-actions button,
+  .properties-toolbar-actions button,
+  .notifications-toolbar-actions button,
+  .finance-actions-toolbar .reports-toolbar-actions button,
+  .direct-booking-actions button,
+  .settings-actions button {
+    width: 100%;
+    min-height: 44px;
+    justify-content: center;
+  }
+
+  .modal-panel {
+    max-height: calc(100dvh - 28px);
+  }
+}
+
+@media (max-width: 430px) {
+  .topbar {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: start;
+  }
+
+  .topbar-title p,
+  .topbar p {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .modal-header,
+  .modal-body,
+  .modal-actions {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .data-table {
+    min-width: 600px;
+  }
+}

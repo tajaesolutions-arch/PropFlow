@@ -203,13 +203,13 @@ export const directBookingRequestStatuses = [
 export const directBookingPaymentModes = [
   ['none', 'No online payment'],
   ['full_payment', 'Full payment via Stripe Checkout'],
-  ['full_payment_placeholder', 'Full payment setup required'],
+  ['full_payment_placeholder', 'Online payment not active yet'],
 ];
 
 export const directBookingConfirmationModes = [
   ['manual_approval', 'Manual approval'],
   ['instant_booking', 'Instant booking after payment'],
-  ['instant_booking_placeholder', 'Instant booking setup required'],
+  ['instant_booking_placeholder', 'Instant booking not active yet'],
 ];
 
 export const directBookingInquiryTypes = [
@@ -382,7 +382,7 @@ export const notificationEventTypes = [
   ['billing_access_restricted', 'Billing access restricted'],
   ['workspace_billing_restricted', 'Workspace billing restricted'],
   ['billing_access_restored', 'Billing access restored'],
-  ['billing_provider_not_configured', 'Billing provider not configured'],
+  ['billing_provider_not_configured', 'Billing connection not active'],
   ['ical_sync_failed', 'iCal sync failed'],
   ['ical_sync_conflicts_found', 'iCal sync conflicts found'],
   ['ical_feed_paused', 'iCal feed paused'],

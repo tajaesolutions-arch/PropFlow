@@ -13,6 +13,23 @@ import {
 import { useApp } from '../lib/AppContext.jsx';
 import { navigate } from '../routes/AppRouter.jsx';
 
+function friendlySignupMessage(message, fallback) {
+  const text = String(message || '').trim();
+
+  if (!text) return fallback;
+
+  const lower = text.toLowerCase();
+  if (lower.includes('already') || lower.includes('registered')) {
+    return 'An account may already exist for this email. Try logging in or ask PropFlow support for help.';
+  }
+
+  if (lower.includes('password')) {
+    return 'Choose a stronger password with at least 8 characters.';
+  }
+
+  return fallback;
+}
+
 function validateSignup(form) {
   const errors = [];
 
@@ -56,7 +73,7 @@ export function SignupPage() {
     }
 
     if (!isSupabaseConfigured) {
-      setMessage('Account creation is not connected for this deployment yet. Ask PropFlow support to finish authentication setup.');
+      setMessage('Account creation is not available in this deployment yet. Ask PropFlow support for help.');
       return;
     }
 
@@ -80,7 +97,7 @@ export function SignupPage() {
         'Account created. Check your email to confirm your account, then log in to continue workspace setup.',
       );
     } catch (error) {
-      setMessage(error.message || 'Signup failed.');
+      setMessage(friendlySignupMessage(error.message, 'We could not create your account. Check your details and try again.'));
     } finally {
       setBusy(false);
     }
@@ -107,7 +124,7 @@ export function SignupPage() {
         {!isSupabaseConfigured && (
           <div className="helper error-helper">
             <Lock size={16} />
-            Account creation is not connected for this deployment yet. Ask PropFlow support to finish authentication setup.
+            Account creation is not available in this deployment yet. Ask PropFlow support for help.
           </div>
         )}
 
@@ -221,7 +238,7 @@ export function SignupPage() {
         <div className="signup-guardrail">
           <CheckCircle2 size={16} />
           <span>
-            Demo login is not used here. Signup depends on real Supabase Auth and real workspace
+            Test accounts are not created here. Signup uses a real PropFlow account and workspace
             records.
           </span>
         </div>

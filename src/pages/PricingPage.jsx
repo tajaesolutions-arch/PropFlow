@@ -271,7 +271,7 @@ export function PricingPage() {
               <span>
                 <CreditCard size={16} />
                 <strong>Stripe checkout</strong>
-                <small>Server-side Checkout Session endpoint ready; provider setup required before checkout goes live</small>
+                <small>Checkout is prepared but not live until billing is activated</small>
               </span>
 
               <span>

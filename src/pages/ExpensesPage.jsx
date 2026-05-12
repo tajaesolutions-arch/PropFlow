@@ -187,7 +187,7 @@ export function ExpensesPage() {
         <article className="card finance-safety-card">
           <div className="finance-safety-card-icon"><CalendarDays size={18} /></div>
           <div><h3>Receipt upload pending</h3><p>Private receipt storage will be connected later.</p></div>
-          <StatusBadge tone="info">setup required</StatusBadge>
+          <StatusBadge tone="info">not active yet</StatusBadge>
         </article>
       </section>
 

@@ -1121,7 +1121,7 @@ function BookingForm({ app, close, submitting, setSubmitting, setError, notifySu
         <button type="button" onClick={close} disabled={submitting} data-skip-create-action="true">
           Cancel
         </button>
-        <button className="primary" type="submit" disabled={submitting || !properties.length} data-skip-create-action="true">
+        <button className="primary" type="submit" disabled={submitting || !properties.length} title={!properties.length ? 'Add a property before creating a booking.' : undefined} data-skip-create-action="true">
           {submitting ? 'Saving…' : properties.length ? 'Save booking' : 'Add a property first'}
         </button>
       </footer>
@@ -1616,7 +1616,7 @@ function CleaningForm({ app, close, submitting, setSubmitting, setError, notifyS
         <button type="button" onClick={close} disabled={submitting} data-skip-create-action="true">
           Cancel
         </button>
-        <button className="primary" type="submit" disabled={submitting || !properties.length} data-skip-create-action="true">
+        <button className="primary" type="submit" disabled={submitting || !properties.length} title={!properties.length ? 'Add a property before creating a cleaning task.' : undefined} data-skip-create-action="true">
           {submitting ? 'Saving…' : properties.length ? 'Save cleaning task' : 'Add a property first'}
         </button>
       </footer>
@@ -1857,7 +1857,7 @@ function MaintenanceForm({ app, close, submitting, setSubmitting, setError, noti
         <button type="button" onClick={close} disabled={submitting} data-skip-create-action="true">
           Cancel
         </button>
-        <button className="primary" type="submit" disabled={submitting || !properties.length} data-skip-create-action="true">
+        <button className="primary" type="submit" disabled={submitting || !properties.length} title={!properties.length ? 'Add a property before creating a maintenance work order.' : undefined} data-skip-create-action="true">
           {submitting ? 'Saving…' : properties.length ? 'Save work order' : 'Add a property first'}
         </button>
       </footer>
