@@ -12,6 +12,23 @@ import { getPostLoginPath } from '../lib/auth.js';
 import { useApp } from '../lib/AppContext.jsx';
 import { navigate } from '../routes/AppRouter.jsx';
 
+function friendlyAuthMessage(message, fallback) {
+  const text = String(message || '').trim();
+
+  if (!text) return fallback;
+
+  const lower = text.toLowerCase();
+  if (lower.includes('invalid') || lower.includes('credentials')) {
+    return 'The email or password is incorrect. Check your details and try again.';
+  }
+
+  if (lower.includes('email') && lower.includes('confirm')) {
+    return 'Please confirm your email address before logging in.';
+  }
+
+  return fallback;
+}
+
 function validateLogin(email, password) {
   const errors = [];
 
@@ -43,7 +60,7 @@ export function LoginPage() {
 
     if (!isSupabaseConfigured) {
       setMessage(
-        'Authentication is not connected for this deployment yet. Ask a workspace owner or PropFlow support to finish setup.',
+        'Login is not available in this deployment yet. Ask a workspace owner or PropFlow support to finish setup.',
       );
       return;
     }
@@ -57,14 +74,14 @@ export function LoginPage() {
 
       if (!nextUser) {
         setMessage(
-          'Login succeeded, but your workspace profile did not finish loading. Refresh the page or check your Supabase workspace membership record.',
+          'Login succeeded, but your workspace profile did not finish loading. Refresh the page or contact your workspace owner if this continues.',
         );
         return;
       }
 
       navigate(getPostLoginPath(nextUser));
     } catch (error) {
-      setMessage(error.message || 'Login failed.');
+      setMessage(friendlyAuthMessage(error.message, 'We could not log you in. Check your details and try again.'));
     } finally {
       setBusy(false);
     }
@@ -82,8 +99,8 @@ export function LoginPage() {
             <p className="eyebrow">Secure workspace login</p>
             <h1>Login to PropFlow</h1>
             <p>
-              Use your real Supabase Auth account. PropFlow loads your workspace, roles, and
-              dashboard access from the database after login.
+              Use your PropFlow account. We will send you to the right workspace and dashboard
+              based on your saved role after login.
             </p>
           </div>
         </div>
@@ -91,7 +108,7 @@ export function LoginPage() {
         {!isSupabaseConfigured && (
           <div className="helper error-helper">
             <Lock size={16} />
-            Authentication is not connected for this deployment yet. Demo login is not available in production.
+            Login is not available in this deployment yet. Ask your workspace owner or PropFlow support for help.
           </div>
         )}
 

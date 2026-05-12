@@ -35,7 +35,7 @@ function getEmptyCopy(empty) {
     return {
       title: empty.title || 'No records yet',
       description: empty.description || 'Records will appear here when they are added to this workspace.',
-      eyebrow: empty.eyebrow || 'Empty state',
+      eyebrow: empty.eyebrow || 'No data yet',
     };
   }
 
@@ -44,7 +44,7 @@ function getEmptyCopy(empty) {
   return {
     title: text.replace(/[.]+$/, '') || 'No records yet',
     description: 'Records will appear here when they are added to this workspace.',
-    eyebrow: 'Empty state',
+    eyebrow: 'No data yet',
   };
 }
 
@@ -90,8 +90,8 @@ export function DataTable({
 
   if (!safeColumns.length) {
     return (
-      <div className="table-wrap empty-table-wrap" role="region" aria-label="Table configuration issue">
-        <EmptyTableState empty="No table columns configured." />
+      <div className="table-wrap empty-table-wrap" role="region" aria-label="Table unavailable">
+        <EmptyTableState empty={{ title: 'Table unavailable', description: 'This view needs a quick setup review before records can be shown.', eyebrow: 'Needs review' }} />
       </div>
     );
   }

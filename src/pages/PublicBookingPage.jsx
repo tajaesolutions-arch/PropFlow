@@ -101,15 +101,15 @@ function PublicBookingSafetyNotice() {
         <span>
           <CreditCard size={16} />
           <strong>Stripe payment</strong>
-          <small>Checkout and payment links are not connected.</small>
-          <StatusBadge tone="warning">not connected</StatusBadge>
+          <small>Online payment is not available for this request yet.</small>
+          <StatusBadge tone="warning">not available</StatusBadge>
         </span>
 
         <span>
           <AlertTriangle size={16} />
           <strong>Deposit / full payment</strong>
-          <small>Payment rules are setup-gated until backend billing is connected.</small>
-          <StatusBadge tone="info">setup required</StatusBadge>
+          <small>Payment collection is handled by the manager after review.</small>
+          <StatusBadge tone="info">manager review</StatusBadge>
         </span>
       </div>
     </section>

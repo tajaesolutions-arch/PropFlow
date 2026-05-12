@@ -261,7 +261,7 @@ function LoadingScreen({
 function RuntimeErrorScreen({ error }) {
   const errorMessage = import.meta.env.DEV
     ? (error?.message || String(error || 'Unknown runtime error'))
-    : 'A runtime error occurred while loading this screen. Check the browser console and deployment logs for details.';
+    : 'This screen could not load. Refresh the page, or contact PropFlow support if it continues.';
 
   return (
     <div className="auth-page router-state-page router-error-page">
@@ -270,11 +270,10 @@ function RuntimeErrorScreen({ error }) {
           <AlertTriangle size={30} />
         </div>
 
-        <p className="eyebrow">Runtime error</p>
+        <p className="eyebrow">Screen unavailable</p>
         <h1>PropFlow could not load this screen</h1>
         <p>
-          A page failed while loading. This fallback prevents a blank white page and shows the
-          safe error status so the issue can be debugged without exposing sensitive runtime data.
+          Something interrupted this page while it was loading. Your data is still protected; refresh the page or return to a safe screen.
         </p>
 
         <div className="helper error-helper">

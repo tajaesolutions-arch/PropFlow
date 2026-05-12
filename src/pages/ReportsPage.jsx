@@ -746,6 +746,11 @@ export function ReportsPage() {
             const Icon = report.icon;
             const hasData = reportHasData(report);
             const disabled = !hasData || report.locked;
+            const disabledReason = report.locked
+              ? report.lockMessage
+              : !hasData
+                ? 'Add related property, booking, expense, cleaning, or maintenance records before generating this report.'
+                : undefined;
             return (
               <article className="card report-type-card report-foundation-card" key={report.id}>
                 <div className="report-type-icon"><Icon size={20} /></div>
@@ -763,16 +768,16 @@ export function ReportsPage() {
                 {!hasData && <div className="helper">Not enough data to generate this report yet.</div>}
                 {report.locked && <div className="helper warning-helper">{report.lockMessage}</div>}
                 <div className="report-type-actions">
-                  <button type="button" onClick={() => setSelectedReport(report)} disabled={!hasData} data-skip-create-action="true"><Eye size={16} />View</button>
-                  <button type="button" onClick={() => handleCsvExport(report)} disabled={disabled} data-skip-create-action="true"><Download size={16} />Export CSV</button>
-                  <button type="button" onClick={() => handlePdfExport(report)} disabled={disabled} data-skip-create-action="true"><FileText size={16} />Export PDF / Print PDF</button>
+                  <button type="button" onClick={() => setSelectedReport(report)} disabled={!hasData} title={!hasData ? disabledReason : undefined} data-skip-create-action="true"><Eye size={16} />View</button>
+                  <button type="button" onClick={() => handleCsvExport(report)} disabled={disabled} title={disabled ? disabledReason : undefined} data-skip-create-action="true"><Download size={16} />Export CSV</button>
+                  <button type="button" onClick={() => handlePdfExport(report)} disabled={disabled} title={disabled ? disabledReason : undefined} data-skip-create-action="true"><FileText size={16} />Export PDF / Print PDF</button>
                 </div>
               </article>
             );
           })}
         </section>
       ) : (
-        <EmptyState icon={FileText} title="No reports yet. Create your first report once property, booking, expense, cleaning, or maintenance data is available." description="No report sections are visible for the current filters and role." />
+        <EmptyState icon={FileText} title="No reports available" description="Report sections will appear once property, booking, expense, cleaning, or maintenance data is available for your role and filters." />
       )}
 
       <section className="card">
@@ -795,7 +800,7 @@ export function ReportsPage() {
             { key: 'created_at', label: 'Created', render: (row) => formatDate(row.created_at, 'Not available') },
           ]} />
         ) : (
-          <EmptyState compact icon={FileText} title={ownerView ? 'No released reports yet' : 'No saved report records'} description="No reports yet. Create your first report once property, booking, expense, cleaning, or maintenance data is available." />
+          <EmptyState compact icon={FileText} title={ownerView ? 'No released reports yet' : 'No saved report records'} description="Saved report records will appear here after reports are generated or released." />
         )}
       </section>
     </AppLayout>
