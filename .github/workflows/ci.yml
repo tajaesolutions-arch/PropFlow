@@ -55,7 +55,7 @@ jobs:
 
           echo "Scanning tracked files for obvious secret values..."
 
-          if git grep -nE '(sk_live_|sk_test_|rk_live_|SUPABASE_SERVICE_ROLE_KEY\s*=\s*[^[:space:]#]+|STRIPE_SECRET_KEY\s*=\s*[^[:space:]#]+|STRIPE_WEBHOOK_SECRET\s*=\s*[^[:space:]#]+|RESEND_API_KEY\s*=\s*[^[:space:]#]+|TWILIO_AUTH_TOKEN\s*=\s*[^[:space:]#]+)' -- ':!package-lock.json'; then
+          if git grep -nE '(sk_live_|sk_test_|rk_live_|SUPABASE_SERVICE_ROLE_KEY\s*=\s*[^[:space:]#]+|STRIPE_SECRET_KEY\s*=\s*[^[:space:]#]+|STRIPE_WEBHOOK_SECRET\s*=\s*[^[:space:]#]+|RESEND_API_KEY\s*=\s*[^[:space:]#]+|TWILIO_AUTH_TOKEN\s*=\s*[^[:space:]#]+)' -- ':!package-lock.json' ':!.github/workflows/ci.yml'; then
             echo "Potential committed secret found. Remove real secrets and keep only empty/example values."
             exit 1
           fi
