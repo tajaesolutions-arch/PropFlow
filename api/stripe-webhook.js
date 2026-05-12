@@ -14,6 +14,7 @@ import { sendTransactionalEmail } from './_utils/transactionalEmail.js';
 
 const HANDLED_EVENTS = new Set([
   'checkout.session.completed',
+  'checkout.session.expired',
   'customer.subscription.created',
   'customer.subscription.updated',
   'customer.subscription.deleted',
@@ -24,6 +25,7 @@ const HANDLED_EVENTS = new Set([
 
 const BILLING_EVENT_BY_STRIPE_EVENT = {
   'checkout.session.completed': 'checkout_completed',
+  'checkout.session.expired': 'checkout_expired',
   'customer.subscription.created': 'subscription_created',
   'customer.subscription.updated': 'subscription_updated',
   'customer.subscription.deleted': 'subscription_canceled',
@@ -494,6 +496,7 @@ async function processInvoiceEvent(supabaseAdmin, event) {
 
 async function processEvent(supabaseAdmin, event) {
   if (event.type === 'checkout.session.completed') return processCheckoutCompleted(supabaseAdmin, event);
+  if (event.type === 'checkout.session.expired') return updateDirectBookingPayment(supabaseAdmin, event, 'expired') || { workspaceId: null, subscriptionId: null };
   if (event.type === 'payment_intent.payment_failed') return updateDirectBookingPayment(supabaseAdmin, event, 'failed') || { workspaceId: null, subscriptionId: null };
   if (event.type.startsWith('customer.subscription.')) return processSubscriptionEvent(supabaseAdmin, event);
   if (event.type.startsWith('invoice.payment_')) return processInvoiceEvent(supabaseAdmin, event);

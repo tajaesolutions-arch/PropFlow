@@ -142,7 +142,11 @@ async function sendDirectBookingSubmittedEmails(request, supabaseAdmin, page, pr
 }
 
 async function startCheckout(request, supabaseAdmin, page, directRequest, amountCents) {
-  if (!getStripeSecretKey()) return null;
+  if (!getStripeSecretKey()) {
+    const error = new Error('Stripe direct booking checkout is not configured yet.');
+    error.code = 'provider_not_configured';
+    throw error;
+  }
 
   const appUrl = getAppUrl(request);
   const successUrl = buildSameOriginUrl(appUrl, directRequest.metadata?.success_url, `/book/${page.slug}?request=${directRequest.id}&payment=success`);
