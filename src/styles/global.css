@@ -8107,3 +8107,301 @@ label {
 .notification-delivery-row small {
   color: var(--text-muted);
 }
+
+/* Focused dashboard UI/UX polish pass */
+.stats-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.card,
+.stat-card {
+  border-color: rgba(226, 232, 240, 0.95);
+}
+
+.card-header > div {
+  min-width: 0;
+}
+
+.card-header svg {
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+
+.dashboard-filter-card .card-header,
+.dashboard-table-card .card-header,
+.dashboard-chart-card .card-header {
+  align-items: center;
+}
+
+.dashboard-filter-card .booking-filter {
+  grid-template-columns: repeat(3, minmax(160px, 1fr)) repeat(3, auto);
+  align-items: center;
+}
+
+.dashboard-filter-card button,
+.dashboard-filter-card select {
+  min-height: 42px;
+}
+
+.dashboard-kpi-grid .stat-card,
+.admin-stats-grid .stat-card,
+.owner-dashboard-notice + .stat-grid .stat-card,
+.cleaner-dashboard-hero + .stat-grid .stat-card,
+.maintenance-dashboard-hero + .stat-grid .stat-card {
+  min-height: 132px;
+}
+
+.stat-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card::after {
+  content: '';
+  position: absolute;
+  inset: auto 18px 0 18px;
+  height: 3px;
+  border-radius: 999px 999px 0 0;
+  background: transparent;
+}
+
+.stat-card-accent::after {
+  background: var(--accent);
+}
+
+.stat-card-success::after {
+  background: var(--success);
+}
+
+.stat-card-warning::after {
+  background: var(--warning);
+}
+
+.stat-card-error::after {
+  background: var(--error);
+}
+
+.stat-card-info::after {
+  background: var(--info);
+}
+
+.stat-icon-success {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.stat-icon-warning {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.stat-icon-error {
+  background: var(--error-soft);
+  color: var(--error);
+}
+
+.stat-icon-info {
+  background: var(--info-soft);
+  color: var(--info);
+}
+
+.chart-frame {
+  width: 100%;
+  height: 280px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.dashboard-chart-card {
+  min-width: 0;
+}
+
+.dashboard-chart-card .recharts-wrapper,
+.dashboard-chart-card .recharts-surface {
+  max-width: 100%;
+}
+
+.dashboard-operations-grid .card {
+  min-height: 260px;
+}
+
+.stack-list {
+  display: grid;
+  gap: 10px;
+}
+
+.stack-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+
+.stack-item strong,
+.list-row strong,
+.data-table strong {
+  color: var(--text);
+}
+
+.stack-item small,
+.right-detail {
+  color: var(--muted);
+}
+
+.right-detail {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.table-wrap {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+}
+
+.data-table th {
+  background: var(--surface-2);
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.empty-table-wrap {
+  border-style: dashed;
+}
+
+.status {
+  min-height: 26px;
+  text-transform: capitalize;
+}
+
+.admin-internal-card {
+  border-color: rgba(37, 99, 235, 0.22);
+  background: linear-gradient(0deg, rgba(37, 99, 235, 0.035), rgba(37, 99, 235, 0.035)), var(--card);
+}
+
+.admin-internal-card .eyebrow {
+  color: var(--info);
+}
+
+.admin-table-actions button:nth-child(4),
+.admin-table-actions button:nth-child(5),
+.compact-controls button:nth-child(3),
+.compact-controls button:nth-child(4) {
+  border-color: rgba(217, 119, 6, 0.28);
+  color: #92400E;
+  background: #FFFBEB;
+}
+
+.admin-table-actions button:nth-child(5),
+.compact-controls button:nth-child(4) {
+  border-color: rgba(220, 38, 38, 0.25);
+  color: #991B1B;
+  background: #FEF2F2;
+}
+
+.cleaner-dashboard-actions button,
+.cleaner-dashboard-secondary-actions button,
+.cleaner-dashboard-secondary-actions .upload-button,
+.maintenance-dashboard-actions button,
+.maintenance-dashboard-job-card .upload-button {
+  min-height: 46px;
+}
+
+.cleaner-dashboard-task-card,
+.maintenance-dashboard-job-card,
+.owner-dashboard-property-card {
+  box-shadow: var(--shadow-sm);
+}
+
+.maintenance-dashboard-job-card.urgent,
+.card.urgent {
+  border-color: rgba(217, 119, 6, 0.35);
+  box-shadow: inset 4px 0 0 rgba(217, 119, 6, 0.65), var(--shadow-sm);
+}
+
+@media (max-width: 1200px) {
+  .dashboard-filter-card .booking-filter {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .dashboard-filter-card .booking-filter,
+  .admin-stats-grid,
+  .stat-grid.dense {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-kpi-grid .stat-card,
+  .admin-stats-grid .stat-card,
+  .owner-dashboard-notice + .stat-grid .stat-card,
+  .cleaner-dashboard-hero + .stat-grid .stat-card,
+  .maintenance-dashboard-hero + .stat-grid .stat-card {
+    min-height: 116px;
+  }
+
+  .card-header,
+  .dashboard-filter-card .card-header,
+  .dashboard-table-card .card-header,
+  .dashboard-chart-card .card-header,
+  .admin-hero-card .card-header {
+    display: grid;
+  }
+
+  .card-header .action-row,
+  .dashboard-filter-card .card-header button,
+  .admin-hero-card .action-row button {
+    width: 100%;
+  }
+
+  .chart-frame {
+    height: 240px;
+  }
+
+  .stack-item,
+  .list-row {
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 430px) {
+  .page-content {
+    padding: 14px;
+    gap: 16px;
+  }
+
+  .card,
+  .stat-card {
+    border-radius: 16px;
+    padding: 16px;
+  }
+
+  .stat-card strong {
+    font-size: 24px;
+  }
+
+  .stack-item,
+  .list-row {
+    display: grid;
+  }
+
+  .right-detail {
+    justify-items: start;
+    text-align: left;
+    white-space: normal;
+  }
+
+  .chart-frame {
+    height: 220px;
+  }
+}

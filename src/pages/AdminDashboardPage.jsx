@@ -366,7 +366,7 @@ export function AdminDashboardPage() {
     <AppLayout title="Platform Admin" subtitle="Founder operations, health, customers, billing risk, and audit history">
       <SetupWarning data={data} isSupabaseConfigured={isSupabaseConfigured} />
 
-      <section className="card admin-hero-card">
+      <section className="card admin-hero-card admin-internal-card">
         <div className="card-header">
           <div>
             <p className="eyebrow">Founder control center</p>
@@ -386,18 +386,18 @@ export function AdminDashboardPage() {
       </section>
 
       <section className="stats-grid admin-stats-grid">
-        <StatCard label="Total workspaces" value={numberValue(overview.total_workspaces)} icon={Building2} />
-        <StatCard label="Active workspaces" value={numberValue(overview.active_workspaces)} icon={CheckCircle2} />
-        <StatCard label="Suspended/restricted" value={numberValue(overview.suspended_workspaces)} icon={ShieldAlert} />
-        <StatCard label="Total users" value={numberValue(overview.total_users || overview.total_profiles)} icon={Users} />
-        <StatCard label="Active users" value={numberValue(overview.active_users)} icon={UserCog} />
-        <StatCard label="Suspended users" value={numberValue(overview.suspended_users)} icon={ShieldAlert} />
-        <StatCard label="Total properties" value={numberValue(overview.total_properties)} icon={Building2} />
-        <StatCard label="Total bookings" value={numberValue(overview.total_bookings)} icon={CalendarClock} />
-        <StatCard label="Trialing subscriptions" value={numberValue(overview.trialing_subscriptions)} icon={CreditCard} />
-        <StatCard label="Past due/restricted" value={numberValue(Number(overview.past_due_subscriptions || 0) + Number(overview.restricted_subscriptions || 0))} icon={AlertTriangle} />
-        <StatCard label="Direct requests" value={numberValue(overview.total_direct_booking_requests)} icon={FileText} />
-        <StatCard label="iCal conflicts" value={numberValue(health.open_ical_conflicts)} icon={CalendarClock} />
+        <StatCard label="Total workspaces" value={numberValue(overview.total_workspaces)} icon={Building2} subtitle="Customer accounts" />
+        <StatCard label="Active workspaces" value={numberValue(overview.active_workspaces)} icon={CheckCircle2} tone="success" subtitle="In good standing" />
+        <StatCard label="Suspended/restricted" value={numberValue(overview.suspended_workspaces)} icon={ShieldAlert} tone="warning" subtitle="Needs review" />
+        <StatCard label="Total users" value={numberValue(overview.total_users || overview.total_profiles)} icon={Users} subtitle="Platform profiles" />
+        <StatCard label="Active users" value={numberValue(overview.active_users)} icon={UserCog} tone="success" subtitle="Able to access" />
+        <StatCard label="Suspended users" value={numberValue(overview.suspended_users)} icon={ShieldAlert} tone="warning" subtitle="Access limited" />
+        <StatCard label="Total properties" value={numberValue(overview.total_properties)} icon={Building2} subtitle="Across workspaces" />
+        <StatCard label="Total bookings" value={numberValue(overview.total_bookings)} icon={CalendarClock} subtitle="All-time records" />
+        <StatCard label="Trialing subscriptions" value={numberValue(overview.trialing_subscriptions)} icon={CreditCard} tone="info" subtitle="Monitor conversion" />
+        <StatCard label="Past due/restricted" value={numberValue(Number(overview.past_due_subscriptions || 0) + Number(overview.restricted_subscriptions || 0))} icon={AlertTriangle} tone="warning" subtitle="Billing risk" />
+        <StatCard label="Direct requests" value={numberValue(overview.total_direct_booking_requests)} icon={FileText} subtitle="Guest requests" />
+        <StatCard label="iCal conflicts" value={numberValue(health.open_ical_conflicts)} icon={CalendarClock} tone={health.open_ical_conflicts ? 'warning' : 'success'} subtitle="Sync review" />
       </section>
 
       <section className="admin-two-column">

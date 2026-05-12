@@ -494,7 +494,7 @@ export function DashboardPage() {
         </section>
       )}
 
-      <section className="card compact">
+      <section className="card compact dashboard-filter-card">
         <div className="card-header">
           <div>
             <h3>Dashboard filters</h3>
@@ -553,7 +553,7 @@ export function DashboardPage() {
         </div>
       </section>
 
-      <div className="stat-grid dense">
+      <div className="stat-grid dense dashboard-kpi-grid">
         <StatCard
           label="Gross revenue"
           value={formatCurrency(grossRevenue, displayCurrency)}
@@ -594,7 +594,7 @@ export function DashboardPage() {
       )}
 
       <div className="chart-grid">
-        <section className="card">
+        <section className="card dashboard-chart-card">
           <div className="card-header">
             <div>
               <h3>Revenue vs expenses</h3>
@@ -603,21 +603,21 @@ export function DashboardPage() {
             <LineChartIcon size={20} />
           </div>
 
-          <div style={{ width: '100%', height: 280 }}>
-            <ResponsiveContainer>
+          <div className="chart-frame">
+            <ResponsiveContainer width="100%" height="100%">
               <LineChart data={revenueChartData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="month" />
                 <YAxis />
                 <Tooltip formatter={(value) => formatCurrency(value, displayCurrency)} />
-                <Line type="monotone" dataKey="revenue" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="expenses" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="revenue" stroke="var(--accent)" strokeWidth={2.5} dot={false} />
+                <Line type="monotone" dataKey="expenses" stroke="var(--warning)" strokeWidth={2.5} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </section>
 
-        <section className="card">
+        <section className="card dashboard-chart-card">
           <div className="card-header">
             <div>
               <h3>Profit breakdown</h3>
@@ -626,21 +626,21 @@ export function DashboardPage() {
             <Banknote size={20} />
           </div>
 
-          <div style={{ width: '100%', height: 280 }}>
-            <ResponsiveContainer>
+          <div className="chart-frame">
+            <ResponsiveContainer width="100%" height="100%">
               <BarChart data={profitBreakdown}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="label" />
                 <YAxis />
                 <Tooltip formatter={(value) => formatCurrency(value, displayCurrency)} />
-                <Bar dataKey="value" radius={[8, 8, 0, 0]} />
+                <Bar dataKey="value" fill="var(--accent)" radius={[8, 8, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </section>
       </div>
 
-      <div className="panel-grid two">
+      <div className="panel-grid two dashboard-operations-grid">
         <section className="card">
           <div className="card-header">
             <div>
@@ -717,7 +717,7 @@ export function DashboardPage() {
         </section>
       </div>
 
-      <section className="card">
+      <section className="card dashboard-table-card">
         <div className="card-header">
           <div>
             <h3>Property performance</h3>
