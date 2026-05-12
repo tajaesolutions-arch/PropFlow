@@ -116,6 +116,7 @@ STRIPE_PRICE_BUSINESS=
 RESEND_API_KEY=
 RESEND_FROM_EMAIL=
 RESEND_REPLY_TO_EMAIL= # optional
+RESEND_ALLOW_NON_PRODUCTION_SENDS=false
 TWILIO_ACCOUNT_SID=
 TWILIO_AUTH_TOKEN=
 TWILIO_MESSAGING_SERVICE_SID=
@@ -126,19 +127,23 @@ Notes:
 
 - Vercel automatically provides `VERCEL_URL`; set `APP_URL` to the canonical deployed origin used for API CORS.
 - Leave optional provider secrets blank until live Stripe/Resend/Twilio workflows are intentionally enabled; missing providers return safe `provider_not_configured` responses where supported.
+- Configure Preview and Production variables separately in Vercel so test projects, live projects, and callback URLs are not mixed.
+- Never commit real keys or copy server-only secrets into `VITE_*` variables.
 - Never set `SUPABASE_SERVICE_ROLE_KEY` in frontend/Vite env vars. It is required only by trusted Vercel API routes such as public direct-booking request creation, Stripe webhooks, and transactional email workflow validation.
 
 ## 9. Deploy on Vercel
 
 1. Import or open the PropFlow Vercel project.
-2. Use Framework Preset: **Vite**.
-3. Install Command: `npm install`.
-4. Build Command: `npm run build`.
-5. Output Directory: `dist`.
-6. Add Preview and Production env vars.
-7. Deploy the target branch.
-8. Review build logs for install/build success and serverless function bundling.
-9. Open the deployment URL and complete the runtime test plans.
+2. Confirm the Production Branch is **main**.
+3. Use Framework Preset: **Vite**.
+4. Install Command: `npm install`.
+5. Build Command: `npm run build`.
+6. Output Directory: `dist`.
+7. Add Preview and Production env vars separately.
+8. Deploy the target branch.
+9. Review build logs for install/build success and serverless function bundling.
+10. Confirm `/api/*` routes deploy with the frontend and no secrets are visible in browser source, console output, or network responses.
+11. Open the deployment URL and complete the runtime test plans.
 
 ## 10. Runtime smoke tests
 

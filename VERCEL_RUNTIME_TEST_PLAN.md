@@ -29,12 +29,16 @@ Set server-only variables in Vercel Project Settings, not in frontend code:
 APP_URL=https://<deployed-domain>
 SUPABASE_URL=
 SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 STRIPE_PRICE_STARTER=
 STRIPE_PRICE_PRO=
 STRIPE_PRICE_BUSINESS=
 RESEND_API_KEY=
+RESEND_FROM_EMAIL=
+RESEND_REPLY_TO_EMAIL=
+RESEND_ALLOW_NON_PRODUCTION_SENDS=false
 TWILIO_ACCOUNT_SID=
 TWILIO_AUTH_TOKEN=
 TWILIO_MESSAGING_SERVICE_SID=
@@ -44,8 +48,10 @@ TWILIO_WHATSAPP_FROM=
 Notes:
 
 - `APP_URL` is used by API CORS origin checks. `VERCEL_URL` is injected by Vercel and should not need manual entry.
-- Keep `SUPABASE_SERVICE_ROLE_KEY` out of Vite/frontend variables. Current API routes do not need it.
-- Leave Stripe/Resend/Twilio secrets blank until live provider implementations are intentionally added.
+- Keep `SUPABASE_SERVICE_ROLE_KEY` out of Vite/frontend variables; it belongs only in trusted server-only Vercel API environments when required.
+- Never commit real keys, webhook secrets, or provider tokens.
+- Leave Stripe/Resend/Twilio secrets blank until live provider workflows are intentionally enabled; missing providers should return safe provider-not-configured/setup responses.
+- Configure Preview and Production variables separately in Vercel so test and live projects are not mixed.
 
 ## C. Deploy and inspect build
 

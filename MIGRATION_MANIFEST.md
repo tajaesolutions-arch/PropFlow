@@ -51,3 +51,7 @@ Do not edit old migrations destructively after they have been applied to a share
 - Refresh the Supabase/PostgREST schema cache after applying migrations that create or replace functions, especially workspace creation, direct-booking RPCs, iCal RPC-dependent views, file-access helpers, and platform admin RPCs.
 - The storage bucket must be named exactly `workspace-files` and must be private.
 - PropFlow Admin is platform-only; never add `propflow_admin` to customer `workspace_members.roles`.
+
+## Production environment verification
+
+Before real production testing, complete `docs/PRODUCTION_ENVIRONMENT_VERIFICATION.md` after applying this migration manifest. It includes safe Supabase table/RLS verification SQL, private storage checks, Vercel environment separation, Stripe/Resend setup checks, role-test matrix, and the end-to-end smoke test.
