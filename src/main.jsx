@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { CreateActionProvider } from './components/CreateActionProvider.jsx';
 import { SmartNumberFormatting } from './components/SmartNumberFormatting.jsx';
 import { AppProvider } from './lib/AppContext.jsx';
+import { installModalDraftPersistence } from './lib/modalDraftPersistence.js';
 import { AppRouter } from './routes/AppRouter.jsx';
 import './styles/global.css';
 import './styles/topbar-polish.css';
@@ -39,6 +40,7 @@ function applyInitialRouteAlias() {
 }
 
 applyInitialRouteAlias();
+installModalDraftPersistence();
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
