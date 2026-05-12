@@ -108,8 +108,8 @@ function PublicBookingSafetyNotice() {
         <span>
           <AlertTriangle size={16} />
           <strong>Deposit / full payment</strong>
-          <small>Payment rules are placeholders until backend billing is added.</small>
-          <StatusBadge tone="info">placeholder</StatusBadge>
+          <small>Payment rules are setup-gated until backend billing is connected.</small>
+          <StatusBadge tone="info">setup required</StatusBadge>
         </span>
       </div>
     </section>

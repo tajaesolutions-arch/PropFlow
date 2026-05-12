@@ -190,7 +190,7 @@ export function PublicDirectBookingPage() {
   const quotedCleaning = page?.cleaningFee ? Number(page.cleaningFee) : null;
   const quotedTotal = quotedRate !== null ? quotedRate + (quotedCleaning || 0) : null;
   const instantCheckoutEnabled = page?.bookingMode === 'instant_booking' && page?.paymentMode === 'full_payment';
-  const paymentPlaceholder = page && page.paymentMode !== 'none' && !instantCheckoutEnabled;
+  const paymentSetupRequired = page && page.paymentMode !== 'none' && !instantCheckoutEnabled;
 
   const set = (key) => (event) => {
     setForm((value) => ({ ...value, [key]: event.target.value }));
@@ -286,7 +286,7 @@ export function PublicDirectBookingPage() {
               <StatusBadge tone="info">Availability subject to confirmation</StatusBadge>
             </div>
           </div>
-          <div className="public-booking-visual" aria-label="Property image placeholder">
+          <div className="public-booking-visual" aria-label="Property image preview area">
             <Home size={44} />
             <span>No public property photos are exposed from private operational storage.</span>
           </div>
@@ -322,7 +322,7 @@ export function PublicDirectBookingPage() {
               <div className="public-booking-safety-grid">
                 <span><ShieldCheck size={16} /><strong>Manager review</strong><small>Requests do not become internal bookings until converted.</small></span>
                 <span><CalendarDays size={16} /><strong>Availability</strong><small>Unavailable ranges are blocked when detected; confirmation is still manual.</small></span>
-                <span><CreditCard size={16} /><strong>Payment</strong><small>{instantCheckoutEnabled ? 'Stripe Checkout starts after request validation.' : paymentPlaceholder ? 'Online payment is not active yet. The property manager will confirm payment instructions after review.' : 'No online payment is collected on this page.'}</small></span>
+                <span><CreditCard size={16} /><strong>Payment</strong><small>{instantCheckoutEnabled ? 'Stripe Checkout starts after request validation.' : paymentSetupRequired ? 'Online payment is not active yet. The property manager will confirm payment instructions after review.' : 'No online payment is collected on this page.'}</small></span>
               </div>
             </section>
 

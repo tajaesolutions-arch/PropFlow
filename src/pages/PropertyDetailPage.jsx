@@ -1057,7 +1057,7 @@ export function PropertyDetailPage({ propertyId }) {
             )}
 
             <span>
-              <UsersPlaceholder />
+              <AssignedOwnerIcon />
               <strong>{getOwnerName(property, data.contacts || [], data.members || [])}</strong>
               <small>Assigned owner</small>
             </span>
@@ -1357,6 +1357,6 @@ export function PropertyDetailPage({ propertyId }) {
   );
 }
 
-function UsersPlaceholder() {
+function AssignedOwnerIcon() {
   return <Building2 size={16} />;
 }

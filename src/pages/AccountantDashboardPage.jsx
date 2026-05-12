@@ -372,7 +372,7 @@ export function AccountantDashboardPage() {
   return (
     <AppLayout
       title="Accountant dashboard"
-      subtitle="Read-only finance view for derived revenue, expenses, owner payouts, reports, receipts, and export placeholders."
+      subtitle="Read-only finance view for derived revenue, expenses, owner payouts, reports, receipts, and export setup states."
     >
       <section className="card accountant-dashboard-notice finance-safety-notice">
         <div className="card-header">

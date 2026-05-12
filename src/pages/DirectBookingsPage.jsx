@@ -395,7 +395,7 @@ export function DirectBookingsPage() {
 
       <section className="card">
         <div className="card-header"><div><p className="eyebrow">Review queue</p><h2>Booking requests</h2><p>Requests remain separate from internal bookings until a manager approves and converts them.</p></div><ClipboardCheck size={20} className="muted" /></div>
-        <DataTable columns={requestColumns} rows={filteredRequests} empty={{ eyebrow: 'No requests', title: 'No direct booking requests yet', description: 'Public request submissions will appear here. No fake/demo direct booking requests are added.' }} />
+        <DataTable columns={requestColumns} rows={filteredRequests} empty={{ eyebrow: 'No requests', title: 'No direct booking requests yet', description: 'Public request submissions will appear here after guests use a published direct booking page.' }} />
       </section>
     </AppLayout>
   );

@@ -11,7 +11,7 @@ const cleaningUploadRoles = [...uploadManagerRoles, roles.CLEANER];
 const maintenanceUploadRoles = [...uploadManagerRoles, roles.MAINTENANCE];
 const financeUploadRoles = [...uploadManagerRoles, roles.ACCOUNTANT];
 
-const uploadPlaceholders = [
+const uploadSetupStates = [
   {
     title: 'Property photos',
     description: 'Property gallery photos should use private storage and workspace-scoped access checks.',
@@ -52,15 +52,15 @@ function isStorageFlagConfigured() {
   return Boolean(getEnvValue('VITE_SUPABASE_STORAGE_CONFIGURED'));
 }
 
-function getVisiblePlaceholders(currentUser) {
-  return uploadPlaceholders.filter((item) => hasAnyRole(currentUser, item.roles));
+function getVisibleSetupStates(currentUser) {
+  return uploadSetupStates.filter((item) => hasAnyRole(currentUser, item.roles));
 }
 
 export function UploadSafetyNotice() {
   const { currentUser } = useApp();
   const primaryRole = resolvePrimaryRole(currentUser);
   const storageConfigured = isStorageFlagConfigured();
-  const visiblePlaceholders = getVisiblePlaceholders(currentUser);
+  const visibleSetupStates = getVisibleSetupStates(currentUser);
 
   return (
     <section className="card upload-safety-notice">
@@ -69,7 +69,7 @@ export function UploadSafetyNotice() {
           <p className="eyebrow">Uploads and private storage</p>
           <h3>File/photo upload safety status</h3>
           <p>
-            Upload UI is placeholder-safe until private Supabase Storage buckets, signed access rules,
+            Upload UI is setup-gated until private Supabase Storage buckets, signed access rules,
             and workspace/role authorization checks are implemented.
           </p>
         </div>
@@ -84,7 +84,7 @@ export function UploadSafetyNotice() {
             <small>
               {storageConfigured
                 ? 'Storage readiness flag is present. Bucket policies and backend checks still need verification.'
-                : 'Supabase Storage is not connected yet. Upload controls should remain disabled or placeholder-only.'}
+                : 'Supabase Storage is not connected yet. Upload controls should remain disabled or setup-gated.'}
             </small>
           </span>
           <StatusBadge tone={storageConfigured ? 'info' : 'warning'}>
@@ -107,12 +107,12 @@ export function UploadSafetyNotice() {
             <strong>Current upload state</strong>
             <small>Do not enable public upload links, public buckets, or public storage URLs in the MVP.</small>
           </span>
-          <StatusBadge tone="warning">placeholder only</StatusBadge>
+          <StatusBadge tone="warning">setup required</StatusBadge>
         </div>
       </div>
 
-      <div className="upload-placeholder-grid" aria-label="Upload placeholders by role">
-        {visiblePlaceholders.map((item) => {
+      <div className="upload-placeholder-grid" aria-label="Upload setup states by role">
+        {visibleSetupStates.map((item) => {
           const Icon = item.icon;
 
           return (
@@ -127,7 +127,7 @@ export function UploadSafetyNotice() {
           );
         })}
 
-        {!visiblePlaceholders.length && (
+        {!visibleSetupStates.length && (
           <div className="upload-placeholder-card restricted">
             <LockKeyhole size={17} />
             <span>

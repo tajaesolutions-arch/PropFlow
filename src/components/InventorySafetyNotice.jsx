@@ -132,7 +132,7 @@ export function InventorySafetyNotice() {
             <strong>Supplies used</strong>
             <small>Supplies-used tracking should connect to cleaning tasks later. Do not invent usage records.</small>
           </span>
-          <StatusBadge tone="warning">placeholder</StatusBadge>
+          <StatusBadge tone="warning">setup state</StatusBadge>
         </div>
 
         <div className="inventory-safety-card">

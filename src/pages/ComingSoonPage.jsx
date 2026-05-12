@@ -73,7 +73,7 @@ const helpTopics = [
   },
   {
     title: 'Reports and billing',
-    description: 'Review owner reports, exports, subscription placeholders, and billing recovery.',
+    description: 'Review owner reports, exports, subscription setup, and billing recovery.',
     icon: FileText,
   },
 ];
@@ -157,7 +157,7 @@ export function ComingSoonPage({ title = 'Coming soon' }) {
       subtitle={
         smartTools
           ? 'Planned AI tools preview for future PropFlow automation.'
-          : 'Help, support, and launch-safe feature placeholder.'
+          : 'Help, support, and launch-safe feature preview.'
       }
     >
       <section className="card coming-soon-hero">
@@ -167,7 +167,7 @@ export function ComingSoonPage({ title = 'Coming soon' }) {
           <p>
             {smartTools
               ? 'This page previews planned AI tools for property performance, guest messaging, owner reports, cleaning checklists, maintenance summaries, and task automation.'
-              : 'This page is intentionally simple for the MVP. It gives users a safe support destination without connecting incomplete support-ticket or chat-provider workflows.'}
+              : 'This page is intentionally simple for the MVP. It gives users a safe support destination while support-ticket and chat-provider workflows are still being configured.'}
           </p>
         </div>
 
@@ -179,7 +179,7 @@ export function ComingSoonPage({ title = 'Coming soon' }) {
           <div>
             <h3>Launch-safe guardrails</h3>
             <p>
-              This screen does not use fake customer data, does not trigger unfinished automations,
+              This screen does not use seeded customer records, does not trigger unfinished automations,
               and does not depend on unconfigured providers.
             </p>
           </div>
@@ -190,8 +190,8 @@ export function ComingSoonPage({ title = 'Coming soon' }) {
         <div className="coming-soon-guardrail-grid">
           <span>
             <CheckCircle2 size={16} />
-            <strong>No fake data</strong>
-            <small>Do not show sample records as if they are customer records.</small>
+            <strong>No seeded records</strong>
+            <small>Only show records created or imported for the current workspace.</small>
           </span>
 
           <span>
@@ -288,7 +288,7 @@ export function ComingSoonPage({ title = 'Coming soon' }) {
             </li>
             <li>
               <CheckCircle2 size={16} />
-              Add clean empty states instead of fake demo data.
+              Add clean empty states before production rollout.
             </li>
             <li>
               <CheckCircle2 size={16} />

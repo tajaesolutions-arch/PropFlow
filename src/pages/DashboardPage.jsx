@@ -463,7 +463,7 @@ export function DashboardPage() {
           <strong>{billingStatus.isRestricted ? 'Billing recovery required' : 'Billing grace period'}</strong>
           <span>{billingStatus.userMessage}</span>
           <button type="button" onClick={() => navigate('/billing')} data-skip-create-action="true">
-            Manage billing — Coming soon
+            Manage billing
           </button>
         </section>
       )}

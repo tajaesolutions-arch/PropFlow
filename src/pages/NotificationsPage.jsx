@@ -525,7 +525,7 @@ export function NotificationsPage() {
           <strong>{actionError ? 'Notification action needs attention' : !isSupabaseConfigured ? 'Supabase not configured' : !currentWorkspace?.id ? 'Workspace required' : notificationWarnings.length ? 'Notification load warning' : 'Notification updated'}</strong>
           <span>
             {actionError || (!isSupabaseConfigured
-              ? 'Local/demo mode is active. Real notification records will load after Supabase URL and anon key are configured.'
+              ? 'Setup required. Notification records will load after Supabase is configured for this environment.'
               : !currentWorkspace?.id
                 ? 'Select or create a workspace before loading notification records.'
                 : notificationWarnings.join(' ') || actionMessage)}

@@ -268,7 +268,7 @@ export function LandingPage() {
               <p className="eyebrow">MVP / pre-launch notice</p>
               <h3>Public pages are safe previews only.</h3>
               <p>
-                Live payments, public booking payments, provider integrations, and demo data are not exposed from this page.
+                Live payments, public booking payments, and provider integrations are not exposed from this page.
                 Use signup/login CTAs to enter the real workspace flow.
               </p>
             </div>
