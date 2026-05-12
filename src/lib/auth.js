@@ -44,8 +44,50 @@ export function getPostLoginPath(user) {
     return '/workspace-setup';
   }
 
-  const primaryRole = resolvePrimaryRole(user);
+  const primaryRole = resolvePrimaryRole(user.membership?.roles || user.roles);
 
+  return roleRedirects[primaryRole] || '/dashboard';
+}
+
+export function getActiveWorkspaceRoles(memberships = [], currentWorkspace = null, user = null) {
+  if (!currentWorkspace?.id) {
+    return Array.isArray(user?.roles) ? user.roles : [];
+  }
+
+  const activeMembership = Array.isArray(memberships)
+    ? memberships.find(
+        (membership) =>
+          membership.workspace_id === currentWorkspace.id && membership.status === 'active',
+      )
+    : null;
+
+  const fallbackMembership = user?.membership?.workspace_id === currentWorkspace.id ? user.membership : null;
+  const roles = activeMembership?.roles || fallbackMembership?.roles || [];
+  return Array.isArray(roles) ? roles : [];
+}
+
+export function resolveWorkspacePrimaryRole(user, memberships = [], currentWorkspace = null) {
+  if (canAccessPlatformAdmin(user)) return appRoles.ADMIN;
+
+  return resolvePrimaryRole(getActiveWorkspaceRoles(memberships, currentWorkspace, user));
+}
+
+export function hasAnyActiveWorkspaceRole(user, memberships = [], currentWorkspace = null, allowed = []) {
+  if (!Array.isArray(allowed)) return false;
+  if (canAccessPlatformAdmin(user) && allowed.includes(appRoles.ADMIN)) return true;
+
+  return getActiveWorkspaceRoles(memberships, currentWorkspace, user).some((role) =>
+    allowed.includes(role),
+  );
+}
+
+export function getWorkspacePostLoginPath(user, memberships = [], currentWorkspace = null) {
+  if (!user) return '/login';
+  if (user.status === 'suspended') return '/suspended';
+  if (canAccessPlatformAdmin(user)) return '/admin';
+  if (!currentWorkspace?.id) return getPostLoginPath(user);
+
+  const primaryRole = resolveWorkspacePrimaryRole(user, memberships, currentWorkspace);
   return roleRedirects[primaryRole] || '/dashboard';
 }
 
