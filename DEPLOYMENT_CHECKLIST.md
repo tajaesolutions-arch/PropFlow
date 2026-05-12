@@ -107,6 +107,7 @@ Server-only variables for current API routes and guarded provider stubs:
 APP_URL=https://<deployed-domain>
 SUPABASE_URL=
 SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY= # server-only; required by trusted API routes
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 STRIPE_PRICE_STARTER=
@@ -124,8 +125,8 @@ TWILIO_WHATSAPP_FROM=
 Notes:
 
 - Vercel automatically provides `VERCEL_URL`; set `APP_URL` to the canonical deployed origin used for API CORS.
-- Leave provider secrets blank until live Stripe/Resend/Twilio implementations are intentionally added.
-- Never set `SUPABASE_SERVICE_ROLE_KEY` in frontend/Vite env vars. Current API routes do not require it.
+- Leave optional provider secrets blank until live Stripe/Resend/Twilio workflows are intentionally enabled; missing providers return safe `provider_not_configured` responses where supported.
+- Never set `SUPABASE_SERVICE_ROLE_KEY` in frontend/Vite env vars. It is required only by trusted Vercel API routes such as public direct-booking request creation, Stripe webhooks, and transactional email workflow validation.
 
 ## 9. Deploy on Vercel
 

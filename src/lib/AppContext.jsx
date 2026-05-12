@@ -2725,7 +2725,12 @@ export function AppProvider({ children }) {
 
     const request = asArray(data.directBookingRequests).find((item) => item.id === requestId);
     if (!request) throw new Error('Select an existing direct booking request in this workspace.');
-    if (!['approved', 'under_review'].includes(request.status) && String(request.paymentStatus || request.payment_status || '').toLowerCase() !== 'paid') {
+    const requestPaymentStatus = String(request.paymentStatus || request.payment_status || 'not_required').toLowerCase();
+    const requiresClearedPayment = !['not_required', 'paid'].includes(requestPaymentStatus);
+    if (requiresClearedPayment) {
+      throw new Error('This direct booking request cannot be converted until payment is paid or marked not required.');
+    }
+    if (!['approved', 'under_review'].includes(request.status) && requestPaymentStatus !== 'paid') {
       throw new Error('Only approved, paid, or under-review direct booking requests can be converted.');
     }
     if (request.convertedBookingId || request.converted_booking_id) {
