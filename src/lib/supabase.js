@@ -24,6 +24,13 @@ function getPublicAppEnv() {
 
 export const appEnvironment = getPublicAppEnv();
 
+function getStorageConfiguredFlag() {
+  const value = import.meta.env.VITE_SUPABASE_STORAGE_CONFIGURED?.trim?.().toLowerCase();
+  return ['true', '1', 'yes'].includes(value);
+}
+
+export const isSupabaseStorageConfigured = getStorageConfiguredFlag();
+
 export const supabaseSetupStatus = Object.freeze({
   hasUrl: Boolean(supabaseUrl),
   hasAnonKey: Boolean(supabaseAnonKey),

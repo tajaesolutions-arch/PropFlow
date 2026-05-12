@@ -97,17 +97,20 @@ STRIPE_PRICE_STARTER=
 STRIPE_PRICE_PRO=
 STRIPE_PRICE_BUSINESS=
 RESEND_API_KEY=
+RESEND_FROM_EMAIL=
+RESEND_REPLY_TO_EMAIL=
+RESEND_ALLOW_NON_PRODUCTION_SENDS=false
 TWILIO_ACCOUNT_SID=
 TWILIO_AUTH_TOKEN=
 TWILIO_MESSAGING_SERVICE_SID=
 TWILIO_WHATSAPP_FROM=
 ```
 
-Do **not** expose Supabase service-role keys, Stripe secrets, Twilio tokens, or Resend API keys in any `VITE_*` variable or frontend code. Stripe Checkout and webhook processing now run only through server-side Vercel API routes; missing provider env vars return setup/provider-not-configured responses instead of crashing.
+Do **not** expose Supabase service-role keys, Stripe secrets, Twilio tokens, or Resend API keys in any `VITE_*` variable or frontend code. Never commit real keys. Stripe Checkout, webhook processing, and transactional email run only through server-side Vercel API routes; missing provider env vars return setup/provider-not-configured responses instead of crashing. Configure Vercel Preview and Production variables separately so test projects, live projects, and callback URLs are not mixed.
 
 ### Supabase migrations and founder admin bootstrap
 
-Apply every file in `supabase/migrations/` in ascending filename order, including the latest production-readiness patch. The full validation kit is in `DEPLOYMENT_CHECKLIST.md`, `SUPABASE_RUNTIME_TEST_PLAN.md`, `VERCEL_RUNTIME_TEST_PLAN.md`, and `MIGRATION_MANIFEST.md`.
+Apply every file in `supabase/migrations/` in ascending filename order, including the latest production-readiness patch. The full validation kit is in `DEPLOYMENT_CHECKLIST.md`, `SUPABASE_RUNTIME_TEST_PLAN.md`, `VERCEL_RUNTIME_TEST_PLAN.md`, `MIGRATION_MANIFEST.md`, and `docs/PRODUCTION_ENVIRONMENT_VERIFICATION.md`.
 
 ```text
 supabase/migrations/202605050001_propflow_schema.sql
@@ -777,6 +780,9 @@ STRIPE_PRICE_STARTER=
 STRIPE_PRICE_PRO=
 STRIPE_PRICE_BUSINESS=
 RESEND_API_KEY=
+RESEND_FROM_EMAIL=
+RESEND_REPLY_TO_EMAIL=
+RESEND_ALLOW_NON_PRODUCTION_SENDS=false
 TWILIO_ACCOUNT_SID=
 TWILIO_AUTH_TOKEN=
 TWILIO_MESSAGING_SERVICE_SID=

@@ -2,9 +2,9 @@ import React from 'react';
 import { AlertTriangle, CheckCircle2, CreditCard, Mail, MessageCircle, ShieldCheck } from 'lucide-react';
 
 import { StatusBadge } from './StatusBadge.jsx';
-import { isSupabaseConfigured } from '../lib/supabase.js';
+import { isSupabaseConfigured, isSupabaseStorageConfigured } from '../lib/supabase.js';
 
-function ProviderRow({ icon: Icon, name, status, description, requiredKeys }) {
+function ProviderRow({ icon: Icon, name, status, description, requiredKeys, showTechnicalDetails }) {
   const connected = status === 'connected';
 
   return (
@@ -16,7 +16,7 @@ function ProviderRow({ icon: Icon, name, status, description, requiredKeys }) {
       <span>
         <strong>{name}</strong>
         <small>{description}</small>
-        {requiredKeys?.length ? <code>{requiredKeys.join(', ')}</code> : null}
+        {showTechnicalDetails && requiredKeys?.length ? <code>{requiredKeys.join(', ')}</code> : null}
       </span>
 
       <StatusBadge tone={connected ? 'success' : 'warning'}>
@@ -26,7 +26,7 @@ function ProviderRow({ icon: Icon, name, status, description, requiredKeys }) {
   );
 }
 
-export function EnvironmentSetupNotice({ compact = false }) {
+export function EnvironmentSetupNotice({ compact = false, showTechnicalDetails = false }) {
   const providers = [
     {
       id: 'supabase',
@@ -34,16 +34,26 @@ export function EnvironmentSetupNotice({ compact = false }) {
       name: 'Supabase',
       status: isSupabaseConfigured ? 'connected' : 'missing',
       description: isSupabaseConfigured
-        ? 'Auth and database client are configured.'
-        : 'Add the public Supabase URL and anon key before using auth/database actions.',
+        ? 'Auth and database access are connected for this deployment.'
+        : 'Database access is not ready. Finish public Supabase setup before using workspace actions.',
       requiredKeys: ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY'],
+    },
+    {
+      id: 'storage',
+      icon: ShieldCheck,
+      name: 'Supabase Storage',
+      status: isSupabaseStorageConfigured ? 'connected' : 'missing',
+      description: isSupabaseStorageConfigured
+        ? 'Private workspace file storage is marked ready for uploads.'
+        : 'Private file storage is not marked ready yet. Complete the private bucket setup before production uploads.',
+      requiredKeys: ['VITE_SUPABASE_STORAGE_CONFIGURED'],
     },
     {
       id: 'stripe',
       icon: CreditCard,
       name: 'Stripe billing',
       status: 'missing',
-      description: 'Server-only API routes intentionally return Provider not configured until live Stripe is connected.',
+      description: 'Billing is safe when disconnected; checkout and portal actions show setup-required messaging until Stripe is connected.',
       requiredKeys: ['server-only Stripe env vars'],
     },
     {
@@ -51,7 +61,7 @@ export function EnvironmentSetupNotice({ compact = false }) {
       icon: Mail,
       name: 'Resend email',
       status: 'missing',
-      description: 'External email sends are not live. Keep Resend credentials server-only when implemented.',
+      description: 'Email notifications fail safely until the verified sender/domain and server-only credentials are connected.',
       requiredKeys: ['server-only Resend env vars'],
     },
     {
@@ -81,8 +91,8 @@ export function EnvironmentSetupNotice({ compact = false }) {
           <p className="eyebrow">Environment setup</p>
           <h3>Provider configuration status</h3>
           <p>
-            These checks are safe frontend indicators only. Do not expose provider secret keys in Vite
-            environment variables.
+            These checks are safe runtime indicators only. Provider secrets must stay server-only and must never
+            appear in browser-visible settings.
           </p>
         </div>
 
@@ -91,7 +101,7 @@ export function EnvironmentSetupNotice({ compact = false }) {
 
       <div className="environment-provider-list">
         {providers.map((provider) => (
-          <ProviderRow key={provider.id} {...provider} />
+          <ProviderRow key={provider.id} {...provider} showTechnicalDetails={showTechnicalDetails} />
         ))}
       </div>
     </section>

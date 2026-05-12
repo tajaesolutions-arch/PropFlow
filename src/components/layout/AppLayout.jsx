@@ -131,7 +131,7 @@ export function AppLayout({ title = 'Dashboard', subtitle = 'Workspace-scoped op
         <div className="page-content">
           {error && <section className="workspace-load-warning" role="alert"><strong>Workspace data warning</strong><span>{error}</span></section>}
           {canSeeBillingWarning && billingAccessState?.warning && <section className="workspace-load-warning" role="alert"><strong>{billingAccessState.restricted ? 'Billing recovery mode' : 'Billing grace period'}</strong><span>{billingAccessState.restricted ? 'Workspace access may be limited until billing is resolved. Billing recovery remains available to owners and accountants.' : 'Payment needs attention before the grace period ends.'}</span></section>}
-          {showEnvironmentSetupNotice && <EnvironmentSetupNotice compact />}
+          {showEnvironmentSetupNotice && <EnvironmentSetupNotice compact showTechnicalDetails={hasAnyRole(currentUser, [roles.ADMIN])} />}
           {showOnboardingSetupNotice && <OnboardingSetupNotice />}
           {showCalendarScheduleSafetyNotice && <CalendarScheduleSafetyNotice />}
           {showInventorySafetyNotice && <InventorySafetyNotice />}
