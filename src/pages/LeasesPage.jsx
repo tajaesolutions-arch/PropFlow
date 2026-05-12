@@ -316,7 +316,7 @@ export function LeasesPage() {
       </section>
 
       {!properties.length ? (
-        <EmptyState eyebrow="Leases" icon={Building2} title="Add a property before creating leases" description="Long-term leases must be tied to a real workspace property. No fake lease records are added." action={canManage ? <button type="button" className="primary" data-create-action="property"><Plus size={16} /> Add Property</button> : null} />
+        <EmptyState eyebrow="Leases" icon={Building2} title="Add a property before creating leases" description="Long-term leases must be tied to an existing workspace property." action={canManage ? <button type="button" className="primary" data-create-action="property"><Plus size={16} /> Add Property</button> : null} />
       ) : !leases.length ? (
         <EmptyState eyebrow="Leases" icon={FileText} title="No leases yet" description="Create your first manual long-term lease record. Tenant contacts can be linked safely through the CRM." action={canManage ? <button type="button" className="primary" data-create-action="lease"><Plus size={16} /> Add Lease</button> : null} />
       ) : (
@@ -344,8 +344,8 @@ export function LeasesPage() {
       <section className="card">
         <div className="card-header">
           <div>
-            <h3>Lease document placeholder</h3>
-            <p>Lease document upload uses the private Files module and can be linked after upload. No public lease documents, e-signature, or generated contracts are enabled.</p>
+            <h3>Lease document setup</h3>
+            <p>Lease document upload uses the private Files module and can be linked after upload. Public lease documents, e-signature, and generated contracts are not active yet.</p>
           </div>
           <button type="button" onClick={() => navigate('/files')} data-skip-create-action="true"><FileText size={16} /> Open Files</button>
         </div>

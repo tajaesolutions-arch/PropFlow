@@ -9,7 +9,7 @@ import { StatusBadge } from './StatusBadge.jsx';
 const managerRoles = [roles.ADMIN, roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
 const ownerViewRoles = [roles.OWNER];
 
-const reportPlaceholders = [
+const reportSetupStates = [
   {
     title: 'Owner reports',
     description: 'Owner statements, assigned-property summaries, owner payout, maintenance, and cleaning history.',
@@ -36,14 +36,14 @@ const reportPlaceholders = [
   },
 ];
 
-function getVisiblePlaceholders(currentUser) {
-  return reportPlaceholders.filter((item) => hasAnyRole(currentUser, item.roles));
+function getVisibleSetupStates(currentUser) {
+  return reportSetupStates.filter((item) => hasAnyRole(currentUser, item.roles));
 }
 
 export function ReportsExportNotice() {
   const { currentUser } = useApp();
   const primaryRole = resolvePrimaryRole(currentUser);
-  const visiblePlaceholders = getVisiblePlaceholders(currentUser);
+  const visibleSetupStates = getVisibleSetupStates(currentUser);
   const canManageReports = hasAnyRole(currentUser, managerRoles);
 
   return (
@@ -85,7 +85,7 @@ export function ReportsExportNotice() {
             <strong>Role visibility</strong>
             <small>
               {canManageReports
-                ? 'This role can view operational/financial report placeholders.'
+                ? 'This role can view operational/financial report setup states.'
                 : 'This role should only see assigned-property report information.'}
             </small>
           </span>
@@ -93,8 +93,8 @@ export function ReportsExportNotice() {
         </div>
       </div>
 
-      <div className="reports-placeholder-grid" aria-label="Report placeholders by role">
-        {visiblePlaceholders.map((item) => {
+      <div className="reports-placeholder-grid" aria-label="Report setup states by role">
+        {visibleSetupStates.map((item) => {
           const Icon = item.icon;
 
           return (

@@ -53,7 +53,7 @@ export function TeamWorkspaceSafetyNotice() {
           <p className="eyebrow">Workspace and team safety</p>
           <h3>Team management readiness for {workspaceName}</h3>
           <p>
-            Team and invite UI is placeholder-safe until invite email delivery, invite-token handling,
+            Team and invite UI is setup-gated until invite email delivery, invite-token handling,
             suspension controls, and backend role enforcement are fully connected.
           </p>
         </div>
@@ -65,7 +65,7 @@ export function TeamWorkspaceSafetyNotice() {
           <Users size={18} />
           <span>
             <strong>Workspace members</strong>
-            <small>{membersCount ? `${membersCount} member record${membersCount === 1 ? '' : 's'} available for this workspace.` : 'No workspace member records found yet. Show a clean empty state and invite placeholder.'}</small>
+            <small>{membersCount ? `${membersCount} member record${membersCount === 1 ? '' : 's'} available for this workspace.` : 'No workspace member records found yet. Show a clean empty state and invite setup state.'}</small>
           </span>
           <StatusBadge tone={membersCount ? 'info' : 'warning'}>{membersCount ? 'workspace scoped' : 'empty'}</StatusBadge>
         </div>
@@ -76,14 +76,14 @@ export function TeamWorkspaceSafetyNotice() {
             <strong>Invite team member</strong>
             <small>Invite emails are not connected yet. Do not expose invite tokens, raw workspace codes, or secret links in the UI.</small>
           </span>
-          <StatusBadge tone="warning">placeholder</StatusBadge>
+          <StatusBadge tone="warning">setup state</StatusBadge>
         </div>
 
         <div className="team-workspace-card">
           <Clock size={18} />
           <span>
             <strong>Invite status</strong>
-            <small>Pending, accepted, and expired invite states should remain placeholders until invite records are connected.</small>
+            <small>Pending, accepted, and expired invite states should remain setup states until invite records are connected.</small>
           </span>
           <StatusBadge tone="info">pending model</StatusBadge>
         </div>
@@ -94,7 +94,7 @@ export function TeamWorkspaceSafetyNotice() {
             <strong>Suspended users</strong>
             <small>Suspended users should only access account recovery or suspension information, not workspace operations.</small>
           </span>
-          <StatusBadge tone="warning">policy placeholder</StatusBadge>
+          <StatusBadge tone="warning">policy setup state</StatusBadge>
         </div>
 
         <div className="team-workspace-card">
@@ -116,7 +116,7 @@ export function TeamWorkspaceSafetyNotice() {
         </div>
       </div>
 
-      <div className="team-role-grid" aria-label="Team role permission placeholders">
+      <div className="team-role-grid" aria-label="Team role permission setup states">
         <div className="team-role-card">
           <UserCheck size={17} />
           <span>

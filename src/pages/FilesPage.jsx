@@ -410,7 +410,7 @@ export function FilesPage() {
             compact
             icon={FileText}
             title="Private uploads will appear here"
-            description="No fake or demo files are added. Upload a property document/photo or use cleaning, maintenance, expense, and report workflows after Supabase migrations and the private bucket are ready."
+            description="Private workspace files will appear after uploads are enabled for documents, property photos, cleaning, maintenance, expenses, and reports."
           />
         )}
       </section>

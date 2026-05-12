@@ -94,7 +94,7 @@ export function OnboardingSetupNotice() {
     },
     {
       title: 'Choose subscription plan',
-      description: 'Keep the plan placeholder visible until Stripe checkout is connected.',
+      description: 'Keep the selected plan visible while Stripe checkout is being configured.',
       icon: CreditCard,
       complete: hasPlan,
       action: 'Open Billing',
@@ -112,7 +112,7 @@ export function OnboardingSetupNotice() {
           <p className="eyebrow">Workspace setup</p>
           <h3>Setup progress for {workspaceName}</h3>
           <p>
-            Use real workspace records only. This checklist reflects existing workspace data and does not create demo data.
+            Use real workspace records only. This checklist reflects existing workspace data and does not create seeded records.
           </p>
         </div>
         <StatusBadge tone={completedSteps === steps.length ? 'success' : 'warning'}>

@@ -62,7 +62,7 @@ export function BillingSafetyNotice() {
             </small>
           </span>
           <StatusBadge tone={stripeConfigured ? 'success' : 'warning'}>
-            {stripeConfigured ? 'live' : 'provider_not_configured'}
+            {stripeConfigured ? 'live' : 'Provider not configured'}
           </StatusBadge>
         </div>
 
@@ -73,10 +73,10 @@ export function BillingSafetyNotice() {
             <small>
               {subscription
                 ? 'Subscription data exists for this workspace. Stripe webhook sync still needs backend validation.'
-                : 'No subscription record found. Trial/subscription status remains a placeholder until backend billing is connected.'}
+                : 'No subscription record found. Trial/subscription status remains a setup state until backend billing is connected.'}
             </small>
           </span>
-          <StatusBadge tone={subscription ? 'info' : 'warning'}>{subscription?.status || 'placeholder'}</StatusBadge>
+          <StatusBadge tone={subscription ? 'info' : 'warning'}>{subscription?.status || 'setup state'}</StatusBadge>
         </div>
 
         <div className="billing-safety-card">
@@ -87,7 +87,7 @@ export function BillingSafetyNotice() {
               Failed-payment recovery should use a 7-day grace period, owner/admin warnings, and restricted staff access after expiry.
             </small>
           </span>
-          <StatusBadge tone="warning">policy placeholder</StatusBadge>
+          <StatusBadge tone="warning">policy setup state</StatusBadge>
         </div>
 
         <div className="billing-safety-card">

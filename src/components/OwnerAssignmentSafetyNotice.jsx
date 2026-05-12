@@ -100,7 +100,7 @@ export function OwnerAssignmentSafetyNotice() {
           <p className="eyebrow">Owner/property assignment safety</p>
           <h3>Assigned-property visibility and owner access</h3>
           <p>
-            Owner-facing screens should only show assigned-property data. Assignment controls stay placeholder-safe until backend ownership rules and RLS are implemented.
+            Owner-facing screens should only show assigned-property data. Assignment controls stay setup-gated until backend ownership rules and RLS are implemented.
           </p>
         </div>
         <UserRound size={22} className="muted" />
@@ -140,9 +140,9 @@ export function OwnerAssignmentSafetyNotice() {
           <FileText size={18} />
           <span>
             <strong>Owner reports</strong>
-            <small>{ownerReportsCount ? `${ownerReportsCount} visible owner report record${ownerReportsCount === 1 ? '' : 's'} found. Reports must stay assigned-property scoped.` : 'Owner report visibility remains placeholder-safe until report publishing is connected.'}</small>
+            <small>{ownerReportsCount ? `${ownerReportsCount} visible owner report record${ownerReportsCount === 1 ? '' : 's'} found. Reports must stay assigned-property scoped.` : 'Owner report visibility remains setup-gated until report publishing is connected.'}</small>
           </span>
-          <StatusBadge tone={ownerReportsCount ? 'info' : 'warning'}>{ownerReportsCount ? 'visible scope' : 'placeholder'}</StatusBadge>
+          <StatusBadge tone={ownerReportsCount ? 'info' : 'warning'}>{ownerReportsCount ? 'visible scope' : 'setup state'}</StatusBadge>
         </div>
 
         <div className="owner-assignment-card">

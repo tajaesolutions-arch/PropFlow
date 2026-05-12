@@ -223,7 +223,7 @@ export function BillingPage() {
         <div className="card-header">
           <div>
             <h3>Plans and safe checkout</h3>
-            <p>Plan changes call guarded backend endpoints. Missing Stripe env vars return provider-not-configured; no fake success state is shown.</p>
+            <p>Plan changes call guarded backend endpoints. Incomplete Stripe setup returns provider-not-configured; no unsupported success state is shown.</p>
           </div>
           <Sparkles size={20} className="muted" />
         </div>
@@ -244,7 +244,7 @@ export function BillingPage() {
                 </ul>
                 {canManageBilling && (
                   <button className="primary" type="button" disabled={Boolean(busyAction) || plan.key === currentPlan} onClick={() => runAction(`checkout-${plan.key}`, () => startCheckout(plan.key))} data-skip-create-action="true">
-                    {plan.key === currentPlan ? 'Current plan' : 'Choose plan — Coming soon'}
+                    {plan.key === currentPlan ? 'Current plan' : 'Choose plan'}
                   </button>
                 )}
                 {!canManageBilling && <small className="helper">Accountants can review billing but cannot change plans.</small>}

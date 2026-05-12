@@ -389,8 +389,7 @@ export function GuestsPage() {
         <div>
           <h3>Guest CRM</h3>
           <p>
-            Guest records are built from real bookings and guest contacts. No fake guest data is
-            shown in production workflows.
+            Guest records are built from bookings and guest contacts created in this workspace.
           </p>
         </div>
 
@@ -560,7 +559,7 @@ export function GuestsPage() {
           description={
             guestRows.length
               ? 'Adjust your search, source, payment-status, or status filters.'
-              : 'Guest CRM records will appear after bookings or guest contacts are added. No fake guest data is shown.'
+              : 'Guest CRM records will appear after bookings or guest contacts are added. No seeded guest records are shown.'
           }
           action={
             canManageGuests ? (

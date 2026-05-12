@@ -150,7 +150,7 @@ export function ExpensesPage() {
   return (
     <AppLayout
       title="Expenses"
-      subtitle="Workspace-scoped manual expense tracking with exports and accounting automation kept placeholder-safe."
+      subtitle="Workspace-scoped manual expense tracking with exports and accounting automation setup-gated."
     >
       <section className="card finance-safety-notice">
         <div className="card-header">
@@ -187,7 +187,7 @@ export function ExpensesPage() {
         <article className="card finance-safety-card">
           <div className="finance-safety-card-icon"><CalendarDays size={18} /></div>
           <div><h3>Receipt upload pending</h3><p>Private receipt storage will be connected later.</p></div>
-          <StatusBadge tone="info">placeholder</StatusBadge>
+          <StatusBadge tone="info">setup required</StatusBadge>
         </article>
       </section>
 
@@ -197,7 +197,7 @@ export function ExpensesPage() {
           <p>{canCreateExpenses ? 'Add a manual expense with the shared create modal.' : 'Your role is read-only for expense records.'}</p>
         </div>
         <div className="reports-toolbar-actions">
-          <button type="button" className="primary" disabled={!canCreateExpenses}>
+          <button type="button" className="primary" data-create-action="expense" disabled={!canCreateExpenses} title={canCreateExpenses ? 'Add a manual expense' : 'Your role is read-only for expense records.'}>
             <Plus size={16} /> Add Expense
           </button>
           <button type="button" disabled data-skip-create-action="true" title="CSV export will be connected after backend export generation is added.">
@@ -232,7 +232,7 @@ export function ExpensesPage() {
         <div className="card-header">
           <div>
             <h3>Expense ledger</h3>
-            <p>Manual expense records for the selected workspace. No fake/demo expenses are generated.</p>
+            <p>Manual expense records for the selected workspace appear here after they are added.</p>
           </div>
           <StatusBadge tone="success">Supabase-backed</StatusBadge>
         </div>

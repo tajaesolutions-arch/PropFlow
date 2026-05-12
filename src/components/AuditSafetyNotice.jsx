@@ -39,7 +39,7 @@ export function AuditSafetyNotice() {
           <p className="eyebrow">Activity log and audit history</p>
           <h3>Audit logging safety status</h3>
           <p>
-            Audit history is placeholder-safe until real append-only audit logging, workspace scoping,
+            Audit history is setup-gated until real append-only audit logging, workspace scoping,
             and role-based audit visibility are implemented in the backend.
           </p>
         </div>
@@ -77,14 +77,14 @@ export function AuditSafetyNotice() {
         </div>
       </div>
 
-      <div className="audit-visibility-grid" aria-label="Audit visibility placeholders">
+      <div className="audit-visibility-grid" aria-label="Audit visibility setup states">
         <div className="audit-visibility-card">
           <ShieldCheck size={17} />
           <span>
             <strong>PropFlow Admin audit view</strong>
             <small>Platform-wide audit visibility should be internal-only and never exposed to customer roles.</small>
           </span>
-          <StatusBadge tone={isPlatformAuditRole ? 'success' : 'info'}>platform placeholder</StatusBadge>
+          <StatusBadge tone={isPlatformAuditRole ? 'success' : 'info'}>platform setup state</StatusBadge>
         </div>
 
         <div className="audit-visibility-card">
@@ -93,7 +93,7 @@ export function AuditSafetyNotice() {
             <strong>Workspace Owner audit view</strong>
             <small>Workspace audit history should show only events for the active workspace/company.</small>
           </span>
-          <StatusBadge tone="info">workspace placeholder</StatusBadge>
+          <StatusBadge tone="info">workspace setup state</StatusBadge>
         </div>
 
         <div className="audit-visibility-card">

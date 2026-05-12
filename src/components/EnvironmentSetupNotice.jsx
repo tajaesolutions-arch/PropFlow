@@ -20,7 +20,7 @@ function ProviderRow({ icon: Icon, name, status, description, requiredKeys }) {
       </span>
 
       <StatusBadge tone={connected ? 'success' : 'warning'}>
-        {connected ? 'connected' : 'provider_not_configured'}
+        {connected ? 'connected' : 'Provider not configured'}
       </StatusBadge>
     </div>
   );
@@ -43,7 +43,7 @@ export function EnvironmentSetupNotice({ compact = false }) {
       icon: CreditCard,
       name: 'Stripe billing',
       status: 'missing',
-      description: 'Server-only API routes intentionally return provider_not_configured until live Stripe is implemented.',
+      description: 'Server-only API routes intentionally return Provider not configured until live Stripe is connected.',
       requiredKeys: ['server-only Stripe env vars'],
     },
     {

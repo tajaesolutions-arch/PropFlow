@@ -203,13 +203,13 @@ export const directBookingRequestStatuses = [
 export const directBookingPaymentModes = [
   ['none', 'No online payment'],
   ['full_payment', 'Full payment via Stripe Checkout'],
-  ['full_payment_placeholder', 'Full payment placeholder'],
+  ['full_payment_placeholder', 'Full payment setup required'],
 ];
 
 export const directBookingConfirmationModes = [
   ['manual_approval', 'Manual approval'],
   ['instant_booking', 'Instant booking after payment'],
-  ['instant_booking_placeholder', 'Instant booking placeholder'],
+  ['instant_booking_placeholder', 'Instant booking setup required'],
 ];
 
 export const directBookingInquiryTypes = [

@@ -246,7 +246,7 @@ export function NotificationSettingsPage() {
       <section className="stat-grid dense">
         <StatCard label="Preference groups" value={preferenceRows.length} subtitle="Workspace/user scoped" icon={Bell} />
         <StatCard label="In-app enabled" value={`${enabledInApp}/${preferenceRows.length}`} subtitle="Real notification records" icon={ShieldCheck} />
-        <StatCard label="External providers" value={`${configuredExternal}/3`} subtitle="Provider-safe placeholders" icon={MessageSquare} tone={configuredExternal ? 'success' : 'warning'} />
+        <StatCard label="External providers" value={`${configuredExternal}/3`} subtitle="Provider-safe setup states" icon={MessageSquare} tone={configuredExternal ? 'success' : 'warning'} />
         <StatCard label="Delivery logs" value={deliveryLogs.length} subtitle="Queued/skipped/provider status" icon={Save} />
       </section>
 
@@ -272,7 +272,7 @@ export function NotificationSettingsPage() {
         <div className="card-header">
           <div>
             <h3>Event preferences</h3>
-            <p>Saved per user and workspace when Supabase is connected. In-app defaults to enabled; external channels remain provider-safe placeholders.</p>
+            <p>Saved per user and workspace when Supabase is connected. In-app defaults to enabled; external channels remain provider-safe setup states.</p>
           </div>
           <Bell size={20} className="muted" />
         </div>
@@ -351,7 +351,7 @@ export function NotificationSettingsPage() {
               ))}
             </div>
           ) : (
-            <EmptyState compact icon={Bell} title="No delivery logs yet" description="Delivery rows will appear when real in-app notifications are created. External channels will be skipped or marked provider_not_configured until providers are connected server-side." />
+            <EmptyState compact icon={Bell} title="No delivery logs yet" description="Delivery rows will appear when real in-app notifications are created. External channels will be skipped or marked provider not configured until providers are connected server-side." />
           )}
         </section>
       </section>

@@ -44,7 +44,7 @@ export function SettingsAccountSafetyNotice() {
           <p className="eyebrow">Settings safety</p>
           <h3>Account and workspace settings readiness</h3>
           <p>
-            Settings UI is placeholder-safe until profile editing, password changes, notification preferences,
+            Settings UI is setup-gated until profile editing, password changes, notification preferences,
             currency updates, and role permission writes are connected through secure backend flows.
           </p>
         </div>
@@ -58,7 +58,7 @@ export function SettingsAccountSafetyNotice() {
             <strong>Profile editing</strong>
             <small>Profile information can be displayed, but save/update writes should remain disabled until a safe account update flow exists.</small>
           </span>
-          <StatusBadge tone="warning">placeholder</StatusBadge>
+          <StatusBadge tone="warning">setup required</StatusBadge>
         </div>
 
         <div className="settings-account-card">
@@ -74,7 +74,7 @@ export function SettingsAccountSafetyNotice() {
           <Bell size={18} />
           <span>
             <strong>Notification preferences</strong>
-            <small>Email, SMS, WhatsApp, and in-app preferences should stay placeholder-safe until provider settings are stored securely.</small>
+            <small>Email, SMS, WhatsApp, and in-app preferences should stay setup-gated until provider settings are stored securely.</small>
           </span>
           <StatusBadge tone="info">preference model pending</StatusBadge>
         </div>
@@ -113,7 +113,7 @@ export function SettingsAccountSafetyNotice() {
 
       <div className="helper settings-account-helper">
         <Save size={16} />
-        Save buttons should stay disabled or placeholder-only until backend validation, workspace scoping, RLS, and audit logging are implemented.
+        Save buttons should stay disabled or setup-gated until backend validation, workspace scoping, RLS, and audit logging are implemented.
       </div>
     </section>
   );

@@ -108,7 +108,7 @@ function SetupWarning({ data, isSupabaseConfigured }) {
         <ShieldAlert size={22} className="muted" />
       </div>
       <div className="helper error-helper">
-        Apply <code>supabase/migrations/202605100019_platform_admin_foundation.sql</code> and bootstrap the founder profile with <code>profiles.is_propflow_admin = true</code>. No demo metrics are shown here.
+        Apply <code>supabase/migrations/202605100019_platform_admin_foundation.sql</code> and bootstrap the founder profile with <code>profiles.is_propflow_admin = true</code>. No local metrics are shown here.
       </div>
     </section>
   );
@@ -201,7 +201,7 @@ function WorkspaceDetailDrawer({ detail, onClose, onStatus, onNote, busy }) {
           <div><span>Review</span><StatusBadge tone={statusTone(workspace.platform_review_status)}>{workspace.platform_review_status}</StatusBadge></div>
           <div><span>Subscription</span><StatusBadge tone={getBillingStatus(detail.subscription).tone}>{getBillingStatus(detail.subscription).label}</StatusBadge></div>
           <div><span>Plan</span><strong>{detail.subscription?.plan || '—'}</strong></div>
-          <div><span>Stripe actions</span><strong>Placeholder only</strong></div>
+          <div><span>Stripe actions</span><strong>Setup state only</strong></div>
         </div>
 
         <div className="admin-control-grid compact-controls">
@@ -454,7 +454,7 @@ export function AdminDashboardPage() {
       </section>
 
       <section className="card">
-        <div className="card-header"><div><h3>User/account management</h3><p>Safe account status review. Password resets and auth-secret views are intentionally not implemented here.</p></div></div>
+        <div className="card-header"><div><h3>User/account management</h3><p>Safe account status review. Password resets and auth-secret views are intentionally not available here.</p></div></div>
         <DataTable rows={users} empty="No platform users returned." columns={[
           { key: 'name', label: 'Name', render: (row) => <span><strong>{row.full_name || row.email || 'PropFlow user'}</strong><small>{row.email || '—'}</small></span> },
           { key: 'account_status', label: 'Account', render: (row) => <StatusBadge tone={statusTone(row.account_status)}>{row.account_status || 'active'}</StatusBadge> },
@@ -469,7 +469,7 @@ export function AdminDashboardPage() {
 
       <section className="admin-two-column">
         <section className="card">
-          <div className="card-header"><div><h3>Subscriptions / billing review</h3><p>Billing risk monitor only. No fake Stripe actions or secret keys are exposed.</p></div><CreditCard size={22} className="muted" /></div>
+          <div className="card-header"><div><h3>Subscriptions / billing review</h3><p>Billing risk monitor only. No unsupported Stripe actions or secret keys are exposed.</p></div><CreditCard size={22} className="muted" /></div>
           <div className="admin-health-list">
             {Object.entries(subscriptionCounts).length ? Object.entries(subscriptionCounts).map(([status, count]) => (
               <div className="health-row" key={status}><span>{status.replaceAll('_', ' ')}</span><StatusBadge tone={statusTone(status)}>{numberValue(count)}</StatusBadge></div>

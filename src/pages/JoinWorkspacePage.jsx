@@ -537,8 +537,8 @@ export function JoinWorkspacePage() {
 
           <WorkspaceSetupFeature
             icon={CheckCircle2}
-            title="No fake setup data"
-            description="New workspaces should start clean and use real customer-entered records only."
+            title="Clean workspace setup"
+            description="New workspaces start clean and use records your team creates or imports."
           />
         </section>
       </div>

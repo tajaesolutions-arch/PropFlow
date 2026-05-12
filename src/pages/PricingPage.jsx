@@ -171,7 +171,7 @@ export function PricingPage() {
           <div>
             <Sparkles size={20} />
             <span>
-              <strong>14-day trial, no fake free plan</strong>
+              <strong>14-day trial, paid plans</strong>
               <small>Use a trial to attract serious users and reduce launch support load after billing is connected.</small>
             </span>
           </div>
@@ -271,7 +271,7 @@ export function PricingPage() {
               <span>
                 <CreditCard size={16} />
                 <strong>Stripe checkout</strong>
-                <small>Server-side Checkout Session endpoint ready; provider-not-configured until backend env is set</small>
+                <small>Server-side Checkout Session endpoint ready; provider setup required before checkout goes live</small>
               </span>
 
               <span>
