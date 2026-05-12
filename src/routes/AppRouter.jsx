@@ -120,6 +120,8 @@ const calendarManagerRoles = operationalRoles;
 const directBookingManagerRoles = operationalRoles;
 const calendarImportManagerRoles = operationalRoles;
 
+const AUTH_LOADING_RECOVERY_MS = 12000;
+
 const roleDashboardPaths = new Set([
   '/dashboard',
   '/owner-dashboard',
@@ -178,8 +180,8 @@ const protectedRoutes = {
   },
   '/help': {
     Page: ComingSoonPage,
-    props: { title: 'Help / Support' },
     access: allWorkspaceRoles,
+    props: { title: 'Help / Support' },
   },
 };
 
@@ -252,6 +254,46 @@ function LoadingScreen({
             <Lock size={16} />
             Role permissions
           </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LoadingRecoveryScreen() {
+  return (
+    <div className="auth-page router-state-page router-error-page">
+      <div className="auth-card wide router-state-card">
+        <div className="router-state-icon warning">
+          <ShieldAlert size={30} />
+        </div>
+
+        <p className="eyebrow">Loading recovery</p>
+        <h1>PropFlow is taking longer than expected</h1>
+        <p>
+          The app is still checking your session and workspace access. This can happen after a
+          network interruption, Supabase configuration issue, or stale browser session.
+        </p>
+
+        <div className="helper error-helper">
+          Your data is still protected. Try reloading first. If the issue continues, return to login
+          and start a fresh session.
+        </div>
+
+        <div className="router-error-actions">
+          <button type="button" className="primary" onClick={() => window.location.reload()}>
+            <RefreshCw size={16} />
+            Retry loading
+          </button>
+
+          <button type="button" onClick={() => navigate('/login')}>
+            Go to login
+          </button>
+
+          <button type="button" onClick={() => navigate('/')}>
+            <Home size={16} />
+            Go to homepage
+          </button>
         </div>
       </div>
     </div>
@@ -462,6 +504,7 @@ function RoleGuard({ allowed, children }) {
 
 export function AppRouter() {
   const [, forceRender] = React.useReducer((x) => x + 1, 0);
+  const [loadingTimedOut, setLoadingTimedOut] = React.useState(false);
   const { authLoading, currentUser, currentWorkspace, memberships, data } = useApp();
 
   React.useEffect(() => {
@@ -472,10 +515,27 @@ export function AppRouter() {
     };
   }, []);
 
+  React.useEffect(() => {
+    if (!authLoading) {
+      setLoadingTimedOut(false);
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setLoadingTimedOut(true);
+    }, AUTH_LOADING_RECOVERY_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [authLoading]);
+
   const path = normalizePath(window.location.pathname);
   const propertyId = getPropertyIdFromPath(path);
 
-  if (authLoading) return <LoadingScreen />;
+  if (authLoading) {
+    return loadingTimedOut ? <LoadingRecoveryScreen /> : <LoadingScreen />;
+  }
 
   if (path === '/login/redirect') {
     return <RedirectTo to={getWorkspacePostLoginPath(currentUser, memberships, currentWorkspace)} />;
