@@ -56,7 +56,7 @@ export function SignupPage() {
     }
 
     if (!isSupabaseConfigured) {
-      setMessage('Supabase is not configured. Add env vars before creating real accounts.');
+      setMessage('Account creation is not connected for this deployment yet. Ask PropFlow support to finish authentication setup.');
       return;
     }
 
@@ -107,8 +107,7 @@ export function SignupPage() {
         {!isSupabaseConfigured && (
           <div className="helper error-helper">
             <Lock size={16} />
-            Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY before
-            creating real accounts.
+            Account creation is not connected for this deployment yet. Ask PropFlow support to finish authentication setup.
           </div>
         )}
 

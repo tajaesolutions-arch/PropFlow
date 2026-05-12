@@ -62,7 +62,7 @@ export function FileUploadDropzone({ fileType = 'general_document', disabled = f
         <span className="file-upload-icon">{uploading ? <Loader2 size={18} className="spin" /> : <FileUp size={18} />}</span>
         <span>
           <strong>{uploading ? 'Uploading privately…' : 'Choose a private file'}</strong>
-          <small>JPEG, PNG, WebP images up to 10 MB. PDF, DOCX, XLSX documents up to 25 MB. Video uploads coming soon.</small>
+          <small>Supported now: JPEG, PNG, and WebP images up to 10 MB; PDF, DOCX, and XLSX documents up to 25 MB. Videos are not accepted in this upload flow.</small>
         </span>
       </button>
 

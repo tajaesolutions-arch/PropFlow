@@ -1235,14 +1235,21 @@ export function BookingsPage() {
           }
           action={
             canManage ? (
-              <button type="button" className="primary" data-create-action="booking">
-                <Plus size={16} />
-                Add Booking
-              </button>
+              properties.length ? (
+                <button type="button" className="primary" data-create-action="booking">
+                  <Plus size={16} />
+                  Add Booking
+                </button>
+              ) : (
+                <button type="button" className="primary" data-create-action="property">
+                  <Plus size={16} />
+                  Add Property
+                </button>
+              )
             ) : null
           }
           secondaryAction={
-            canManage ? (
+            canManage && properties.length ? (
               <button
                 type="button"
                 onClick={() => setCreatingLease(true)}

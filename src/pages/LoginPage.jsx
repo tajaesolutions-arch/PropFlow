@@ -43,7 +43,7 @@ export function LoginPage() {
 
     if (!isSupabaseConfigured) {
       setMessage(
-        'Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to use real authentication.',
+        'Authentication is not connected for this deployment yet. Ask a workspace owner or PropFlow support to finish setup.',
       );
       return;
     }
@@ -91,7 +91,7 @@ export function LoginPage() {
         {!isSupabaseConfigured && (
           <div className="helper error-helper">
             <Lock size={16} />
-            Supabase is not configured. Demo login has been removed from production UI.
+            Authentication is not connected for this deployment yet. Demo login is not available in production.
           </div>
         )}
 

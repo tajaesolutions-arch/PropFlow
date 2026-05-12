@@ -181,8 +181,8 @@ export function ExpensesPage() {
         </article>
         <article className="card finance-safety-card">
           <div className="finance-safety-card-icon"><Download size={18} /></div>
-          <div><h3>Exports disabled</h3><p>Backend CSV/PDF generation is coming later.</p></div>
-          <StatusBadge tone="warning">coming soon</StatusBadge>
+          <div><h3>Exports disabled</h3><p>CSV/PDF generation is unavailable until the approved export service is connected.</p></div>
+          <StatusBadge tone="warning">unavailable</StatusBadge>
         </article>
         <article className="card finance-safety-card">
           <div className="finance-safety-card-icon"><CalendarDays size={18} /></div>
@@ -200,11 +200,11 @@ export function ExpensesPage() {
           <button type="button" className="primary" data-create-action="expense" disabled={!canCreateExpenses} title={canCreateExpenses ? 'Add a manual expense' : 'Your role is read-only for expense records.'}>
             <Plus size={16} /> Add Expense
           </button>
-          <button type="button" disabled data-skip-create-action="true" title="CSV export will be connected after backend export generation is added.">
-            <Download size={16} /> CSV coming soon
+          <button type="button" disabled data-skip-create-action="true" title="CSV export is disabled until approved backend export generation is connected.">
+            <Download size={16} /> CSV unavailable
           </button>
-          <button type="button" disabled data-skip-create-action="true" title="PDF export will be connected after backend export generation is added.">
-            <FileText size={16} /> PDF coming soon
+          <button type="button" disabled data-skip-create-action="true" title="PDF export is disabled until approved backend export generation is connected.">
+            <FileText size={16} /> PDF unavailable
           </button>
         </div>
       </section>

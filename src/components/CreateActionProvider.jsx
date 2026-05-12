@@ -525,6 +525,15 @@ function ModalShell({ action, error, children, onClose, submitting }) {
   );
 }
 
+
+function FormGuidance({ children }) {
+  return (
+    <div className="modal-guidance" role="note">
+      {children}
+    </div>
+  );
+}
+
 function EmptyDependencyNotice({ message }) {
   return (
     <div className="modal-warning" role="status">
@@ -671,6 +680,8 @@ function PropertyForm({ app, close, submitting, setSubmitting, setError, notifyS
     <form className="modal-form" onSubmit={submit} noValidate>
       <div className="modal-body">
         <WorkspaceBlockedNotice app={app} />
+
+        <FormGuidance>Property name, address/location, property type, rental type, status, and currency are required. Rates, owner assignment, size, and notes can be added now or later.</FormGuidance>
 
         <div className="form-grid">
           <label>
@@ -969,8 +980,10 @@ function BookingForm({ app, close, submitting, setSubmitting, setError, notifySu
         <WorkspaceBlockedNotice app={app} />
 
         {!properties.length && (
-          <EmptyDependencyNotice message="Add your first property before creating bookings." />
+          <EmptyDependencyNotice message="Add your first property before creating bookings. Bookings must be connected to a real workspace property." />
         )}
+
+        <FormGuidance>Required: guest name, property, check-in, check-out, booking source, booking status, payment status, currency, and total amount when known. Optional contact and fee fields can stay blank without blocking save.</FormGuidance>
 
         <div className="form-grid">
           <label>
@@ -1107,8 +1120,8 @@ function BookingForm({ app, close, submitting, setSubmitting, setError, notifySu
         <button type="button" onClick={close} disabled={submitting} data-skip-create-action="true">
           Cancel
         </button>
-        <button className="primary" type="submit" disabled={submitting} data-skip-create-action="true">
-          {submitting ? 'Saving…' : 'Save booking'}
+        <button className="primary" type="submit" disabled={submitting || !properties.length} data-skip-create-action="true">
+          {submitting ? 'Saving…' : properties.length ? 'Save booking' : 'Add a property first'}
         </button>
       </footer>
     </form>
@@ -1518,8 +1531,14 @@ function CleaningForm({ app, close, submitting, setSubmitting, setError, notifyS
         <WorkspaceBlockedNotice app={app} />
 
         {!properties.length && (
-          <EmptyDependencyNotice message="Add your first property before creating cleaning tasks." />
+          <EmptyDependencyNotice message="Add your first property before creating cleaning tasks. Cleaning work must be connected to a real workspace property." />
         )}
+
+        {properties.length > 0 && !cleaners.length && (
+          <EmptyDependencyNotice message="No cleaner is invited yet. You can save this task unassigned and invite a cleaner from Team settings when ready." />
+        )}
+
+        <FormGuidance>Required: property, scheduled date/time, and status. Cleaner assignment and related booking are optional; booking choices are limited to the selected property.</FormGuidance>
 
         <div className="form-grid">
           <label>
@@ -1591,8 +1610,8 @@ function CleaningForm({ app, close, submitting, setSubmitting, setError, notifyS
         <button type="button" onClick={close} disabled={submitting} data-skip-create-action="true">
           Cancel
         </button>
-        <button className="primary" type="submit" disabled={submitting} data-skip-create-action="true">
-          {submitting ? 'Saving…' : 'Save cleaning task'}
+        <button className="primary" type="submit" disabled={submitting || !properties.length} data-skip-create-action="true">
+          {submitting ? 'Saving…' : properties.length ? 'Save cleaning task' : 'Add a property first'}
         </button>
       </footer>
     </form>
@@ -1735,8 +1754,14 @@ function MaintenanceForm({ app, close, submitting, setSubmitting, setError, noti
         <WorkspaceBlockedNotice app={app} />
 
         {!properties.length && (
-          <EmptyDependencyNotice message="Add your first property before creating maintenance work orders." />
+          <EmptyDependencyNotice message="Add your first property before creating maintenance work orders. Work orders must be connected to a real workspace property." />
         )}
+
+        {properties.length > 0 && !maintenancePeople.length && (
+          <EmptyDependencyNotice message="No Maintenance Crew member is invited yet. You can save this work order unassigned and assign it after inviting maintenance staff." />
+        )}
+
+        <FormGuidance>Required: property, issue title, priority, and status. Estimated cost, actual cost, parts needed, due date, notes, and photo context are optional but help the maintenance dashboard stay clear.</FormGuidance>
 
         <div className="form-grid">
           <label>
@@ -1820,8 +1845,8 @@ function MaintenanceForm({ app, close, submitting, setSubmitting, setError, noti
         <button type="button" onClick={close} disabled={submitting} data-skip-create-action="true">
           Cancel
         </button>
-        <button className="primary" type="submit" disabled={submitting} data-skip-create-action="true">
-          {submitting ? 'Saving…' : 'Save work order'}
+        <button className="primary" type="submit" disabled={submitting || !properties.length} data-skip-create-action="true">
+          {submitting ? 'Saving…' : properties.length ? 'Save work order' : 'Add a property first'}
         </button>
       </footer>
     </form>
@@ -1924,6 +1949,8 @@ function ContactForm({ app, close, submitting, setSubmitting, setError, notifySu
     <form className="modal-form" onSubmit={submit} noValidate>
       <div className="modal-body">
         <WorkspaceBlockedNotice app={app} />
+
+        <FormGuidance>{isOwner ? 'Owner contacts are CRM records for ownership/report context. They do not become portal logins unless you also invite them as Property Owner team members.' : 'Guest contacts are CRM records for stay history and communication context. They do not become portal logins.'}</FormGuidance>
 
         <div className="form-grid">
           <label>
@@ -2083,7 +2110,7 @@ function InviteForm({ app, close, submitting, setSubmitting, setError, notifySuc
       });
 
       await refreshAfterSave(app);
-      notifySuccess('Invite created. Email sending is not wired yet, so copy and send the invite link manually.');
+      notifySuccess('Invite created. If email delivery is not configured, use Settings → Team to copy the one-time invite link and send it only to the invited email.');
       close();
     } catch (error) {
       setError(error?.message || 'Invite could not be saved.');
@@ -2096,6 +2123,8 @@ function InviteForm({ app, close, submitting, setSubmitting, setError, notifySuc
     <form className="modal-form" onSubmit={submit} noValidate>
       <div className="modal-body">
         <WorkspaceBlockedNotice app={app} />
+
+        <FormGuidance>Invites create a pending workspace access record. Email delivery is attempted from the server when configured; otherwise copy the invite link from Settings → Team and send it only to the invited email.</FormGuidance>
 
         <div className="form-grid">
           <label>
