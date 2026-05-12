@@ -146,6 +146,7 @@ function buildOwnerMap({ properties, members, contacts }) {
       phone: '—',
       source: 'workspace member',
       status: member.status || 'active',
+      accessType: 'login user',
       notes: '',
       properties: [],
       contactRecord: null,
@@ -178,6 +179,7 @@ function buildOwnerMap({ properties, members, contacts }) {
       phone: getContactPhone(contact),
       source: 'contact',
       status: contact.status || 'active',
+      accessType: 'CRM contact only',
       notes: contact.notes || '',
       properties: [],
       contactRecord: contact,
@@ -198,6 +200,7 @@ function buildOwnerMap({ properties, members, contacts }) {
         phone: '—',
         source: 'property assignment',
         status: 'active',
+        accessType: 'property assignment',
         properties: [],
         contactRecord: null,
         memberRecord: null,
@@ -271,12 +274,16 @@ function OwnerCard({ owner, canSeeOwnerFinance }) {
           {getOwnerInitials(owner) || 'PO'}
         </div>
 
-        <StatusBadge>{owner.status || 'active'}</StatusBadge>
+        <div className="owner-access-badges">
+          <StatusBadge>{owner.status || 'active'}</StatusBadge>
+          <StatusBadge tone={owner.memberRecord ? 'success' : 'info'}>{owner.memberRecord ? 'Login access' : 'CRM contact only'}</StatusBadge>
+        </div>
       </div>
 
       <div>
         <h3>{owner.name}</h3>
         <p>{owner.email}</p>
+        <small>{owner.memberRecord ? 'Invited Property Owner workspace member' : 'Owner contact / CRM record — no portal login'}</small>
       </div>
 
       <div className="owner-card-meta">
@@ -341,6 +348,11 @@ function getOwnerTableColumns(canSeeOwnerFinance) {
           <small>{row.email}</small>
         </span>
       ),
+    },
+    {
+      key: 'access',
+      label: 'Portal access',
+      render: (row) => <StatusBadge tone={row.memberRecord ? 'success' : 'info'}>{row.memberRecord ? 'Login access' : 'CRM only'}</StatusBadge>,
     },
     {
       key: 'propertyCount',
@@ -545,7 +557,8 @@ export function OwnersPage() {
           <h3>Owner management</h3>
           <p>
             Owner contacts are CRM records. Owner portal access is controlled through workspace
-            member invites, and assigned_owner_id points to invited owner members rather than CRM contacts.
+            member invites, and property assignments point to invited owner members rather than CRM contacts.
+            To give an owner portal access, invite them as a Property Owner and assign them to one or more properties.
           </p>
         </div>
 
@@ -743,6 +756,8 @@ export function OwnersPage() {
               <small>Open repairs</small>
             </span>
           </div>
+
+          <div className="helper">Owner contact / CRM records do not grant portal login. Property Owner login access requires an active invited workspace member plus property assignment.</div>
 
           {unassignedProperties > 0 && (
             <div className="helper">

@@ -23,6 +23,10 @@ import { formatCurrency } from '../lib/formatters.js';
 import { FEATURE_KEYS, getUpgradeMessage, getUsageLimitState, getWorkspacePlan } from '../lib/planLimits.js';
 import { navigate } from '../routes/AppRouter.jsx';
 import {
+  getAssignmentCountsByRole,
+  getAssignedPropertyIdsForUser,
+} from '../lib/propertyAssignments.js';
+import {
   currencies,
   propertyEditorRoles,
   propertyStatuses,
@@ -85,9 +89,31 @@ function isOwnerRole(currentUser, memberships = [], currentWorkspace = null) {
   return hasAnyActiveWorkspaceRole(memberships, currentWorkspace, [roles.OWNER]);
 }
 
-function canOwnerSeeProperty(property, currentUser, memberships = [], currentWorkspace = null) {
+function canOwnerSeeProperty(property, currentUser, memberships = [], currentWorkspace = null, assignments = []) {
   if (!isOwnerRole(currentUser, memberships, currentWorkspace)) return true;
-  return getOwnerId(property) === currentUser?.id;
+  const assignedPropertyIds = getAssignedPropertyIdsForUser(assignments, currentUser?.id, roles.OWNER);
+  return getOwnerId(property) === currentUser?.id || assignedPropertyIds.includes(property.id);
+}
+
+function renderAssignmentSummary(propertyId, assignments = []) {
+  const counts = getAssignmentCountsByRole(assignments, propertyId);
+  const ownerAssigned = counts[roles.OWNER] > 0;
+  const pieces = [
+    ownerAssigned ? 'Owner assigned' : 'No owner login',
+    `${counts[roles.CLEANER] || 0} cleaner${counts[roles.CLEANER] === 1 ? '' : 's'}`,
+    `${counts[roles.MAINTENANCE] || 0} maintenance`,
+  ];
+
+  const supportCount = (counts[roles.HOST] || 0) + (counts[roles.ACCOUNTANT] || 0);
+  if (supportCount) pieces.push(`${supportCount} host/accountant`);
+
+  return (
+    <div className="assignment-chip-row" aria-label="Property access summary">
+      {pieces.map((piece) => (
+        <span key={piece} className={piece === 'No owner login' ? 'assignment-chip warning' : 'assignment-chip'}>{piece}</span>
+      ))}
+    </div>
+  );
 }
 
 function normalizePropertyForm(property, defaultCurrency) {
@@ -507,8 +533,9 @@ export function PropertiesPage() {
   const workspaceCurrency = currentWorkspace?.defaultCurrency || currentWorkspace?.default_currency || 'USD';
 
   const allProperties = data.properties || [];
+  const propertyAssignments = data.propertyAssignments || [];
   const properties = allProperties.filter((property) =>
-    canOwnerSeeProperty(property, currentUser, memberships, currentWorkspace),
+    canOwnerSeeProperty(property, currentUser, memberships, currentWorkspace, propertyAssignments),
   );
   const activeProperties = properties.filter((property) => property.status !== 'archived');
   const archivedProperties = properties.filter((property) => property.status === 'archived');
@@ -766,6 +793,8 @@ export function PropertiesPage() {
                   <h3>{property.name || 'Unnamed property'}</h3>
                   <p>{getPropertyLocation(property)}</p>
 
+                  {renderAssignmentSummary(property.id, propertyAssignments)}
+
                   <div className="property-meta-grid">
                     <span>
                       <strong>{getPropertyTypeLabel(property)}</strong>
@@ -857,6 +886,11 @@ export function PropertiesPage() {
                   key: 'rate',
                   label: 'Rate',
                   render: (property) => getPropertyRate(property),
+                },
+                {
+                  key: 'access',
+                  label: 'Assigned team',
+                  render: (property) => renderAssignmentSummary(property.id, propertyAssignments),
                 },
                 {
                   key: 'status',

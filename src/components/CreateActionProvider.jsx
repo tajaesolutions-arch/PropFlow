@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 
 import { useApp } from '../lib/AppContext.jsx';
 import { currencies, expenseCategories, expensePaymentStatuses, inviteRoleOptions, leasePaymentStatuses, leaseStatuses, leaseTypes, rentFrequencies, roleLabels, roles } from '../data/constants.js';
+import { isUserAssignedToProperty } from '../lib/propertyAssignments.js';
 
 const CreateActionContext = React.createContext(null);
 
@@ -1436,6 +1437,7 @@ function CleaningForm({ app, close, submitting, setSubmitting, setError, notifyS
   });
 
   const selectedCleanerIds = new Set(cleaners.map((member) => member.user_id || member.userId || member.id).filter(Boolean));
+  const cleanerAssignedToProperty = !form.assigned_cleaner_id || isUserAssignedToProperty(app.data.propertyAssignments || [], form.property_id, form.assigned_cleaner_id, roles.CLEANER);
   const propertyBookings = bookings.filter((booking) => bookingPropertyId(booking) === form.property_id);
 
   const set = (key) => (event) => {
@@ -1555,6 +1557,10 @@ function CleaningForm({ app, close, submitting, setSubmitting, setError, notifyS
             </select>
           </label>
 
+          {form.assigned_cleaner_id && !cleanerAssignedToProperty && (
+            <div className="helper warning-helper full">This cleaner is active, but is not assigned to the selected property yet. The task can still be saved if your workflow allows it; use Property Access to assign them for cleaner property visibility.</div>
+          )}
+
           <label>
             Cleaning date
             <input
@@ -1640,6 +1646,8 @@ function MaintenanceForm({ app, close, submitting, setSubmitting, setError, noti
     notes: '',
     currency,
   });
+
+  const maintenanceAssignedToProperty = !form.assigned_maintenance_id || isUserAssignedToProperty(app.data.propertyAssignments || [], form.property_id, form.assigned_maintenance_id, roles.MAINTENANCE);
 
   const set = (key) => (event) => {
     setForm((current) => {
@@ -1777,6 +1785,10 @@ function MaintenanceForm({ app, close, submitting, setSubmitting, setError, noti
               <MemberOptions members={maintenancePeople} fallbackLabel="Unassigned maintenance" />
             </select>
           </label>
+
+          {form.assigned_maintenance_id && !maintenanceAssignedToProperty && (
+            <div className="helper warning-helper full">This maintenance user is active, but is not assigned to the selected property yet. The work order can still be saved if your workflow allows it; use Property Access to assign them for maintenance property visibility.</div>
+          )}
 
           <label>
             Issue title

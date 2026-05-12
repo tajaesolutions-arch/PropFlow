@@ -3856,9 +3856,20 @@ export function AppProvider({ children }) {
 
     const member = asArray(data.members).find((item) => item.workspace_id === currentWorkspace.id && memberUserId(item) === userId);
     if (!member || member.status !== 'active') throw new Error('Assigned user must be an active member of this workspace.');
+    if (asArray(member.roles).includes(roles.ADMIN)) throw new Error('PropFlow Admin users cannot be assigned through customer workspace property access.');
     if (!asArray(member.roles).includes(assignmentRole)) {
       throw new Error('Assignment role must match one of the active member roles. Update the member role in a future role-management release before assigning this access.');
     }
+
+    const duplicateAssignment = asArray(data.propertyAssignments).some(
+      (item) =>
+        item.workspace_id === currentWorkspace.id &&
+        item.property_id === propertyId &&
+        item.user_id === userId &&
+        item.assignment_role === assignmentRole,
+    );
+
+    if (duplicateAssignment) throw new Error('This team member is already assigned to this property with the selected role.');
 
     const { data: row, error: upsertError } = await client.from('property_assignments').upsert(
       {
