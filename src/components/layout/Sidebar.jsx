@@ -28,7 +28,7 @@ import {
 import { navigate } from '../../routes/AppRouter.jsx';
 import { useApp } from '../../lib/AppContext.jsx';
 import { roles, roleLabels } from '../../data/constants.js';
-import { getPostLoginPath, hasAnyRole, resolvePrimaryRole } from '../../lib/auth.js';
+import { getWorkspacePostLoginPath, hasAnyActiveWorkspaceRole, resolveWorkspacePrimaryRole } from '../../lib/auth.js';
 
 const operationalRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
 const billingAccessRoles = [roles.OWNER_ADMIN, roles.ACCOUNTANT];
@@ -115,6 +115,7 @@ const maintenanceNav = [
     section: 'Maintenance Portal',
     items: [
       ['/maintenance-dashboard', 'Maintenance Dashboard', Wrench],
+      ['/maintenance', 'Assigned Work Orders', Wrench],
     ],
   },
   {
@@ -166,27 +167,27 @@ const roleNav = {
   [roles.ACCOUNTANT]: accountantNav,
 };
 
-function filterNavByAccess(sections, currentUser) {
+function filterNavByAccess(sections, currentUser, memberships, currentWorkspace) {
   return sections
     .map((section) => ({
       ...section,
       items: section.items.filter((item) => {
         const allowedRoles = item[3];
-        return !allowedRoles || hasAnyRole(currentUser, allowedRoles);
+        return !allowedRoles || hasAnyActiveWorkspaceRole(currentUser, memberships, currentWorkspace, allowedRoles);
       }),
     }))
     .filter((section) => section.items.length > 0);
 }
 
-function getSidebarNav(currentUser) {
-  const primaryRole = resolvePrimaryRole(currentUser);
+function getSidebarNav(currentUser, memberships, currentWorkspace) {
+  const primaryRole = resolveWorkspacePrimaryRole(currentUser, memberships, currentWorkspace);
   const sections = operationalRoles.includes(primaryRole) ? operationalNav : roleNav[primaryRole] || operationalNav;
 
-  return filterNavByAccess(sections, currentUser);
+  return filterNavByAccess(sections, currentUser, memberships, currentWorkspace);
 }
 
-function getSidebarSearchTarget(currentUser) {
-  const primaryRole = resolvePrimaryRole(currentUser);
+function getSidebarSearchTarget(currentUser, memberships, currentWorkspace) {
+  const primaryRole = resolveWorkspacePrimaryRole(currentUser, memberships, currentWorkspace);
 
   if (primaryRole === roles.ADMIN) return '/admin';
   if (primaryRole === roles.OWNER) return '/properties';
@@ -197,8 +198,8 @@ function getSidebarSearchTarget(currentUser) {
   return '/properties';
 }
 
-function getSidebarSearchLabel(currentUser) {
-  const primaryRole = resolvePrimaryRole(currentUser);
+function getSidebarSearchLabel(currentUser, memberships, currentWorkspace) {
+  const primaryRole = resolveWorkspacePrimaryRole(currentUser, memberships, currentWorkspace);
 
   if (primaryRole === roles.ADMIN) return 'Search platform';
   if (primaryRole === roles.OWNER) return 'Search assigned properties';
@@ -209,8 +210,8 @@ function getSidebarSearchLabel(currentUser) {
   return 'Search workspace';
 }
 
-function getSidebarWorkspaceTarget(currentUser, currentWorkspace) {
-  const primaryRole = resolvePrimaryRole(currentUser);
+function getSidebarWorkspaceTarget(currentUser, memberships, currentWorkspace) {
+  const primaryRole = resolveWorkspacePrimaryRole(currentUser, memberships, currentWorkspace);
 
   if (primaryRole === roles.ADMIN) return '/admin';
   if (!currentWorkspace?.id) return '/workspace-setup';
@@ -269,10 +270,10 @@ function getWorkspaceName(currentWorkspace) {
   return currentWorkspace?.name || currentWorkspace?.business_name || 'No workspace selected';
 }
 
-function getWorkspaceMeta(currentWorkspace, currentUser) {
+function getWorkspaceMeta(currentWorkspace, currentUser, memberships) {
   if (!currentWorkspace?.id) return 'Create or join workspace';
 
-  const role = resolvePrimaryRole(currentUser);
+  const role = resolveWorkspacePrimaryRole(currentUser, memberships, currentWorkspace);
   return roleLabels[role] || 'Workspace member';
 }
 
@@ -292,12 +293,12 @@ function NavButton({ href, label, Icon, active, collapsed, onNavigate }) {
 }
 
 export function Sidebar({ collapsed = false, setCollapsed, mobileOpen = false, setMobileOpen }) {
-  const { currentUser, currentWorkspace } = useApp();
+  const { currentUser, currentWorkspace, memberships } = useApp();
   const path = normalizePath(window.location.pathname);
-  const navSections = getSidebarNav(currentUser);
-  const searchTarget = getSidebarSearchTarget(currentUser);
-  const searchLabel = getSidebarSearchLabel(currentUser);
-  const workspaceTarget = getSidebarWorkspaceTarget(currentUser, currentWorkspace);
+  const navSections = getSidebarNav(currentUser, memberships, currentWorkspace);
+  const searchTarget = getSidebarSearchTarget(currentUser, memberships, currentWorkspace);
+  const searchLabel = getSidebarSearchLabel(currentUser, memberships, currentWorkspace);
+  const workspaceTarget = getSidebarWorkspaceTarget(currentUser, memberships, currentWorkspace);
 
   const closeMobileMenu = () => {
     if (typeof setMobileOpen === 'function') {
@@ -317,7 +318,7 @@ export function Sidebar({ collapsed = false, setCollapsed, mobileOpen = false, s
   };
 
   const workspaceName = getWorkspaceName(currentWorkspace);
-  const workspaceMeta = getWorkspaceMeta(currentWorkspace, currentUser);
+  const workspaceMeta = getWorkspaceMeta(currentWorkspace, currentUser, memberships);
   const workspaceInitials = getInitials(workspaceName);
 
   return (
@@ -327,7 +328,7 @@ export function Sidebar({ collapsed = false, setCollapsed, mobileOpen = false, s
           type="button"
           className="brand-button"
           onClick={() => {
-            goTo(getPostLoginPath(currentUser));
+            goTo(getWorkspacePostLoginPath(currentUser, memberships, currentWorkspace));
           }}
           aria-label="Go to dashboard"
           data-skip-create-action="true"

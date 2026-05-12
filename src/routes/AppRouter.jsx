@@ -11,7 +11,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 
-import { canAccessPlatformAdmin, getPostLoginPath, hasAnyRole } from '../lib/auth.js';
+import { canAccessPlatformAdmin, getWorkspacePostLoginPath, hasAnyActiveWorkspaceRole, hasAnyRole } from '../lib/auth.js';
 import { getWorkspaceBillingGate, useApp } from '../lib/AppContext.jsx';
 import { roles } from '../data/constants.js';
 
@@ -112,7 +112,7 @@ const ownerVisibleRoles = [...operationalRoles, roles.OWNER, roles.ACCOUNTANT];
 const propertyDetailRoles = ownerVisibleRoles;
 const bookingPageRoles = [...operationalRoles, roles.ACCOUNTANT];
 const leasePageRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
-const maintenancePageRoles = operationalRoles;
+const maintenancePageRoles = [...operationalRoles, roles.MAINTENANCE];
 const financeRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
 const filesPageRoles = [...operationalRoles, roles.ACCOUNTANT, roles.OWNER];
 const inventoryPageRoles = financeRoles;
@@ -340,8 +340,8 @@ function renderRoute(Page, props = {}, resetKey = window.location.pathname) {
   );
 }
 
-function NotFoundPage({ currentUser }) {
-  const fallbackPath = currentUser ? getPostLoginPath(currentUser) : '/';
+function NotFoundPage({ currentUser, memberships, currentWorkspace }) {
+  const fallbackPath = currentUser ? getWorkspacePostLoginPath(currentUser, memberships, currentWorkspace) : '/';
 
   return (
     <div className="auth-page router-state-page">
@@ -392,8 +392,8 @@ function NotFoundPage({ currentUser }) {
 
 const billingRecoveryPaths = new Set(['/billing', '/account', '/settings', '/notification-settings', '/suspended']);
 
-function BillingRestrictedScreen({ currentUser }) {
-  const canRecover = hasAnyRole(currentUser, [roles.ADMIN, roles.OWNER_ADMIN, roles.ACCOUNTANT]);
+function BillingRestrictedScreen({ currentUser, memberships, currentWorkspace }) {
+  const canRecover = hasAnyActiveWorkspaceRole(currentUser, memberships, currentWorkspace, [roles.OWNER_ADMIN, roles.ACCOUNTANT]);
   return (
     <div className="auth-page router-state-page">
       <div className="auth-card wide router-state-card">
@@ -441,9 +441,10 @@ function getPropertyIdFromPath(path) {
   return propertyId ? decodeURIComponent(propertyId) : null;
 }
 
-function userCanAccessRoute(user, route) {
+function userCanAccessRoute(user, route, memberships, currentWorkspace) {
   if (!route?.access?.length) return true;
-  return hasAnyRole(user, route.access);
+  if (route.access.includes(roles.ADMIN)) return hasAnyRole(user, [roles.ADMIN]);
+  return hasAnyActiveWorkspaceRole(user, memberships, currentWorkspace, route.access);
 }
 
 function isPropFlowAdminUser(user) {
@@ -451,9 +452,9 @@ function isPropFlowAdminUser(user) {
 }
 
 function RoleGuard({ allowed, children }) {
-  const { currentUser } = useApp();
+  const { currentUser, memberships, currentWorkspace } = useApp();
 
-  if (!hasAnyRole(currentUser, allowed)) {
+  if (!hasAnyActiveWorkspaceRole(currentUser, memberships, currentWorkspace, allowed)) {
     return renderRoute(SuspendedPage, { variant: 'denied' });
   }
 
@@ -462,7 +463,7 @@ function RoleGuard({ allowed, children }) {
 
 export function AppRouter() {
   const [, forceRender] = React.useReducer((x) => x + 1, 0);
-  const { authLoading, currentUser, currentWorkspace, data } = useApp();
+  const { authLoading, currentUser, currentWorkspace, memberships, data } = useApp();
 
   React.useEffect(() => {
     window.addEventListener('popstate', forceRender);
@@ -478,16 +479,16 @@ export function AppRouter() {
   if (authLoading) return <LoadingScreen />;
 
   if (path === '/login/redirect') {
-    return <RedirectTo to={getPostLoginPath(currentUser)} />;
+    return <RedirectTo to={getWorkspacePostLoginPath(currentUser, memberships, currentWorkspace)} />;
   }
 
   if (isPublicPath(path)) {
     if (currentUser && (path === '/login' || path === '/signup')) {
-      return <RedirectTo to={getPostLoginPath(currentUser)} />;
+      return <RedirectTo to={getWorkspacePostLoginPath(currentUser, memberships, currentWorkspace)} />;
     }
 
     if (currentUser && currentWorkspace && path === '/join' && !window.location.search) {
-      return <RedirectTo to={getPostLoginPath(currentUser)} />;
+      return <RedirectTo to={getWorkspacePostLoginPath(currentUser, memberships, currentWorkspace)} />;
     }
 
     const route = getPublicRoute(path);
@@ -513,7 +514,7 @@ export function AppRouter() {
   }
 
   if (currentWorkspace && isWorkspaceSetupPath(path)) {
-    return <RedirectTo to={getPostLoginPath(currentUser)} />;
+    return <RedirectTo to={getWorkspacePostLoginPath(currentUser, memberships, currentWorkspace)} />;
   }
 
   if (path === '/admin' && !isPropFlowAdmin) {
@@ -522,14 +523,14 @@ export function AppRouter() {
 
   const billingGate = getWorkspaceBillingGate(currentWorkspace, data?.subscription, currentUser);
   if (billingGate.restricted && !billingRecoveryPaths.has(path) && !isPropFlowAdmin) {
-    if (billingGate.recoveryOnly && hasAnyRole(currentUser, [roles.OWNER_ADMIN, roles.ACCOUNTANT])) {
+    if (billingGate.recoveryOnly && hasAnyActiveWorkspaceRole(currentUser, memberships, currentWorkspace, [roles.OWNER_ADMIN, roles.ACCOUNTANT])) {
       return <RedirectTo to="/billing" />;
     }
-    return <BillingRestrictedScreen currentUser={currentUser} />;
+    return <BillingRestrictedScreen currentUser={currentUser} memberships={memberships} currentWorkspace={currentWorkspace} />;
   }
 
-  if (roleDashboardPaths.has(path) && !hasAnyRole(currentUser, protectedRoutes[path]?.access || [])) {
-    return <RedirectTo to={getPostLoginPath(currentUser)} />;
+  if (roleDashboardPaths.has(path) && !hasAnyActiveWorkspaceRole(currentUser, memberships, currentWorkspace, protectedRoutes[path]?.access || [])) {
+    return <RedirectTo to={getWorkspacePostLoginPath(currentUser, memberships, currentWorkspace)} />;
   }
 
   if (propertyId) {
@@ -543,10 +544,10 @@ export function AppRouter() {
   const route = protectedRoutes[path];
 
   if (!route) {
-    return <NotFoundPage currentUser={currentUser} />;
+    return <NotFoundPage currentUser={currentUser} memberships={memberships} currentWorkspace={currentWorkspace} />;
   }
 
-  if (!userCanAccessRoute(currentUser, route)) {
+  if (!userCanAccessRoute(currentUser, route, memberships, currentWorkspace)) {
     return renderRoute(SuspendedPage, { variant: 'denied' }, path);
   }
 
