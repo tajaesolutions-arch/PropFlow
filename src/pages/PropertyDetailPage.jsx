@@ -30,6 +30,7 @@ import { EmptyState } from '../components/EmptyState.jsx';
 import { FileList } from '../components/FileList.jsx';
 import { StatCard } from '../components/StatCard.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
+import { PropertyAccessPanel } from '../components/PropertyAccessPanel.jsx';
 import { useApp } from '../lib/AppContext.jsx';
 import { formatCurrency, formatDate } from '../lib/formatters.js';
 import {
@@ -553,6 +554,7 @@ function PropertyEditModal({ property, onSubmit, onCancel, submitting, submitErr
 }
 
 export function PropertyDetailPage({ propertyId }) {
+  const app = useApp();
   const {
     data,
     updateProperty,
@@ -565,7 +567,7 @@ export function PropertyDetailPage({ propertyId }) {
     createCalendarImportFeed,
     archiveCalendarImportFeed,
     syncCalendarImportFeed,
-  } = useApp();
+  } = app;
 
   const property = (data.properties || []).find((item) => item.id === propertyId);
   const allCleaning = data.cleaningTasks || [];
@@ -1115,6 +1117,16 @@ export function PropertyDetailPage({ propertyId }) {
           </section>
         )}
       </section>
+
+
+      <PropertyAccessPanel
+        property={property}
+        app={app}
+        onMessage={(nextMessage) => {
+          setMessage(nextMessage);
+          clearMessageSoon();
+        }}
+      />
 
       <section className="property-detail-actions-grid">
         {canCreateOperationalRecords && (

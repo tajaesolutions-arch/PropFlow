@@ -8418,3 +8418,140 @@ label {
 .modal-guidance strong {
   color: var(--text);
 }
+
+.property-access-panel {
+  border-color: rgba(27, 153, 139, 0.22);
+}
+
+.property-access-actions,
+.assignment-empty-actions,
+.assignment-role-summary,
+.assignment-chip-row,
+.owner-access-badges {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.property-access-actions {
+  margin-bottom: 16px;
+}
+
+.assignment-role-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.assignment-role-group {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-2);
+  padding: 12px;
+}
+
+.assignment-role-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.assignment-role-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.assignment-guidance,
+.assignment-empty-actions {
+  border: 1px solid rgba(27, 153, 139, 0.22);
+  border-radius: 14px;
+  background: rgba(27, 153, 139, 0.07);
+  color: var(--text);
+  padding: 12px 14px;
+}
+
+.assignment-empty-actions {
+  justify-content: space-between;
+}
+
+.assignment-role-summary {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.assignment-chip-row {
+  margin: 12px 0 4px;
+}
+
+.assignment-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border: 1px solid rgba(27, 153, 139, 0.18);
+  border-radius: 999px;
+  background: rgba(27, 153, 139, 0.08);
+  color: #0f766e;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 9px;
+}
+
+.assignment-chip.warning {
+  border-color: rgba(217, 119, 6, 0.24);
+  background: #FFFBEB;
+  color: #92400E;
+}
+
+.property-assignment-modal .modal-body {
+  display: grid;
+  gap: 14px;
+}
+
+.owner-access-badges {
+  justify-content: flex-end;
+}
+
+.settings-assignment-form .helper {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 768px) {
+  .property-access-actions,
+  .assignment-empty-actions,
+  .assignment-role-summary {
+    align-items: stretch;
+  }
+
+  .property-access-actions button,
+  .assignment-empty-actions button,
+  .property-assignment-modal .modal-actions button {
+    width: 100%;
+  }
+
+  .assignment-role-group {
+    padding: 10px;
+  }
+
+  .owner-access-badges {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 430px) {
+  .property-assignment-modal {
+    max-height: calc(100vh - 24px);
+    width: calc(100vw - 24px);
+    overflow: auto;
+  }
+
+  .assignment-chip-row {
+    gap: 6px;
+  }
+
+  .assignment-chip {
+    font-size: 11px;
+  }
+}

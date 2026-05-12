@@ -21,12 +21,21 @@ import { DataTable } from '../components/DataTable.jsx';
 import { EmptyState } from '../components/EmptyState.jsx';
 import { StatCard } from '../components/StatCard.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
+import { PropertyAssignmentModal } from '../components/PropertyAssignmentModal.jsx';
+import { useCreateAction } from '../components/CreateActionProvider.jsx';
 import { useApp } from '../lib/AppContext.jsx';
 import { currencies, inviteRoleOptions, invitePermissionLevels, propertyAssignmentRoleOptions, propertyScopedInviteRoles, roleLabels, roles } from '../data/constants.js';
 import { hasAnyRole } from '../lib/auth.js';
 import { getBillingStatus } from '../lib/billingStatus.js';
 import { FEATURE_KEYS, buildWorkspaceUsage, formatLimit, getUpgradeMessage, getUsageLimitState, getWorkspacePlan } from '../lib/planLimits.js';
 import { navigate } from '../routes/AppRouter.jsx';
+import {
+  getAssignmentPropertyId,
+  getAssignmentRole,
+  getAssignmentUserId,
+  hasDuplicateAssignment,
+  listEligibleMembersByRole,
+} from '../lib/propertyAssignments.js';
 
 const defaultInvite = {
   email: '',
@@ -231,6 +240,7 @@ function SettingCard({ icon: Icon, title, description, children }) {
 }
 
 export function SettingsPage() {
+  const { openCreateAction } = useCreateAction();
   const {
     currentWorkspace,
     data,
@@ -260,6 +270,7 @@ export function SettingsPage() {
   const [activityFilter, setActivityFilter] = React.useState('all');
   const [billingBusyPlan, setBillingBusyPlan] = React.useState('');
   const [billingBusyAction, setBillingBusyAction] = React.useState('');
+  const [assignmentModal, setAssignmentModal] = React.useState(null);
 
   const canInvite = hasAnyRole(currentUser, [roles.OWNER_ADMIN]);
   const canManageMembers = hasAnyRole(currentUser, [roles.OWNER_ADMIN]);
@@ -277,7 +288,8 @@ export function SettingsPage() {
   const activityLogs = (data.activityLogs || []).filter((log) => !currentWorkspace?.id || (log.workspace_id || log.workspaceId) === currentWorkspace.id);
   const activityActionOptions = Array.from(new Set(activityLogs.map((log) => log.action).filter(Boolean))).sort();
   const visibleActivityLogs = activityFilter === 'all' ? activityLogs : activityLogs.filter((log) => log.action === activityFilter);
-  const assignableMembers = members.filter((member) => member.status === 'active');
+  const assignableMembers = listEligibleMembersByRole(members, assignment.assignmentRole);
+  const assignmentDuplicate = Boolean(assignment.userId && assignment.propertyId && assignment.assignmentRole && hasDuplicateAssignment(propertyAssignments, assignment));
 
   const workspaceName = getWorkspaceName(currentWorkspace);
   const workspaceCode = getWorkspaceCode(currentWorkspace);
@@ -324,9 +336,11 @@ export function SettingsPage() {
   };
 
   const setAssignmentField = (key) => (event) => {
-    setAssignment((value) => ({
-      ...value,
-      [key]: event.target.value,
+    const value = event.target.value;
+    setAssignment((current) => ({
+      ...current,
+      [key]: value,
+      ...(key === 'assignmentRole' ? { userId: '' } : {}),
     }));
   };
 
@@ -474,6 +488,16 @@ export function SettingsPage() {
 
     if (!assignment.userId || !assignment.propertyId || !assignment.assignmentRole) {
       setAssignmentMessage('Choose a member, property, and assignment role.');
+      return;
+    }
+
+    if (!assignableMembers.some((member) => getMemberId(member) === assignment.userId)) {
+      setAssignmentMessage('Team member must be active, have the selected role, and not be a PropFlow Admin.');
+      return;
+    }
+
+    if (assignmentDuplicate) {
+      setAssignmentMessage('This team member is already assigned to this property with the selected role.');
       return;
     }
 
@@ -1080,7 +1104,7 @@ export function SettingsPage() {
             <div className="card-header">
               <div>
                 <h3>Workspace members</h3>
-                <p>Current users connected to this workspace.</p>
+                <p>Current users connected to this workspace, their roles, status, and whether they need property assignments.</p>
               </div>
               <Users size={20} className="muted" />
             </div>
@@ -1107,7 +1131,11 @@ export function SettingsPage() {
                   {
                     key: 'assigned_properties',
                     label: 'Assigned properties',
-                    render: (row) => getMemberPropertySummary(row, propertyAssignments, activeProperties),
+                    render: (row) => {
+                      const assigned = getMemberPropertySummary(row, propertyAssignments, activeProperties);
+                      const count = propertyAssignments.filter((assignmentRow) => getAssignmentUserId(assignmentRow) === getMemberId(row)).length;
+                      return <span><strong>{count}</strong><small>{count ? assigned : 'Needs assignment'}</small></span>;
+                    },
                   },
                   {
                     key: 'status',
@@ -1122,42 +1150,54 @@ export function SettingsPage() {
                   {
                     key: 'actions',
                     label: 'Actions',
-                    render: (row) =>
-                      canManageMembers ? (
-                        <div className="table-actions">
-                          {row.status === 'active' ? (
-                            <button
-                              type="button"
-                              onClick={() => updateMemberStatus(row.id, 'suspended')}
-                              disabled={memberBusyId === row.id}
-                              data-skip-create-action="true"
-                            >
-                              Suspend
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => updateMemberStatus(row.id, 'active')}
-                              disabled={memberBusyId === row.id}
-                              data-skip-create-action="true"
-                            >
-                              Reactivate
-                            </button>
-                          )}
-                          {row.status !== 'revoked' && (
-                            <button
-                              type="button"
-                              onClick={() => updateMemberStatus(row.id, 'revoked')}
-                              disabled={memberBusyId === row.id}
-                              data-skip-create-action="true"
-                            >
-                              Revoke
-                            </button>
-                          )}
-                        </div>
-                      ) : (
-                        'Role editing will be added after team lifecycle controls are fully tested.'
-                      ),
+                    render: (row) => (
+                      <div className="table-actions">
+                        {canManageAssignments && (
+                          <button
+                            type="button"
+                            onClick={() => setAssignmentModal({ userId: getMemberId(row), assignmentRole: (row.roles || []).find((role) => assignmentRoleOptions.includes(role)) || roles.CLEANER })}
+                            data-skip-create-action="true"
+                          >
+                            Manage assignments
+                          </button>
+                        )}
+                        {canManageMembers ? (
+                          <>
+                            {row.status === 'active' ? (
+                              <button
+                                type="button"
+                                onClick={() => updateMemberStatus(row.id, 'suspended')}
+                                disabled={memberBusyId === row.id}
+                                data-skip-create-action="true"
+                              >
+                                Suspend
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => updateMemberStatus(row.id, 'active')}
+                                disabled={memberBusyId === row.id}
+                                data-skip-create-action="true"
+                              >
+                                Reactivate
+                              </button>
+                            )}
+                            {row.status !== 'revoked' && (
+                              <button
+                                type="button"
+                                onClick={() => updateMemberStatus(row.id, 'revoked')}
+                                disabled={memberBusyId === row.id}
+                                data-skip-create-action="true"
+                              >
+                                Revoke
+                              </button>
+                            )}
+                          </>
+                        ) : (
+                          <small>Lifecycle controls are owner-only.</small>
+                        )}
+                      </div>
+                    ),
                   },
                 ]}
               />
@@ -1309,10 +1349,15 @@ export function SettingsPage() {
                 </select>
               </label>
 
-              <button type="submit" className="primary" disabled={assignmentBusy} data-skip-create-action="true">
+              <button type="submit" className="primary" disabled={assignmentBusy || !assignableMembers.length || assignmentDuplicate || !activeProperties.length} data-skip-create-action="true">
                 <CheckCircle2 size={16} />
                 {assignmentBusy ? 'Saving…' : 'Save assignment'}
               </button>
+              {!assignableMembers.length && (
+                <div className="helper warning-helper">No active team member with this role yet. Invite one first. <button type="button" onClick={() => openCreateAction('invite')} data-skip-create-action="true">Invite team member</button></div>
+              )}
+              {!activeProperties.length && <div className="helper warning-helper">Add a property before assigning team access.</div>}
+              {assignmentDuplicate && <div className="helper warning-helper">This duplicate assignment is already saved.</div>}
             </form>
           ) : (
             <EmptyState
@@ -1331,17 +1376,17 @@ export function SettingsPage() {
                   {
                     key: 'member',
                     label: 'Member',
-                    render: (row) => getAssignmentMemberName(members, row.user_id || row.userId),
+                    render: (row) => getAssignmentMemberName(members, getAssignmentUserId(row)),
                   },
                   {
                     key: 'property',
                     label: 'Property',
-                    render: (row) => getPropertyName(activeProperties, row.property_id || row.propertyId),
+                    render: (row) => getPropertyName(activeProperties, getAssignmentPropertyId(row)),
                   },
                   {
                     key: 'assignment_role',
                     label: 'Role',
-                    render: (row) => roleLabels[row.assignment_role] || row.assignment_role || '—',
+                    render: (row) => roleLabels[getAssignmentRole(row)] || getAssignmentRole(row) || '—',
                   },
                   {
                     key: 'created_at',
@@ -1373,11 +1418,28 @@ export function SettingsPage() {
                 compact
                 icon={Building2}
                 title="No property assignments yet"
-                description="Saved property assignments will appear here."
+                description={
+                  activeProperties.length && !members.length
+                    ? 'Invite your team to start assigning property access.'
+                    : members.length && !activeProperties.length
+                      ? 'Add a property before assigning team access.'
+                      : 'Assign property access so each person only sees what they need.'
+                }
               />
             )}
           </div>
         </section>
+      )}
+      {assignmentModal && (
+        <PropertyAssignmentModal
+          userId={assignmentModal.userId}
+          assignmentRole={assignmentModal.assignmentRole}
+          onClose={() => setAssignmentModal(null)}
+          onSaved={(nextMessage) => {
+            setAssignmentMessage(nextMessage);
+            clearMessageSoon();
+          }}
+        />
       )}
     </AppLayout>
   );
