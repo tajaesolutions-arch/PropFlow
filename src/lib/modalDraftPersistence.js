@@ -1,8 +1,16 @@
 const storagePrefix = 'propflow.modalDraft.';
 const installedFlag = '__propflowModalDraftPersistenceInstalled';
+const UNSAVED_CHANGES_MESSAGE = 'You have unsaved changes. Close without saving?';
+
+const dirtyForms = new WeakSet();
+const submittedForms = new WeakSet();
+
+function getModalPanel(form) {
+  return form.closest('.modal-panel');
+}
 
 function getModalTitle(form) {
-  return form.closest('.modal-panel')?.querySelector('h3')?.textContent?.trim() || 'modal-form';
+  return getModalPanel(form)?.querySelector('h3')?.textContent?.trim() || 'modal-form';
 }
 
 function getDraftKey(form) {
@@ -50,18 +58,35 @@ function writeForm(form, draft) {
   });
 }
 
+function markDirty(form) {
+  dirtyForms.add(form);
+  submittedForms.delete(form);
+}
+
+function isDirty(form) {
+  return dirtyForms.has(form) && !submittedForms.has(form);
+}
+
 function saveDraft(event) {
   const form = event.target?.closest?.('.modal-form');
   if (!form) return;
 
+  markDirty(form);
   window.sessionStorage.setItem(getDraftKey(form), JSON.stringify(readForm(form)));
 }
 
-function clearDraft(event) {
+function markSubmitted(event) {
   const form = event.target?.closest?.('.modal-form');
   if (!form) return;
 
+  submittedForms.add(form);
+}
+
+function clearDraft(form) {
+  if (!form) return;
+
   window.sessionStorage.removeItem(getDraftKey(form));
+  submittedForms.delete(form);
 }
 
 function restoreDraft(form) {
@@ -70,13 +95,66 @@ function restoreDraft(form) {
 
   try {
     writeForm(form, JSON.parse(rawDraft));
+    dirtyForms.add(form);
   } catch {
-    window.sessionStorage.removeItem(getDraftKey(form));
+    clearDraft(form);
   }
 }
 
 function restoreVisibleDrafts() {
   document.querySelectorAll('.modal-form').forEach((form) => restoreDraft(form));
+}
+
+function getActiveModalForm() {
+  return document.querySelector('.modal-panel .modal-form');
+}
+
+function getCloseTargetForm(event) {
+  const target = event.target;
+  if (!(target instanceof Element)) return null;
+
+  if (event.type === 'keydown') {
+    if (event.key !== 'Escape') return null;
+    return getActiveModalForm();
+  }
+
+  if (event.type === 'mousedown') {
+    if (!target.classList.contains('modal-backdrop')) return null;
+    return target.querySelector('.modal-form');
+  }
+
+  if (event.type === 'click') {
+    const button = target.closest('button');
+    if (!button) return null;
+
+    const closeButton = button.getAttribute('aria-label') === 'Close modal';
+    const cancelButton = button.type === 'button' && button.closest('.modal-actions');
+
+    if (!closeButton && !cancelButton) return null;
+
+    return button.closest('.modal-panel')?.querySelector('.modal-form') || null;
+  }
+
+  return null;
+}
+
+function confirmCloseIfNeeded(event) {
+  const form = getCloseTargetForm(event);
+
+  if (!form || !isDirty(form)) return;
+  if (window.confirm(UNSAVED_CHANGES_MESSAGE)) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+function forgetRemovedForms() {
+  document.querySelectorAll('.modal-form').forEach((form) => {
+    if (!submittedForms.has(form)) return;
+    if (document.body.contains(form)) return;
+
+    clearDraft(form);
+  });
 }
 
 export function installModalDraftPersistence() {
@@ -87,10 +165,16 @@ export function installModalDraftPersistence() {
 
   document.addEventListener('input', saveDraft);
   document.addEventListener('change', saveDraft);
-  document.addEventListener('submit', clearDraft);
+  document.addEventListener('submit', markSubmitted);
+  document.addEventListener('click', confirmCloseIfNeeded, true);
+  document.addEventListener('mousedown', confirmCloseIfNeeded, true);
+  document.addEventListener('keydown', confirmCloseIfNeeded, true);
 
   const observer = new MutationObserver(() => {
-    window.requestAnimationFrame(restoreVisibleDrafts);
+    window.requestAnimationFrame(() => {
+      forgetRemovedForms();
+      restoreVisibleDrafts();
+    });
   });
 
   observer.observe(document.body, { childList: true, subtree: true });
