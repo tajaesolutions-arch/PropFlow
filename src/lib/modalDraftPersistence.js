@@ -75,18 +75,12 @@ function saveDraft(event) {
   window.sessionStorage.setItem(getDraftKey(form), JSON.stringify(readForm(form)));
 }
 
-function markSubmitted(event) {
+function clearDraft(event) {
   const form = event.target?.closest?.('.modal-form');
   if (!form) return;
 
   submittedForms.add(form);
-}
-
-function clearDraft(form) {
-  if (!form) return;
-
   window.sessionStorage.removeItem(getDraftKey(form));
-  submittedForms.delete(form);
 }
 
 function restoreDraft(form) {
@@ -97,7 +91,7 @@ function restoreDraft(form) {
     writeForm(form, JSON.parse(rawDraft));
     dirtyForms.add(form);
   } catch {
-    clearDraft(form);
+    window.sessionStorage.removeItem(getDraftKey(form));
   }
 }
 
@@ -148,15 +142,6 @@ function confirmCloseIfNeeded(event) {
   event.stopPropagation();
 }
 
-function forgetRemovedForms() {
-  document.querySelectorAll('.modal-form').forEach((form) => {
-    if (!submittedForms.has(form)) return;
-    if (document.body.contains(form)) return;
-
-    clearDraft(form);
-  });
-}
-
 export function installModalDraftPersistence() {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
   if (window[installedFlag]) return;
@@ -165,16 +150,13 @@ export function installModalDraftPersistence() {
 
   document.addEventListener('input', saveDraft);
   document.addEventListener('change', saveDraft);
-  document.addEventListener('submit', markSubmitted);
+  document.addEventListener('submit', clearDraft);
   document.addEventListener('click', confirmCloseIfNeeded, true);
   document.addEventListener('mousedown', confirmCloseIfNeeded, true);
   document.addEventListener('keydown', confirmCloseIfNeeded, true);
 
   const observer = new MutationObserver(() => {
-    window.requestAnimationFrame(() => {
-      forgetRemovedForms();
-      restoreVisibleDrafts();
-    });
+    window.requestAnimationFrame(restoreVisibleDrafts);
   });
 
   observer.observe(document.body, { childList: true, subtree: true });
