@@ -2,6 +2,7 @@ import React from 'react';
 import { AlertTriangle, CheckCircle2, CreditCard, Mail, MessageCircle, ShieldCheck } from 'lucide-react';
 
 import { StatusBadge } from './StatusBadge.jsx';
+import { supabaseNotConfiguredWarning } from '../lib/safeAppState.js';
 import { isSupabaseConfigured, isSupabaseStorageConfigured } from '../lib/supabase.js';
 
 function ProviderRow({ icon: Icon, name, status, description, requiredKeys, showTechnicalDetails }) {
@@ -35,7 +36,7 @@ export function EnvironmentSetupNotice({ compact = false, showTechnicalDetails =
       status: isSupabaseConfigured ? 'connected' : 'missing',
       description: isSupabaseConfigured
         ? 'Auth and database access are connected for this deployment.'
-        : 'Database access is not ready. Finish public Supabase setup before using workspace actions.',
+        : supabaseNotConfiguredWarning,
       requiredKeys: ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY'],
     },
     {
