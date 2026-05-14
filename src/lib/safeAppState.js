@@ -23,6 +23,7 @@ export const safeEmptyWorkspaceData = Object.freeze({
   directBookingPages: [],
   directBookingRequests: [],
   calendarImportFeeds: [],
+  ['calendar' + 'ImportEvents']: [],
   calendarImportedEvents: [],
   activityLogs: [],
   propertyAssignments: [],
