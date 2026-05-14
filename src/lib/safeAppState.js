@@ -30,6 +30,12 @@ export const safeEmptyWorkspaceData = Object.freeze({
   workspaceMembers: [],
 });
 
+const arrayFallbackKeys = new Set(
+  Object.entries(safeEmptyWorkspaceData)
+    .filter(([, value]) => Array.isArray(value))
+    .map(([key]) => key),
+);
+
 export const supabaseNotConfiguredWarning =
   'Supabase is not configured for this deployment yet. Public pages remain available, but login, workspace setup, and workspace data actions require the public Supabase connection settings.';
 
@@ -45,11 +51,26 @@ export function getSupabaseNotConfiguredState() {
   };
 }
 
+function normalizeFallbackValue(key, value) {
+  if (arrayFallbackKeys.has(key)) {
+    return Array.isArray(value) ? value : safeEmptyWorkspaceData[key];
+  }
+
+  return value ?? safeEmptyWorkspaceData[key] ?? null;
+}
+
 export function getSafeWorkspaceDataFallback(partialData = {}) {
-  return {
-    ...safeEmptyWorkspaceData,
-    ...(partialData && typeof partialData === 'object' ? partialData : {}),
-  };
+  const fallbackData = { ...safeEmptyWorkspaceData };
+
+  if (!partialData || typeof partialData !== 'object') {
+    return fallbackData;
+  }
+
+  Object.entries(partialData).forEach(([key, value]) => {
+    fallbackData[key] = normalizeFallbackValue(key, value);
+  });
+
+  return fallbackData;
 }
 
 export function getWorkspaceDataFallbackState(partialData = {}) {
