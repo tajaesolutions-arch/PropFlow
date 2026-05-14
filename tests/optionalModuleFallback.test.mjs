@@ -21,6 +21,22 @@ assert.deepEqual(fallback.data.bookings, [{ id: 'booking-1' }]);
 assert.equal(fallback.moduleKey, 'properties');
 assert.equal(Boolean(fallback.warning), true);
 
+const appContextArrayKeys = [
+  'notificationProviderSettings',
+  'calendarImportSyncRuns',
+  'calendarImportConflicts',
+  'billingEvents',
+  'members',
+  'invites',
+  'fileUploads',
+  'billingPlanLimits',
+];
+
+appContextArrayKeys.forEach((moduleKey) => {
+  const moduleFallback = createOptionalModuleFallback(moduleKey);
+  assert.equal(Array.isArray(moduleFallback.data[moduleKey]), true, `${moduleKey} fallback should be an array`);
+});
+
 const missingResult = await resolveOptionalModule({
   moduleKey: 'calendarImportEvents',
   currentData: { properties: [{ id: 'property-1' }] },
