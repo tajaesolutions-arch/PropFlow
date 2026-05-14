@@ -61,7 +61,7 @@ await assert.rejects(
       moduleKey: 'expenses',
       query: async () => ({ error: { code: '42501', message: 'permission denied' } }),
     }),
-  /permission denied/,
+  (error) => error?.message === 'permission denied' && error?.code === '42501',
 );
 
 console.log('optionalModuleFallback tests passed');
