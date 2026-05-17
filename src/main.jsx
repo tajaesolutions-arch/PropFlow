@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { CreateActionProvider } from './components/CreateActionProvider.jsx';
+import { ErrorBoundary } from './components/ErrorBoundary.jsx';
 import { SmartNumberFormatting } from './components/SmartNumberFormatting.jsx';
 import { AppProvider } from './lib/AppContext.jsx';
 import { installModalDraftPersistence } from './lib/modalDraftPersistence.js';
@@ -44,11 +45,13 @@ installModalDraftPersistence();
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <AppProvider>
-      <CreateActionProvider>
-        <SmartNumberFormatting />
-        <AppRouter />
-      </CreateActionProvider>
-    </AppProvider>
+    <ErrorBoundary>
+      <AppProvider>
+        <CreateActionProvider>
+          <SmartNumberFormatting />
+          <AppRouter />
+        </CreateActionProvider>
+      </AppProvider>
+    </ErrorBoundary>
   </React.StrictMode>,
 );

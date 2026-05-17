@@ -359,7 +359,9 @@ class RouteErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, info) {
-    console.error('[PropFlow] Route render failed', error, info);
+    if (import.meta.env.DEV) {
+      console.error('[PropFlow] Route render failed', error, info);
+    }
   }
 
   render() {
