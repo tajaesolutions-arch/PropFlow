@@ -170,6 +170,18 @@ Known compatibility items to verify against the final Supabase project:
 - `notification_provider_settings` should never return provider secrets to the frontend; only safe status/configuration metadata should be selected or exposed by RLS/API design.
 - File upload paths must continue using `workspaces/{workspace_id}/...` and signed URLs must not be persisted.
 
+
+## Properties module Supabase CRUD status (PR #197)
+
+- Status: Properties are the first customer module wired to a focused Supabase data-access helper for workspace-scoped CRUD. The Properties page reads real `public.properties` rows for the selected active workspace and the shared Add Property modal creates real rows instead of faking successful saves.
+- Table status: `public.properties` already exists in the foundational schema with `id`, `workspace_id`, `name`, `address`, `city`, `state`, `country`, `property_type`, `rental_type`, `status`, `bedrooms`, `bathrooms`, `square_feet`, `currency`, `nightly_rate`, `monthly_rent`, `assigned_owner_id`, `notes`, `created_by`, `created_at`, and `updated_at`. No broad table rewrite was needed.
+- RLS status: Existing `properties_select_authorized` continues to use `can_access_property(workspace_id, id)`. Migration `202605170001_properties_workspace_crud_alignment.sql` keeps inserts workspace-scoped, allows Workspace Owner / Company Admin, Property Manager, and Host to create, keeps updates limited to Workspace Owner / Company Admin and Property Manager, enforces `created_by = auth.uid()`, and keeps assigned owners limited to active owner members in the same workspace.
+- Frontend reads/writes: `src/lib/properties.js` provides `listProperties`, `getPropertyById`, `createProperty`, `updateProperty`, `buildPropertyPayload`, and `normalizeProperty` using the existing Supabase client only. AppContext uses these helpers for property loading and property save/update paths while preserving activity logs, notifications, plan-limit UX, and safe workspace refreshes.
+- Missing-env behavior: Missing or invalid `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` returns safe empty/not-configured results, disables property submit, and does not show fake production data.
+- Empty-state behavior: No active workspace shows a workspace-required state and does not issue property queries. Valid Supabase config with no rows shows the existing clean empty state. Detail routes show loading while workspace data is refreshing and a generic not-found state for unavailable records.
+- Known limitations: Property photos, rich amenities, advanced owner-property financial summaries, and full edit parity for every downstream module remain outside this PR. Existing detail-page related data still depends on the broader AppContext workspace load rather than a standalone detail-query cache.
+- Recommended next module: stabilize bookings only after properties are validated with real workspace users, since bookings depend on real `property_id` records and property-scoped RLS.
+
 ## Known schema gaps
 
 These are not fixed in this PR because they require a deeper migration/design review:

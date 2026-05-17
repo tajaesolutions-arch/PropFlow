@@ -235,6 +235,7 @@ supabase/migrations/202605110001_in_app_notifications_hardening.sql
 supabase/migrations/202605110001_workspace_invite_assignment_update_trigger.sql
 supabase/migrations/202605110002_plan_limits_enforcement.sql
 supabase/migrations/202605110002_private_file_uploads_foundation.sql
+supabase/migrations/202605170001_properties_workspace_crud_alignment.sql
 ```
 
 After migrations, create the founder/team account through Supabase Auth, then manually bootstrap SaaS-level admin access from a trusted SQL console only:
@@ -246,6 +247,15 @@ where email = 'founder@example.com';
 ```
 
 PropFlow Admin is a platform role only. Do not invite platform admins through customer workspace invites, and do not assign `propflow_admin` inside `workspace_members.roles`.
+
+
+### Properties Supabase CRUD
+
+The Properties module now uses the active workspace as the required Supabase scope for real property records. `src/lib/properties.js` centralizes list/get/create/update helpers, always requires `workspace_id`, normalizes snake_case database fields into the UI-safe property shape, trims user input, converts empty optional fields to `null`, and returns user-safe errors when Supabase is missing or RLS blocks a write.
+
+When `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are configured and the signed-in user has an active workspace, `/properties` loads real rows from `public.properties`, shows loading/empty states, supports search/filtering against loaded records, and refreshes after the shared Add Property modal saves. Missing Supabase env vars or no active workspace keep the UI safe: no unscoped queries are attempted, fake production properties are not shown, and submit is disabled with a setup notice.
+
+Database policy alignment lives in `supabase/migrations/202605170001_properties_workspace_crud_alignment.sql`: reads continue through `can_access_property(workspace_id, id)`, creates require an active Workspace Owner / Company Admin, Property Manager, or Host membership in the inserted `workspace_id`, and updates remain limited to Workspace Owner / Company Admin and Property Manager. Lower roles such as Property Owner, Cleaner, and Maintenance Crew do not receive broad property create/update access.
 
 ### Private storage bucket setup
 
@@ -505,7 +515,7 @@ MVP active roles:
 
 Customers cannot invite or assign `propflow_admin`. That role is platform-level only and must be controlled by trusted backend/admin operations.
 
-Property write access is limited to `workspace_owner` and `property_manager`. Cleaning and maintenance creation is limited to `workspace_owner`, `property_manager`, and `host`. Assigned lower-role users can access only the operational records/properties exposed by RLS through property assignments, assigned cleaning tasks, assigned maintenance work orders, or reported issues. Cleaning tasks are always workspace/property scoped; the shared Add Cleaning Task modal requires a real property, optional booking links must match the selected property, assigned cleaners must be active workspace cleaner members, and cleaner dashboards remain assigned-task scoped. Maintenance work orders are workspace/property scoped, use the shared Add Maintenance Work Order modal, require a real property, validate active maintenance-member assignments, and keep the Maintenance Crew dashboard assigned-work-order scoped. Maintenance issue/completion files use private workspace upload hooks and real records require Supabase env vars plus applied migrations. Frontend code uses only the anon key and never a service-role key.
+Property creation is limited to `workspace_owner`, `property_manager`, and `host`; property updates/archive actions remain limited to `workspace_owner` and `property_manager`. Cleaning and maintenance creation is limited to `workspace_owner`, `property_manager`, and `host`. Assigned lower-role users can access only the operational records/properties exposed by RLS through property assignments, assigned cleaning tasks, assigned maintenance work orders, or reported issues. Cleaning tasks are always workspace/property scoped; the shared Add Cleaning Task modal requires a real property, optional booking links must match the selected property, assigned cleaners must be active workspace cleaner members, and cleaner dashboards remain assigned-task scoped. Maintenance work orders are workspace/property scoped, use the shared Add Maintenance Work Order modal, require a real property, validate active maintenance-member assignments, and keep the Maintenance Crew dashboard assigned-work-order scoped. Maintenance issue/completion files use private workspace upload hooks and real records require Supabase env vars plus applied migrations. Frontend code uses only the anon key and never a service-role key.
 
 
 ## Team, invites, and role-management notes
@@ -936,6 +946,7 @@ supabase/migrations/202605110001_in_app_notifications_hardening.sql
 supabase/migrations/202605110001_workspace_invite_assignment_update_trigger.sql
 supabase/migrations/202605110002_plan_limits_enforcement.sql
 supabase/migrations/202605110002_private_file_uploads_foundation.sql
+supabase/migrations/202605170001_properties_workspace_crud_alignment.sql
 ```
 
 Important migration notes:

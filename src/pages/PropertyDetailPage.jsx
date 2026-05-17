@@ -564,6 +564,8 @@ export function PropertyDetailPage({ propertyId }) {
     currentUser,
     memberships,
     currentWorkspace,
+    dataLoading,
+    isSupabaseConfigured,
     createCalendarImportFeed,
     archiveCalendarImportFeed,
     syncCalendarImportFeed,
@@ -580,6 +582,50 @@ export function PropertyDetailPage({ propertyId }) {
   const [uploading, setUploading] = React.useState(false);
   const [feedForm, setFeedForm] = React.useState({ name: '', providerType: 'airbnb_ical', feedUrl: '' });
   const [feedBusyId, setFeedBusyId] = React.useState('');
+
+  if (!currentWorkspace?.id) {
+    return (
+      <AppLayout title="Property" subtitle="Property profile">
+        <EmptyState
+          eyebrow="Workspace required"
+          icon={Building2}
+          title="Create or join a workspace first"
+          description="Property details are always loaded through the active workspace_id. Select, create, or join a workspace before opening property records."
+          action={
+            <button type="button" onClick={() => navigate('/properties')} data-skip-create-action="true">
+              Back to properties
+            </button>
+          }
+        />
+      </AppLayout>
+    );
+  }
+
+  if (!isSupabaseConfigured) {
+    return (
+      <AppLayout title="Property" subtitle="Property profile">
+        <EmptyState
+          eyebrow="Supabase setup required"
+          icon={Building2}
+          title="Property data is not configured yet"
+          description="Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to load real workspace-scoped property details."
+          action={
+            <button type="button" onClick={() => navigate('/properties')} data-skip-create-action="true">
+              Back to properties
+            </button>
+          }
+        />
+      </AppLayout>
+    );
+  }
+
+  if (dataLoading && !property) {
+    return (
+      <AppLayout title="Property" subtitle="Property profile">
+        <section className="helper" role="status">Loading property details…</section>
+      </AppLayout>
+    );
+  }
 
   if (!property) {
     return (

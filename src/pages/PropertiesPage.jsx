@@ -28,6 +28,7 @@ import {
 } from '../lib/propertyAssignments.js';
 import {
   currencies,
+  propertyCreatorRoles,
   propertyEditorRoles,
   propertyStatuses,
   propertyTypes,
@@ -515,6 +516,8 @@ export function PropertiesPage() {
     archiveProperty,
     currentUser,
     currentWorkspace,
+    dataLoading,
+    isSupabaseConfigured,
     memberships,
   } = useApp();
 
@@ -527,6 +530,7 @@ export function PropertiesPage() {
   const [submitError, setSubmitError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
 
+  const canCreate = hasAnyActiveWorkspaceRole(memberships, currentWorkspace, propertyCreatorRoles);
   const canEdit = hasAnyActiveWorkspaceRole(memberships, currentWorkspace, propertyEditorRoles);
   const canOpenCalendar = hasAnyActiveWorkspaceRole(memberships, currentWorkspace, calendarAccessRoles);
   const ownerView = isOwnerRole(currentUser, memberships, currentWorkspace);
@@ -616,6 +620,19 @@ export function PropertiesPage() {
     }
   };
 
+  if (!currentWorkspace?.id) {
+    return (
+      <AppLayout title="Properties" subtitle="Workspace-scoped property records.">
+        <EmptyState
+          eyebrow="Workspace required"
+          icon={Building2}
+          title="Create or join a workspace first"
+          description="Properties are always scoped by workspace_id. Select, create, or join an active workspace before loading property records."
+        />
+      </AppLayout>
+    );
+  }
+
   return (
     <AppLayout
       title="Properties"
@@ -623,6 +640,18 @@ export function PropertiesPage() {
         ? 'Assigned property records, property status, and owner-visible property details.'
         : 'Manage every short-term rental, long-term rental, villa, unit, and commercial property in this workspace.'}
     >
+      {!isSupabaseConfigured && (
+        <section className="helper warning-helper" role="status">
+          Supabase is not configured, so real properties cannot be loaded or saved yet. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to enable workspace-scoped CRUD.
+        </section>
+      )}
+
+      {dataLoading && (
+        <section className="helper" role="status">
+          Loading workspace properties…
+        </section>
+      )}
+
       {message && (
         <section className="helper" role="status">
           {message}
@@ -685,14 +714,14 @@ export function PropertiesPage() {
         </div>
 
         <div className="properties-toolbar-actions">
-          {canEdit && (
+          {canCreate && (
             <button
               type="button"
               className="primary"
-              data-create-action={propertyLimitReached ? undefined : 'property'}
-              data-skip-create-action={propertyLimitReached ? 'true' : undefined}
-              disabled={propertyLimitReached}
-              title={propertyLimitReached ? getUpgradeMessage(FEATURE_KEYS.PROPERTIES, workspacePlan.key) : undefined}
+              data-create-action={!isSupabaseConfigured || propertyLimitReached ? undefined : 'property'}
+              data-skip-create-action={!isSupabaseConfigured || propertyLimitReached ? 'true' : undefined}
+              disabled={!isSupabaseConfigured || propertyLimitReached}
+              title={!isSupabaseConfigured ? 'Configure Supabase before adding real properties.' : propertyLimitReached ? getUpgradeMessage(FEATURE_KEYS.PROPERTIES, workspacePlan.key) : undefined}
             >
               <Plus size={16} />
               Add Property
@@ -706,7 +735,7 @@ export function PropertiesPage() {
           )}
         </div>
 
-        {canEdit && (propertyLimitReached || propertyLimitState.available) && (
+        {canCreate && isSupabaseConfigured && (propertyLimitReached || propertyLimitState.available) && (
           <div className={propertyLimitReached ? 'helper warning-helper' : 'helper'}>
             Plan usage: {propertyLimitState.label} active properties on {workspacePlan.label}.{' '}
             {propertyLimitReached
@@ -963,8 +992,8 @@ export function PropertiesPage() {
                 : 'Create a real property record before adding bookings, cleaning tasks, maintenance work orders, or owner reports.'
           }
           action={
-            canEdit ? (
-              <button type="button" className="primary" data-create-action="property">
+            canCreate ? (
+              <button type="button" className="primary" data-create-action={isSupabaseConfigured && !propertyLimitReached ? 'property' : undefined} data-skip-create-action={!isSupabaseConfigured || propertyLimitReached ? 'true' : undefined} disabled={!isSupabaseConfigured || propertyLimitReached} title={!isSupabaseConfigured ? 'Configure Supabase before adding real properties.' : propertyLimitReached ? getUpgradeMessage(FEATURE_KEYS.PROPERTIES, workspacePlan.key) : undefined}>
                 <Plus size={16} />
                 Add Property
               </button>
