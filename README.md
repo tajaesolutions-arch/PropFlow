@@ -49,6 +49,36 @@ Known remaining production TODOs before declaring the app fully production-ready
 - Finish production billing, notification, upload scanning, observability, backup, and incident-response checks.
 - Keep Stripe, Resend, Twilio, and service-role credentials server-only in Vercel/API settings.
 
+
+## Supabase Production Readiness
+
+PR #196 is an audit and hardening checkpoint before PropFlow moves further into real Supabase-backed production data. It does **not** claim full production readiness yet; it confirms the current safety posture, documents remaining gaps, and keeps follow-up work focused. See [`docs/SUPABASE_READINESS_AUDIT.md`](docs/SUPABASE_READINESS_AUDIT.md) for the founder-readable audit, RLS notes, workspace-scoping notes, and production hold checklist.
+
+Required frontend Vite variables for authenticated Supabase workflows are:
+
+```bash
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-public-anon-key
+```
+
+If either variable is missing or invalid, the frontend should not crash, should not keep authentication loading forever, and should keep the Supabase browser client `null`. Public pages remain available, while login, workspace setup, and authenticated workspace actions show safe setup messaging instead of using demo data or fake persistence.
+
+Current status:
+
+- The browser app has one intended Supabase client in `src/lib/supabase.js` and it uses only public Vite configuration.
+- Supabase Auth role routing is based on loaded profile/workspace membership state, not manual role selection in the login UI.
+- Workspace data queries in AppContext are scoped by the selected `workspace_id`; RLS remains the source of truth for real data protection.
+- Demo seed SQL is kept under `supabase/seed/` for local/demo environments only and must not be applied to production.
+- Remaining production TODOs include live Supabase migration/RLS verification, real role-account QA, private storage verification, provider hardening, backups, monitoring, and incident-response checks.
+
+Run the validation commands before opening or promoting a PR:
+
+```bash
+npm ci
+npm test
+npm run build
+```
+
 ## Current post-merge status
 
 This branch is a stabilization pass after Phase 1 was merged. The app remains a database-first Supabase MVP foundation and is ready for continued feature development once a real Supabase project is connected.
