@@ -266,7 +266,7 @@ const createActionAllowedRoles = {
 
 function activeWorkspaceRoles(app) {
   const activeMembership = (app.memberships || []).find(
-    (membership) => membership.workspace_id === app.currentWorkspace?.id && membership.status !== 'revoked',
+    (membership) => membership.workspace_id === app.currentWorkspace?.id && membership.status === 'active',
   );
 
   return activeMembership?.roles || [];

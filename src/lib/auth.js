@@ -25,8 +25,12 @@ export function isPropFlowAdmin(user) {
   return Boolean(user?.is_propflow_admin || user?.isPropFlowAdmin || user?.roles?.includes(appRoles.ADMIN));
 }
 
+export function isSuspendedAccount(user) {
+  return user?.status === 'suspended' || user?.account_status === 'suspended';
+}
+
 export function canAccessPlatformAdmin(user) {
-  return isPropFlowAdmin(user) && user?.status !== 'suspended' && user?.account_status !== 'suspended';
+  return isPropFlowAdmin(user) && !isSuspendedAccount(user);
 }
 
 export function getPostLoginPath(user) {
@@ -34,7 +38,7 @@ export function getPostLoginPath(user) {
     return '/login';
   }
 
-  if (user.status === 'suspended') {
+  if (isSuspendedAccount(user)) {
     return '/suspended';
   }
 
@@ -83,7 +87,7 @@ export function hasAnyActiveWorkspaceRole(user, memberships = [], currentWorkspa
 
 export function getWorkspacePostLoginPath(user, memberships = [], currentWorkspace = null) {
   if (!user) return '/login';
-  if (user.status === 'suspended') return '/suspended';
+  if (isSuspendedAccount(user)) return '/suspended';
   if (canAccessPlatformAdmin(user)) return '/admin';
   if (!currentWorkspace?.id) return getPostLoginPath(user);
 
@@ -92,9 +96,19 @@ export function getWorkspacePostLoginPath(user, memberships = [], currentWorkspa
 }
 
 export function hasAnyRole(user, allowed = []) {
-  if (!user || !Array.isArray(user.roles) || !Array.isArray(allowed)) {
+  if (!user || !Array.isArray(allowed)) {
     return false;
   }
 
-  return user.roles.some((role) => allowed.includes(role));
+  if (allowed.includes(appRoles.ADMIN) && canAccessPlatformAdmin(user)) {
+    return true;
+  }
+
+  if (user.membership) {
+    const activeMembershipRoles = Array.isArray(user.membership.roles) ? user.membership.roles : [];
+    return activeMembershipRoles.some((role) => allowed.includes(role));
+  }
+
+  const userRoles = Array.isArray(user.roles) ? user.roles : [];
+  return userRoles.some((role) => allowed.includes(role));
 }

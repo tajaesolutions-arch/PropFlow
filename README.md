@@ -66,6 +66,19 @@ Validated/fixed in this pass:
 - Upload actions fail cleanly when no file/workspace/Supabase Storage bucket is available.
 - RLS was tightened for workspace membership self-insert, profile visibility, property assignments, maintenance insert reporting, and assigned property access.
 
+
+## Runtime QA Checklist
+
+PR #195 focuses on click-through stability rather than new product scope. Use this checklist before launch reviews and after route, modal, or role changes:
+
+- Routes checked for safe rendering/no white screen: `/`, `/pricing`, `/login`, `/signup`, `/join`, `/suspended`, `/dashboard`, `/admin`, `/owner-dashboard`, `/cleaner-dashboard`, `/maintenance-dashboard`, `/properties`, `/bookings`, `/cleaning`, `/maintenance`, `/owners`, `/guests`, `/calendar`, `/reports`, `/notifications`, `/settings`, and `/account`.
+- Role flows checked: PropFlow Admin routes to `/admin`; Workspace Owner, Property Manager, and Host route to `/dashboard`; Property Owner routes to `/owner-dashboard`; Cleaner routes to `/cleaner-dashboard`; Maintenance Crew routes to `/maintenance-dashboard`; suspended users route to `/suspended`; authenticated users without an active workspace route to workspace setup/join.
+- Empty-state safety notes: workspace collections must tolerate empty or missing arrays, missing workspace/user context, and missing relationship data without `map`, `length`, or nested-property crashes. Pages should show clean “No data yet” states with a real next action or clear setup guidance.
+- Modal/create-action notes: Add/Create buttons should open the shared create-action modal when available, show permission/setup guidance for blocked roles or missing workspace context, close safely via cancel, Escape, close button, or backdrop, and avoid fake persistence when the AppContext save action is not connected.
+- Supabase missing-env behavior: when `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, or both are missing, the frontend keeps public pages available, does not leave auth loading stuck, uses a `null` Supabase client, and shows setup notices without exposing secrets. Frontend code must not reference service-role keys.
+- Mobile polish checked: landing/pricing/auth pages plus dashboard, properties, bookings, cleaner, maintenance, owner, and settings views should avoid horizontal overflow; tables should scroll inside their cards; sidebars and modals should not permanently cover content.
+- Known remaining production TODOs: complete real Supabase migration/RLS verification, production auth/role QA with seeded accounts, Stripe billing, private upload verification, notification provider wiring, reports exports, deployment monitoring, and final Vercel/Supabase environment hardening before claiming full production readiness.
+
 ## Phase 1 scope
 
 Implemented in this phase:

@@ -11,7 +11,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 
-import { canAccessPlatformAdmin, getWorkspacePostLoginPath, hasAnyActiveWorkspaceRole, hasAnyRole } from '../lib/auth.js';
+import { canAccessPlatformAdmin, getWorkspacePostLoginPath, hasAnyActiveWorkspaceRole, hasAnyRole, isSuspendedAccount } from '../lib/auth.js';
 import { getWorkspaceBillingGate, useApp } from '../lib/AppContext.jsx';
 import { roles } from '../data/constants.js';
 
@@ -560,7 +560,7 @@ export function AppRouter() {
     return <RedirectTo to="/login" />;
   }
 
-  if (currentUser.status === 'suspended' && path !== '/suspended' && path !== '/account') {
+  if (isSuspendedAccount(currentUser) && path !== '/suspended' && path !== '/account') {
     return <RedirectTo to="/suspended" />;
   }
 
