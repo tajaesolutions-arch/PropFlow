@@ -71,6 +71,7 @@ export const roleRedirects = {
 };
 
 export const dashboardRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
+export const propertyCreatorRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
 export const propertyEditorRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER];
 export const taskManagerRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
 

@@ -6,6 +6,7 @@ import { logActivity } from './activityLogs.js';
 import { getAvailabilityConflictMessage, hasBookingConflict, normalizeDateRange } from './availability.js';
 import { getSafeWorkspaceDataFallback, normalizeWorkspaceSelection } from './safeAppState.js';
 import { isSupabaseConfigured, supabase } from './supabase.js';
+import { createProperty as insertWorkspaceProperty, listProperties, normalizeProperty, updateProperty as updateWorkspaceProperty } from './properties.js';
 import { getBillingStatus } from './billingStatus.js';
 import { WORKSPACE_FILES_BUCKET, getEntityContext, getWorkspaceFilePath, normalizeWorkspaceFileType, uploadWorkspaceFile as uploadPrivateWorkspaceFile, validateWorkspaceUploadFile } from './fileUploads.js';
 
@@ -208,20 +209,6 @@ function normalizeWorkspace(row) {
   };
 }
 
-function normalizeProperty(row) {
-  if (!row) return row;
-
-  return {
-    ...row,
-    rentalType: row.rental_type,
-    propertyType: row.property_type,
-    nightlyRate: row.nightly_rate,
-    monthlyRent: row.monthly_rent,
-    squareFeet: row.square_feet,
-    assignedOwnerId: row.assigned_owner_id,
-    archivedAt: row.archived_at,
-  };
-}
 
 function normalizeCleaning(row, properties = []) {
   if (!row) return row;
@@ -989,6 +976,7 @@ function cleanOptionalDateOnly(value, label) {
 
 const workspaceActionRoles = {
   property: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
+  propertyCreate: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
   booking: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
   cleaning: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
   maintenance: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
@@ -1289,16 +1277,9 @@ export function AppProvider({ children }) {
     const nextData = getSafeWorkspaceDataFallback(emptyData);
     const warnings = [];
 
-    const propertiesResponse = await safeQuery(
-      'properties',
-      supabase
-        .from('properties')
-        .select('*')
-        .eq('workspace_id', workspaceId)
-        .order('created_at', { ascending: false }),
-    );
+    const propertiesResponse = await listProperties({ workspaceId });
 
-    if (propertiesResponse.error) warnings.push(`properties: ${formatSupabaseError(propertiesResponse.error)}`);
+    if (propertiesResponse.error) warnings.push(`properties: ${propertiesResponse.error}`);
 
     const properties = asArray(propertiesResponse.data).map(normalizeProperty);
     nextData.properties = properties;
@@ -2110,9 +2091,9 @@ export function AppProvider({ children }) {
   };
 
   const createProperty = async (payload) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
-    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'property');
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'propertyCreate');
 
     const allowed = [
       'name',
@@ -2164,13 +2145,14 @@ export function AppProvider({ children }) {
     propertyPayload.bathrooms = cleanNonNegativeNumber(propertyPayload.bathrooms, 'Bathrooms');
     propertyPayload.square_feet = cleanNonNegativeNumber(propertyPayload.square_feet, 'Square footage');
 
-    const { data: row, error: insertError } = await client
-      .from('properties')
-      .insert(propertyPayload)
-      .select('*')
-      .single();
+    const propertyResult = await insertWorkspaceProperty({
+      workspaceId: currentWorkspace.id,
+      values: propertyPayload,
+    });
 
-    if (insertError) throw new Error(formatSupabaseError(insertError, 'Property could not be saved.'));
+    if (propertyResult.error) throw new Error(propertyResult.error);
+
+    const row = propertyResult.data;
 
     await writeActivityLog('property_created', { property_id: row.id, property_name: row.name, status: row.status });
     await notifyWorkspaceManagers({
@@ -2204,7 +2186,7 @@ export function AppProvider({ children }) {
   };
 
   const updateProperty = async (propertyId, payload) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
     const allowed = [
@@ -2261,15 +2243,15 @@ export function AppProvider({ children }) {
       if (key in updatePayload) updatePayload[key] = cleanNonNegativeNumber(updatePayload[key], numericLabels[key]);
     });
 
-    const { data: row, error: updateError } = await client
-      .from('properties')
-      .update(updatePayload)
-      .eq('id', propertyId)
-      .eq('workspace_id', currentWorkspace.id)
-      .select('*')
-      .single();
+    const propertyResult = await updateWorkspaceProperty({
+      workspaceId: currentWorkspace.id,
+      propertyId,
+      values: updatePayload,
+    });
 
-    if (updateError) throw new Error(formatSupabaseError(updateError, 'Property could not be updated.'));
+    if (propertyResult.error) throw new Error(propertyResult.error);
+
+    const row = propertyResult.data;
 
     await writeActivityLog(updatePayload.status === 'archived' || updatePayload.archived_at ? 'property_archived' : 'property_updated', {
       property_id: row.id,

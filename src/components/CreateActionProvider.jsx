@@ -252,7 +252,7 @@ function labelFromValue(value) {
 const scopedInviteRoles = [roles.OWNER, roles.CLEANER, roles.MAINTENANCE];
 
 const createActionAllowedRoles = {
-  property: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
+  property: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
   booking: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
   lease: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER],
   cleaning: [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST],
@@ -586,6 +586,11 @@ function PropertyForm({ app, close, submitting, setSubmitting, setError, notifyS
 
     setError('');
 
+    if (!app.isSupabaseConfigured) {
+      setError('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY before saving real properties.');
+      return;
+    }
+
     if (!app.currentWorkspace?.id) {
       setError('Select or create a workspace before saving a property.');
       return;
@@ -681,6 +686,10 @@ function PropertyForm({ app, close, submitting, setSubmitting, setError, notifyS
     <form className="modal-form" onSubmit={submit} noValidate>
       <div className="modal-body">
         <WorkspaceBlockedNotice app={app} />
+
+        {!app.isSupabaseConfigured && (
+          <EmptyDependencyNotice message="Supabase is not configured, so PropFlow cannot save real property records yet. Configure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to enable this form." />
+        )}
 
         <FormGuidance>Property name, address/location, property type, rental type, status, and currency are required. Rates, owner assignment, size, and notes can be added now or later.</FormGuidance>
 
@@ -815,7 +824,7 @@ function PropertyForm({ app, close, submitting, setSubmitting, setError, notifyS
         <button type="button" onClick={close} disabled={submitting} data-skip-create-action="true">
           Cancel
         </button>
-        <button className="primary" type="submit" disabled={submitting} data-skip-create-action="true">
+        <button className="primary" type="submit" disabled={submitting || !app.isSupabaseConfigured || !app.currentWorkspace?.id} data-skip-create-action="true">
           {submitting ? 'Saving…' : 'Save property'}
         </button>
       </footer>

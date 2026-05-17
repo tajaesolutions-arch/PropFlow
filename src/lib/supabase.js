@@ -1,7 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 
-const rawSupabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const rawSupabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const publicEnv = import.meta.env || {};
+
+const rawSupabaseUrl = publicEnv.VITE_SUPABASE_URL;
+const rawSupabaseAnonKey = publicEnv.VITE_SUPABASE_ANON_KEY;
 
 const supabaseUrl = rawSupabaseUrl?.trim?.() || '';
 const supabaseAnonKey = rawSupabaseAnonKey?.trim?.() || '';
@@ -18,14 +20,14 @@ function isValidSupabaseUrl(value) {
 }
 
 function getPublicAppEnv() {
-  const value = import.meta.env.VITE_APP_ENV?.trim?.() || 'local';
+  const value = publicEnv.VITE_APP_ENV?.trim?.() || 'local';
   return ['local', 'preview', 'staging', 'production'].includes(value) ? value : 'custom';
 }
 
 export const appEnvironment = getPublicAppEnv();
 
 function getStorageConfiguredFlag() {
-  const value = import.meta.env.VITE_SUPABASE_STORAGE_CONFIGURED?.trim?.().toLowerCase();
+  const value = publicEnv.VITE_SUPABASE_STORAGE_CONFIGURED?.trim?.().toLowerCase();
   return ['true', '1', 'yes'].includes(value);
 }
 
