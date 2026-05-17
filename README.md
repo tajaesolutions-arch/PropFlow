@@ -2,6 +2,53 @@
 
 PropFlow is a property management SaaS foundation for property owners, Airbnb hosts, landlords, property managers, realtors, cleaning companies, maintenance crews, villa operators, guesthouse operators, hotel/small resort operators, and real estate companies.
 
+
+## Current Stability Status
+
+PR #194 is a focused stabilization pass after the state-check fallback guardrails. It verifies the app can install, test, and build cleanly while hardening safe empty states, route-level runtime recovery, app-level runtime recovery, and missing-Supabase configuration behavior.
+
+Install dependencies from the lockfile:
+
+```bash
+npm ci
+```
+
+Run the stability tests:
+
+```bash
+npm test
+```
+
+Build the Vite app:
+
+```bash
+npm run build
+```
+
+Required frontend Supabase variables for authenticated workspace workflows are:
+
+```bash
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+```
+
+Optional public runtime flags used by the frontend include:
+
+```bash
+VITE_APP_ENV=local
+VITE_APP_URL=http://localhost:5173
+VITE_SUPABASE_STORAGE_CONFIGURED=false
+```
+
+When `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, or both are missing, PropFlow should not crash or keep auth loading forever. Public pages remain available, authenticated database actions are disabled, and setup/configuration notices explain that a public Supabase URL and anon key are required before login, workspace setup, and workspace data actions can run. No frontend code should reference a Supabase service-role key.
+
+Known remaining production TODOs before declaring the app fully production-ready:
+
+- Complete deployment-specific Supabase migration/RLS verification against the real project.
+- Validate real authenticated role routing and workspace scoping with seeded non-demo accounts.
+- Finish production billing, notification, upload scanning, observability, backup, and incident-response checks.
+- Keep Stripe, Resend, Twilio, and service-role credentials server-only in Vercel/API settings.
+
 ## Current post-merge status
 
 This branch is a stabilization pass after Phase 1 was merged. The app remains a database-first Supabase MVP foundation and is ready for continued feature development once a real Supabase project is connected.

@@ -49,6 +49,7 @@ const memberships = [
   { workspace_id: 'workspace-a', status: 'active' },
   { workspace_id: 'workspace-b', status: 'revoked' },
   { workspace_id: 'workspace-c', status: 'active' },
+  { workspace_id: 'workspace-d', status: 'suspended' },
 ];
 
 assert.equal(
@@ -64,6 +65,14 @@ assert.equal(
   'workspace-c',
 );
 assert.equal(
+  normalizeWorkspaceSelection({ selectedWorkspaceId: 'workspace-d', memberships }),
+  'workspace-a',
+);
+assert.equal(
+  normalizeWorkspaceSelection({ selectedWorkspaceId: 'workspace-d', memberships: [{ workspace_id: 'workspace-d', status: 'suspended' }] }),
+  null,
+);
+assert.equal(
   normalizeWorkspaceSelection({ selectedWorkspaceId: 'missing-workspace', memberships: [] }),
   null,
 );
@@ -72,6 +81,7 @@ assert.equal(isActiveWorkspaceMembership({ workspace_id: 'workspace-a', status: 
 assert.equal(isActiveWorkspaceMembership({ workspace_id: 'workspace-a', status: 'active' }, 'workspace-a'), true);
 assert.equal(isActiveWorkspaceMembership({ workspace_id: 'workspace-a', status: 'active' }, 'workspace-b'), false);
 assert.equal(isActiveWorkspaceMembership({ workspace_id: 'workspace-a', status: 'suspended' }), false);
+assert.equal(isActiveWorkspaceMembership({ workspace_id: 'workspace-a', status: 'revoked' }), false);
 assert.equal(isActiveWorkspaceMembership(null), false);
 
 console.log('safeAppState tests passed');

@@ -4,6 +4,7 @@ import { billingAccessRoles, billingEventTypes, billingManageRoles, billingPlans
 import { canAccessPlatformAdmin, resolvePrimaryRole } from './auth.js';
 import { logActivity } from './activityLogs.js';
 import { getAvailabilityConflictMessage, hasBookingConflict, normalizeDateRange } from './availability.js';
+import { getSafeWorkspaceDataFallback, normalizeWorkspaceSelection } from './safeAppState.js';
 import { isSupabaseConfigured, supabase } from './supabase.js';
 import { getBillingStatus } from './billingStatus.js';
 import { WORKSPACE_FILES_BUCKET, getEntityContext, getWorkspaceFilePath, normalizeWorkspaceFileType, uploadWorkspaceFile as uploadPrivateWorkspaceFile, validateWorkspaceUploadFile } from './fileUploads.js';
@@ -1269,14 +1270,14 @@ export function AppProvider({ children }) {
   const [memberships, setMemberships] = useState([]);
   const [workspaces, setWorkspaces] = useState([]);
   const [currentWorkspace, setCurrentWorkspaceState] = useState(null);
-  const [data, setData] = useState(emptyData);
+  const [data, setData] = useState(() => getSafeWorkspaceDataFallback(emptyData));
   const [dataLoading, setDataLoading] = useState(false);
   const [dataWarnings, setDataWarnings] = useState([]);
   const [error, setError] = useState('');
 
   const refreshWorkspaceData = async (workspace = currentWorkspace, activeSession = session) => {
     if (!supabase || !workspace?.id || !activeSession?.user?.id) {
-      setData(emptyData);
+      setData(getSafeWorkspaceDataFallback(emptyData));
       setDataWarnings([]);
       setDataLoading(false);
       return { ok: true, warnings: [] };
@@ -1285,7 +1286,7 @@ export function AppProvider({ children }) {
     setDataLoading(true);
 
     const workspaceId = workspace.id;
-    const nextData = { ...emptyData };
+    const nextData = getSafeWorkspaceDataFallback(emptyData);
     const warnings = [];
 
     const propertiesResponse = await safeQuery(
@@ -1621,7 +1622,7 @@ export function AppProvider({ children }) {
       setMemberships([]);
       setWorkspaces([]);
       setCurrentWorkspaceState(null);
-      setData(emptyData);
+      setData(getSafeWorkspaceDataFallback(emptyData));
       return {
         session: null,
         currentUser: null,
@@ -1646,7 +1647,7 @@ export function AppProvider({ children }) {
         setMemberships([]);
         setWorkspaces([]);
         setCurrentWorkspaceState(null);
-        setData(emptyData);
+        setData(getSafeWorkspaceDataFallback(emptyData));
         saveWorkspaceId(null);
 
         return {
@@ -1709,19 +1710,21 @@ export function AppProvider({ children }) {
         .filter(Boolean);
 
       const savedWorkspaceId = getSavedWorkspaceId();
-      const activeMembership =
-        normalizedMemberships.find(
-          (membership) =>
-            membership.workspace_id === savedWorkspaceId &&
-            membership.status === 'active' &&
-            membership.workspace,
-        ) ||
-        normalizedMemberships.find(
-          (membership) => membership.status === 'active' && membership.workspace,
-        ) ||
-        normalizedMemberships.find((membership) => membership.workspace);
-      const hasActiveWorkspaceMembership = normalizedMemberships.some((membership) => membership.status === 'active' && membership.workspace);
-      const selectedMembershipStatus = activeMembership?.status || 'active';
+      const selectedWorkspaceId = normalizeWorkspaceSelection({
+        selectedWorkspaceId: savedWorkspaceId,
+        memberships: normalizedMemberships,
+      });
+      const activeMembership = normalizedMemberships.find(
+        (membership) =>
+          membership.workspace_id === selectedWorkspaceId &&
+          membership.status === 'active' &&
+          membership.workspace,
+      );
+      const hasActiveWorkspaceMembership = Boolean(activeMembership);
+      const suspendedMembership = normalizedMemberships.find(
+        (membership) => membership.status === 'suspended' && membership.workspace,
+      );
+      const selectedMembershipStatus = activeMembership?.status || suspendedMembership?.status || 'active';
       const accountStatus = profile?.account_status || profile?.status || 'active';
       const effectiveAccountStatus = accountStatus === 'suspended' || (!hasActiveWorkspaceMembership && selectedMembershipStatus === 'suspended')
         ? 'suspended'
@@ -1731,6 +1734,8 @@ export function AppProvider({ children }) {
 
       if (activeWorkspace?.id) {
         saveWorkspaceId(activeWorkspace.id);
+      } else {
+        saveWorkspaceId(null);
       }
 
       const memberRoles = Array.from(
@@ -1764,7 +1769,7 @@ export function AppProvider({ children }) {
       if (activeWorkspace?.id) {
         await refreshWorkspaceData(activeWorkspace, activeSession);
       } else {
-        setData(emptyData);
+        setData(getSafeWorkspaceDataFallback(emptyData));
       }
 
       return {
@@ -1830,7 +1835,7 @@ export function AppProvider({ children }) {
     if (workspace?.id) {
       await refreshWorkspaceData(workspace);
     } else {
-      setData(emptyData);
+      setData(getSafeWorkspaceDataFallback(emptyData));
     }
 
     return workspace;
@@ -1904,7 +1909,7 @@ export function AppProvider({ children }) {
     setMemberships([]);
     setWorkspaces([]);
     setCurrentWorkspaceState(null);
-    setData(emptyData);
+    setData(getSafeWorkspaceDataFallback(emptyData));
     saveWorkspaceId(null);
   };
 
