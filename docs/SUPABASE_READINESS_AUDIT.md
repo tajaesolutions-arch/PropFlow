@@ -75,7 +75,7 @@ Searches were also run for Supabase clients, frontend queries/RPCs, Auth session
 
 - Core customer tables are designed around `workspace_id` and most migrations enable RLS.
 - The initial schema enables RLS for profiles, workspaces, workspace members, invites, properties, assignments, cleaning, maintenance, files, activity logs, and notifications.
-- Later migrations add or align RLS for bookings, contacts/owners/guests, reports, expenses, supplies, direct bookings, leases, calendar imports, billing/subscription tables, platform admin records, private file uploads, and notification tables.
+- Later migrations add or align RLS for bookings, contacts/owners/guests, reports, expenses, supplies/inventory, direct bookings, leases, calendar imports, billing/subscription tables, platform admin records, private file uploads, and notification tables. Supplies / Inventory is now prepared for workspace-scoped Supabase CRUD through the shared anon client with safe missing-env empty states.
 - Static search found no `USING (true)`, `WITH CHECK (true)`, or `DISABLE ROW LEVEL SECURITY` statements in the migration set.
 - Private upload migrations use a private `workspace-files` bucket direction and workspace-scoped storage policies.
 - PropFlow Admin functionality is modeled separately from normal customer workspace roles through platform-admin helper functions and platform tables.
@@ -87,6 +87,15 @@ Searches were also run for Supabase clients, frontend queries/RPCs, Auth session
 - Direct booking public insert/read RPC behavior is intentionally public-facing in limited areas. Confirm it exposes only public page/request data and never private workspace operations.
 - Server-side API routes that use trusted credentials must validate workspace membership before writes and must not become a backdoor around RLS.
 - Platform admin helper functions using `SECURITY DEFINER` require careful verification of `search_path`, grants, and caller checks in the deployed database.
+
+
+### Supplies / Inventory CRUD readiness
+
+Supplies / Inventory uses the existing `public.supplies` table and is scoped by `workspace_id` for list, detail, create, and update operations. The frontend helper returns safe empty arrays when `VITE_SUPABASE_URL` or `VITE_SUPABASE_ANON_KEY` is missing, and it does not create duplicate Supabase clients or reference service-role keys.
+
+RLS remains the security boundary: workspace owners/company admins, property managers, and hosts can manage supplies where the deployed policies allow it; accountant visibility is read-only; lower operational roles do not receive broad full-inventory management access. Property assignment is constrained to properties in the active workspace so supply records cannot point across workspaces.
+
+Advanced procurement is still future scope. Barcode scanning, vendor ordering, purchase orders, automated purchasing, and vendor payment workflows are not implemented in this PR. Recommended next PR: Calendar / iCal Supabase CRUD.
 
 ## Workspace scoping status
 

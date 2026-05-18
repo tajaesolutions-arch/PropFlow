@@ -201,6 +201,17 @@ function getPropertyId(record) {
   return record?.propertyId || record?.property_id;
 }
 
+function getSupplyStatus(item) {
+  if (item?.archivedAt || item?.archived_at || item?.status === 'archived') return 'archived';
+
+  const quantity = toNumber(item?.current_quantity ?? item?.currentQuantity);
+  const threshold = toNumber(item?.low_stock_threshold ?? item?.lowStockThreshold ?? item?.minimum_quantity ?? item?.minimumQuantity);
+
+  if (quantity <= 0) return 'out_of_stock';
+  if (quantity <= threshold) return 'low_stock';
+  return item?.status || 'in_stock';
+}
+
 function getPropertyName(record, properties = []) {
   const propertyId = getPropertyId(record);
   const property = properties.find((item) => item.id === propertyId);
@@ -355,6 +366,7 @@ export function DashboardPage() {
   const bookings = data.bookings || [];
   const cleaningTasks = data.cleaningTasks || [];
   const maintenanceWorkOrders = data.maintenanceWorkOrders || [];
+  const supplies = data.supplies || [];
 
   const activeProperties = properties.filter((property) => property.status !== 'archived');
   const filteredProperties = filters.propertyId === 'all'
@@ -381,6 +393,9 @@ export function DashboardPage() {
     dateRange: selectedDateRange,
     getRecordDate: getMaintenanceDate,
   });
+
+  const filteredSupplies = supplies.filter((item) => filters.propertyId === 'all' || !getPropertyId(item) || getPropertyId(item) === filters.propertyId);
+  const lowSupplyAlerts = filteredSupplies.filter((item) => ['low_stock', 'out_of_stock'].includes(getSupplyStatus(item)));
 
   const urgentMaintenance = filteredMaintenanceWorkOrders.filter(
     (workOrder) => workOrder.priority === 'urgent' && !completedStatuses.has(workOrder.status),
@@ -409,7 +424,7 @@ export function DashboardPage() {
   const availableNights = Math.max(filteredProperties.length * daysInRange(selectedDateRange), 1);
   const occupancyRate = Math.min((bookedNights / availableNights) * 100, 100);
 
-  const issueCount = urgentMaintenance.length + openMaintenance.length + dueCleaningTasks.length;
+  const issueCount = urgentMaintenance.length + openMaintenance.length + dueCleaningTasks.length + lowSupplyAlerts.length;
   const operationsHealth = Math.max(100 - issueCount * 8, 0);
 
   const revenueChartData = buildMonthlyRevenue(
@@ -580,8 +595,8 @@ export function DashboardPage() {
           label="Operations health"
           value={formatPercent(operationsHealth)}
           icon={ClipboardList}
-          trend={urgentMaintenance.length ? `${urgentMaintenance.length} urgent alerts` : 'No urgent alerts'}
-          tone={urgentMaintenance.length ? 'warning' : 'accent'}
+          trend={lowSupplyAlerts.length ? `${lowSupplyAlerts.length} supply alerts` : urgentMaintenance.length ? `${urgentMaintenance.length} urgent alerts` : 'No urgent alerts'}
+          tone={urgentMaintenance.length || lowSupplyAlerts.length ? 'warning' : 'accent'}
         />
       </div>
 
@@ -711,6 +726,16 @@ export function DashboardPage() {
               </div>
               <StatusBadge tone={dueCleaningTasks.length ? 'warning' : 'success'}>
                 {dueCleaningTasks.length ? 'Due' : 'Clear'}
+              </StatusBadge>
+            </div>
+
+            <div className="stack-item">
+              <div>
+                <strong>Supply alerts</strong>
+                <small>{lowSupplyAlerts.length} low or out-of-stock supplies</small>
+              </div>
+              <StatusBadge tone={lowSupplyAlerts.length ? 'warning' : 'success'}>
+                {lowSupplyAlerts.length ? 'Restock' : 'Clear'}
               </StatusBadge>
             </div>
           </div>

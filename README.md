@@ -758,7 +758,9 @@ Supplies are real, workspace-scoped Supabase records that can be tracked either 
 
 Estimated inventory value is an operational preview based on current quantity and estimated unit cost; it is not finalized accounting, tax, invoice, payout, purchase-order, or payment data. Adding or editing supplies does not automatically create expenses, vendor invoices, supplier payments, purchase orders, exports, or accounting automation.
 
-Supplier/contact details and cost visibility are role-limited. Workspace Owner / Company Admin, Property Manager, and Host roles can manage supplies; Accountant users can review supplier details and estimated inventory value in read-only mode; Property Owner, Cleaner, and Maintenance Crew roles do not receive broad inventory-ledger access. Real inventory records require Supabase environment variables and applied migrations, and frontend code uses only the Supabase anon client without any service-role key.
+Supplier/contact details and cost visibility are role-limited. Workspace Owner / Company Admin, Property Manager, and Host roles can manage supplies; Accountant users can review supplier details and estimated inventory value in read-only mode; Property Owner, Cleaner, and Maintenance Crew roles do not receive broad inventory-ledger access. Real inventory records require Supabase environment variables and applied migrations, and frontend code uses only the Supabase anon client without any service-role key. Missing Supabase env vars return clean empty inventory states instead of crashing the app.
+
+Advanced procurement remains intentionally out of scope for this MVP wiring: barcode scanning, vendor ordering, purchase orders, automated supplier purchasing, and accounting/export automation are future follow-up items. Recommended next PR: wire Calendar / iCal records to workspace-scoped Supabase CRUD.
 
 ## Notifications / Provider Settings foundation
 

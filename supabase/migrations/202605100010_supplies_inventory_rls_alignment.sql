@@ -77,6 +77,9 @@ create index if not exists supplies_workspace_category_idx on public.supplies (w
 create index if not exists supplies_archived_at_idx on public.supplies (archived_at);
 create index if not exists supplies_workspace_archived_at_idx on public.supplies (workspace_id, archived_at);
 create index if not exists supplies_created_by_idx on public.supplies (created_by);
+create index if not exists supplies_status_idx on public.supplies (status);
+create index if not exists supplies_workspace_status_idx on public.supplies (workspace_id, status);
+create index if not exists supplies_workspace_reorder_idx on public.supplies (workspace_id, current_quantity, low_stock_threshold);
 
 create or replace function public.supply_property_is_scoped(target_workspace_id uuid, target_property_id uuid)
 returns boolean

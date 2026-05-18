@@ -9,6 +9,7 @@ import { isSupabaseConfigured, supabase } from './supabase.js';
 import { createProperty as insertWorkspaceProperty, listProperties, normalizeProperty, updateProperty as updateWorkspaceProperty } from './properties.js';
 import { createBooking as insertWorkspaceBooking, listBookings, normalizeBooking as normalizeWorkspaceBooking, updateBooking as updateWorkspaceBooking } from './bookings.js';
 import { createCleaningTask as insertWorkspaceCleaningTask, listCleaningTasks, normalizeCleaningTask as normalizeWorkspaceCleaningTask, updateCleaningTask as updateWorkspaceCleaningTask } from './cleaningTasks.js';
+import { createSupply as insertWorkspaceSupply, listSupplies, normalizeSupply as normalizeWorkspaceSupply, updateSupply as updateWorkspaceSupply } from './supplies.js';
 import { createMaintenanceWorkOrder as insertWorkspaceMaintenanceWorkOrder, listMaintenanceWorkOrders, normalizeMaintenanceWorkOrder as normalizeWorkspaceMaintenanceWorkOrder, updateMaintenanceWorkOrder as updateWorkspaceMaintenanceWorkOrder } from './maintenanceWorkOrders.js';
 import { createOwner as insertWorkspaceOwner } from './owners.js';
 import { createGuest as insertWorkspaceGuest } from './guests.js';
@@ -322,19 +323,12 @@ function normalizeLease(row, properties = []) {
 function normalizeSupply(row, properties = []) {
   if (!row) return row;
 
-  const property = properties.find((item) => item.id === row.property_id);
+  const normalized = normalizeWorkspaceSupply(row);
+  const property = properties.find((item) => item.id === normalized.property_id);
 
   return {
-    ...row,
+    ...normalized,
     property: property?.name || 'Workspace supply',
-    propertyId: row.property_id,
-    itemName: row.item_name,
-    currentQuantity: row.current_quantity,
-    lowStockThreshold: row.low_stock_threshold,
-    supplierName: row.supplier_name,
-    supplierContact: row.supplier_contact,
-    estimatedUnitCost: row.estimated_unit_cost,
-    archivedAt: row.archived_at,
   };
 }
 
@@ -1301,6 +1295,10 @@ export function AppProvider({ children }) {
     if (maintenanceResponse.error) warnings.push(`maintenance work orders: ${maintenanceResponse.error}`);
     nextData.maintenanceWorkOrders = asArray(maintenanceResponse.data).map((row) => normalizeMaintenance(row, properties));
 
+    const suppliesResponse = await listSupplies({ workspaceId });
+    if (suppliesResponse.error) warnings.push(`supplies: ${suppliesResponse.error}`);
+    nextData.supplies = asArray(suppliesResponse.data).map((row) => normalizeSupply(row, properties));
+
     const workspaceQueries = [
       {
         label: 'workspace members',
@@ -1332,16 +1330,6 @@ export function AppProvider({ children }) {
           .eq('workspace_id', workspaceId)
           .order('updated_at', { ascending: false }),
         normalize: (rows) => rows.map(normalizeContact),
-      },
-      {
-        label: 'supplies',
-        key: 'supplies',
-        query: supabase
-          .from('supplies')
-          .select('*')
-          .eq('workspace_id', workspaceId)
-          .order('created_at', { ascending: false }),
-        normalize: (rows) => rows.map((row) => normalizeSupply(row, properties)),
       },
       {
         label: 'workspace invites',
@@ -3502,121 +3490,55 @@ export function AppProvider({ children }) {
   };
 
   const createSupply = async (payload) => {
-    const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'inventory');
 
     const propertyId = payload.property_id || payload.propertyId || null;
-    const selectedProperty = optionalWorkspaceProperty(data.properties, propertyId, 'property');
-    const itemName = cleanText(payload.item_name || payload.itemName);
-    const currentQuantity = cleanNonNegativeNumber(payload.current_quantity ?? payload.currentQuantity ?? 0, 'Current quantity') ?? 0;
-    const lowStockThreshold = cleanNonNegativeNumber(payload.low_stock_threshold ?? payload.lowStockThreshold ?? 0, 'Low-stock threshold') ?? 0;
-    const estimatedUnitCost = cleanNonNegativeMoney(payload.estimated_unit_cost ?? payload.estimatedUnitCost, 'Estimated unit cost');
-    const currency = normalizeWorkspaceCurrency(
-      payload.currency || selectedProperty?.currency || currentWorkspace.defaultCurrency || currentWorkspace.default_currency || 'USD',
-    );
+    optionalWorkspaceProperty(data.properties, propertyId, 'property');
 
-    if (!itemName) throw new Error('Item name is required.');
-    requireAllowedValue(currency, workspaceCreationCurrencies, 'currency');
+    const result = await insertWorkspaceSupply({
+      workspaceId: currentWorkspace.id,
+      userId: session.user.id,
+      values: {
+        ...payload,
+        property_id: propertyId,
+        currency: payload.currency || currentWorkspace.defaultCurrency || currentWorkspace.default_currency || 'USD',
+      },
+    });
 
-    const supplyPayload = {
-      workspace_id: currentWorkspace.id,
-      property_id: propertyId,
-      item_name: itemName,
-      category: cleanText(payload.category),
-      current_quantity: currentQuantity,
-      low_stock_threshold: lowStockThreshold,
-      unit: cleanText(payload.unit) || 'unit',
-      supplier_name: cleanText(payload.supplier_name || payload.supplierName),
-      supplier_contact: cleanText(payload.supplier_contact || payload.supplierContact),
-      estimated_unit_cost: estimatedUnitCost,
-      currency,
-      notes: cleanText(payload.notes),
-      archived_at: null,
-      created_by: session.user.id,
-    };
-
-    const { data: row, error: insertError } = await client
-      .from('supplies')
-      .insert(supplyPayload)
-      .select('*')
-      .single();
-
-    if (insertError) throw new Error(formatSupabaseError(insertError, 'Supply could not be saved.'));
+    if (result.error) throw new Error(result.error);
 
     await refreshWorkspaceData();
 
-    return normalizeSupply(row, data.properties);
+    return normalizeSupply(result.data, data.properties);
   };
 
   const updateSupply = async (supplyId, payload) => {
-    const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'inventory');
 
-    const allowed = [
-      'property_id',
-      'item_name',
-      'category',
-      'current_quantity',
-      'low_stock_threshold',
-      'unit',
-      'supplier_name',
-      'supplier_contact',
-      'estimated_unit_cost',
-      'currency',
-      'notes',
-      'archived_at',
-    ];
+    const propertyId = Object.prototype.hasOwnProperty.call(payload, 'property_id')
+      ? payload.property_id
+      : payload.propertyId;
 
-    const updatePayload = stripUnsupportedPayloadKeys(payload, allowed);
-
-    if ('property_id' in updatePayload) {
-      updatePayload.property_id = updatePayload.property_id || null;
-      optionalWorkspaceProperty(data.properties, updatePayload.property_id, 'property');
+    if (Object.prototype.hasOwnProperty.call(payload, 'property_id') || Object.prototype.hasOwnProperty.call(payload, 'propertyId')) {
+      optionalWorkspaceProperty(data.properties, propertyId, 'property');
     }
 
-    if ('item_name' in updatePayload) {
-      updatePayload.item_name = cleanText(updatePayload.item_name);
-      if (!updatePayload.item_name) throw new Error('Item name is required.');
-    }
+    const result = await updateWorkspaceSupply({
+      workspaceId: currentWorkspace.id,
+      supplyId,
+      values: {
+        ...payload,
+        ...(Object.prototype.hasOwnProperty.call(payload, 'propertyId') ? { property_id: propertyId } : {}),
+      },
+    });
 
-    if ('category' in updatePayload) updatePayload.category = cleanText(updatePayload.category);
-    if ('unit' in updatePayload) updatePayload.unit = cleanText(updatePayload.unit) || 'unit';
-    if ('supplier_name' in updatePayload) updatePayload.supplier_name = cleanText(updatePayload.supplier_name);
-    if ('supplier_contact' in updatePayload) updatePayload.supplier_contact = cleanText(updatePayload.supplier_contact);
-    if ('notes' in updatePayload) updatePayload.notes = cleanText(updatePayload.notes);
-
-    if ('current_quantity' in updatePayload) {
-      updatePayload.current_quantity = cleanNonNegativeNumber(updatePayload.current_quantity, 'Current quantity') ?? 0;
-    }
-
-    if ('low_stock_threshold' in updatePayload) {
-      updatePayload.low_stock_threshold = cleanNonNegativeNumber(updatePayload.low_stock_threshold, 'Low-stock threshold') ?? 0;
-    }
-
-    if ('estimated_unit_cost' in updatePayload) {
-      updatePayload.estimated_unit_cost = cleanNonNegativeMoney(updatePayload.estimated_unit_cost, 'Estimated unit cost');
-    }
-
-    if ('currency' in updatePayload) {
-      updatePayload.currency = normalizeWorkspaceCurrency(updatePayload.currency);
-      requireAllowedValue(updatePayload.currency, workspaceCreationCurrencies, 'currency');
-    }
-
-    const { data: row, error: updateError } = await client
-      .from('supplies')
-      .update(updatePayload)
-      .eq('id', supplyId)
-      .eq('workspace_id', currentWorkspace.id)
-      .select('*')
-      .single();
-
-    if (updateError) throw new Error(formatSupabaseError(updateError, 'Supply could not be updated.'));
+    if (result.error) throw new Error(result.error);
 
     await refreshWorkspaceData();
 
-    return normalizeSupply(row, data.properties);
+    return normalizeSupply(result.data, data.properties);
   };
 
   const archiveSupply = async (supplyId, archived = true) =>
