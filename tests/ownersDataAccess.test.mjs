@@ -44,6 +44,9 @@ assert.equal(normalized.status, 'active');
 assert.match(helperSource, /\.eq\('workspace_id',\s*w\.workspaceId\)/, 'owners helper queries must scope by workspace_id');
 assert.doesNotMatch(helperSource, /createClient|SERVICE[_-]?ROLE/i, 'owners helper must not create duplicate clients or use service-role credentials');
 assert.match(appContextSource, /insertWorkspaceOwner\(/, 'AppContext owner create should use owners helper');
+
+assert.doesNotMatch(appContextSource, /^\s*requireSupabase\(\);\s*$/m, 'AppContext should bind requireSupabase() to a local client before client.* usage');
+assert.doesNotMatch(migrationSource, /contact_type\s*<>\s*'owner'/, 'owner RLS policy must not include broad non-owner bypass');
 assert.match(migrationSource, /contacts_select_owner_workspace_scoped/, 'migration should align owner read RLS policy names');
 assert.match(migrationSource, /contact_manage_roles_for_type\(contact_type\)/, 'owner writes should stay manager-scoped through contact_manage_roles_for_type');
 
