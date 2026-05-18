@@ -29,7 +29,7 @@ import { logActivity } from '../lib/activityLogs.js';
 import { supabase } from '../lib/supabase.js';
 import {
   buildCsv,
-  buildOwnerReportData,
+  buildOwnerReportData as buildExportOwnerReportData,
   calculateExpenseSummary,
   calculateOccupancySummary,
   calculatePropertyPerformance,
@@ -39,6 +39,7 @@ import {
   formatCurrency,
   formatDateRange,
 } from '../lib/reportExports.js';
+import { buildWorkspaceReportDataFromRecords } from '../lib/reports.js';
 
 const financeReportTypes = new Set(['owner_report', 'revenue_report', 'expense_report', 'property_performance_report']);
 const operationalReportTypes = new Set(['maintenance_cost_report', 'cleaning_cost_report', 'occupancy_report', 'property_performance_report']);
@@ -233,41 +234,6 @@ function makeFileName(workspaceName, reportTitle, start, end) {
     .join('-');
 }
 
-function buildPropertyRows({ properties, bookings, cleaning, maintenance, expenses, currency }) {
-  return properties.map((property) => {
-    const propertyBookings = bookings.filter((booking) => getPropertyId(booking) === property.id);
-    const propertyCleaning = cleaning.filter((task) => getPropertyId(task) === property.id);
-    const propertyMaintenance = maintenance.filter((item) => getPropertyId(item) === property.id);
-    const propertyExpenses = expenses.filter((expense) => getPropertyId(expense) === property.id);
-    const revenue = propertyBookings.reduce((sum, booking) => sum + getBookingAmount(booking), 0);
-    const ownerPayout = propertyBookings.reduce((sum, booking) => sum + getOwnerPayout(booking), 0);
-    const cleaningCosts = propertyCleaning.reduce((sum, task) => sum + getCleaningCost(task), 0);
-    const maintenanceCosts = propertyMaintenance.reduce((sum, item) => sum + getMaintenanceCost(item), 0);
-    const manualExpenses = propertyExpenses.reduce((sum, expense) => sum + toNumber(expense.amount), 0);
-    const expensesTotal = cleaningCosts + maintenanceCosts + manualExpenses;
-    const bookedNights = propertyBookings.reduce((sum, booking) => sum + getBookingNights(booking), 0);
-
-    return {
-      id: property.id,
-      name: property.name || property.address || 'Unnamed property',
-      currency: property.currency || currency,
-      revenue,
-      ownerPayout,
-      expenses: expensesTotal,
-      manualExpenses,
-      cleaningCost: cleaningCosts,
-      maintenanceCost: maintenanceCosts,
-      netProfit: revenue - expensesTotal,
-      occupancy: Math.min((bookedNights / 30) * 100, 100),
-      bookings: propertyBookings.length,
-      bookedNights,
-      cleaningTasks: propertyCleaning.length,
-      maintenanceItems: propertyMaintenance.length,
-      openMaintenance: propertyMaintenance.filter((item) => !closedStatuses.has(item.status)).length,
-    };
-  }).sort((a, b) => b.revenue - a.revenue);
-}
-
 function reportHasData(report) {
   return Array.isArray(report.rows) && report.rows.length > 0;
 }
@@ -348,7 +314,7 @@ function getOwnerReportRows(savedReports, properties, ownerContacts, members, pr
     }));
 }
 
-function buildReportSections({ definitions, savedReports, propertyRows, bookings, expenses, cleaning, maintenance, properties, ownerContacts, members, filters, currency, workspaceName, advancedReportsAccess, ownerReportLimitReached, workspacePlan }) {
+function buildReportSections({ definitions, savedReports, propertyRows, reportSummary, bookings, expenses, cleaning, maintenance, properties, ownerContacts, members, filters, currency, workspaceName, advancedReportsAccess, ownerReportLimitReached, workspacePlan }) {
   const revenueSummary = calculateRevenueSummary(bookings);
   const expenseSummary = calculateExpenseSummary(expenses);
   const maintenanceSummary = calculateExpenseSummary(maintenance.map((item) => ({ ...item, amount: getMaintenanceCost(item), category: item.priority || item.status || 'maintenance' })));
@@ -410,13 +376,13 @@ function buildReportSections({ definitions, savedReports, propertyRows, bookings
   };
 
   const summaryByType = {
-    owner_report: buildOwnerReportData({ rows: ownerRows, bookings, expenses, cleaning, maintenance, properties, currency, workspaceName }).summary,
+    owner_report: buildExportOwnerReportData({ rows: ownerRows, bookings, expenses, cleaning, maintenance, properties, currency, workspaceName }).summary,
     revenue_report: revenueSummary,
     expense_report: { totalExpenses: expenseSummary.totalExpenses, recordCount: expenseSummary.recordCount },
     maintenance_cost_report: { maintenanceCost: maintenanceSummary.totalExpenses, workOrders: maintenance.length, openMaintenance: maintenance.filter((item) => !closedStatuses.has(item.status)).length },
     cleaning_cost_report: { cleaningCost: cleaningSummary.totalExpenses, cleaningTasks: cleaning.length, completedCleaning: cleaning.filter((task) => ['completed', 'guest_ready'].includes(task.status)).length },
     occupancy_report: occupancySummary,
-    property_performance_report: performanceSummary,
+    property_performance_report: { ...performanceSummary, grossRevenue: reportSummary.grossRevenue, ownerPayout: reportSummary.ownerPayout, cleaningCost: reportSummary.cleaningCost, maintenanceCosts: reportSummary.maintenanceCosts },
   };
 
   const headersByType = {
@@ -551,7 +517,16 @@ export function ReportsPage() {
     .filter((report) => filters.status === 'all' || String(report.status || '').toLowerCase() === filters.status)
     .filter((report) => isInDateRange(getReportDate(report), filters.start, filters.end));
 
-  const propertyRows = buildPropertyRows({ properties: properties.filter((property) => filters.propertyId === 'all' || property.id === filters.propertyId), bookings, cleaning, maintenance, expenses, currency });
+  const filteredProperties = properties.filter((property) => filters.propertyId === 'all' || property.id === filters.propertyId);
+  const reportData = buildWorkspaceReportDataFromRecords({
+    properties: filteredProperties,
+    bookings,
+    cleaningTasks: cleaning,
+    maintenanceWorkOrders: maintenance,
+    expenses,
+    owners: ownerContacts,
+  });
+  const propertyRows = reportData.propertyPerformance.map((row) => ({ ...row, currency: row.currency || currency }));
 
   const ownerReportUsage = getUsageLimitState({
     plan: workspacePlan,
@@ -564,11 +539,12 @@ export function ReportsPage() {
     definitions: visibleDefinitions,
     savedReports: savedOwnerReports,
     propertyRows,
+    reportSummary: reportData.summary,
     bookings,
     expenses,
     cleaning,
     maintenance,
-    properties: properties.filter((property) => filters.propertyId === 'all' || property.id === filters.propertyId),
+    properties: filteredProperties,
     ownerContacts,
     members,
     filters,
@@ -584,10 +560,14 @@ export function ReportsPage() {
   });
 
   const summaryTotals = {
-    grossRevenue: bookings.reduce((sum, booking) => sum + getBookingAmount(booking), 0),
-    expenses: expenses.reduce((sum, expense) => sum + toNumber(expense.amount), 0) + maintenance.reduce((sum, item) => sum + getMaintenanceCost(item), 0) + cleaning.reduce((sum, task) => sum + getCleaningCost(task), 0),
-    ownerPayout: bookings.reduce((sum, booking) => sum + getOwnerPayout(booking), 0),
-    occupancy: calculateOccupancySummary(bookings, properties).occupancyRate,
+    grossRevenue: reportData.summary.grossRevenue,
+    expenses: reportData.summary.expenses,
+    ownerPayout: reportData.summary.ownerPayout,
+    netProfit: reportData.summary.netProfit,
+    occupancy: reportData.summary.occupancyEstimate,
+    bookingCount: reportData.summary.bookingCount,
+    maintenanceCosts: reportData.summary.maintenanceCosts,
+    cleaningCost: reportData.summary.cleaningCost,
   };
 
   const logExport = async (report, format) => {
@@ -674,7 +654,7 @@ export function ReportsPage() {
       <section className="stat-grid dense">
         <StatCard label="Gross revenue" value={formatCurrency(summaryTotals.grossRevenue, currency)} icon={BarChart3} />
         <StatCard label="Expenses" value={formatCurrency(summaryTotals.expenses, currency)} icon={Receipt} />
-        <StatCard label="Net profit" value={formatCurrency(summaryTotals.grossRevenue - summaryTotals.expenses, currency)} icon={FileSpreadsheet} />
+        <StatCard label="Net profit" value={formatCurrency(summaryTotals.netProfit, currency)} icon={FileSpreadsheet} />
         <StatCard label="Owner payout" value={formatCurrency(summaryTotals.ownerPayout, currency)} icon={Home} />
         <StatCard label="Occupancy" value={formatPercent(summaryTotals.occupancy)} icon={CalendarDays} />
       </section>
