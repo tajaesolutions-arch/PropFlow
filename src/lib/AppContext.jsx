@@ -9,6 +9,7 @@ import { isSupabaseConfigured, supabase } from './supabase.js';
 import { createProperty as insertWorkspaceProperty, listProperties, normalizeProperty, updateProperty as updateWorkspaceProperty } from './properties.js';
 import { createBooking as insertWorkspaceBooking, listBookings, normalizeBooking as normalizeWorkspaceBooking, updateBooking as updateWorkspaceBooking } from './bookings.js';
 import { createCleaningTask as insertWorkspaceCleaningTask, listCleaningTasks, normalizeCleaningTask as normalizeWorkspaceCleaningTask, updateCleaningTask as updateWorkspaceCleaningTask } from './cleaningTasks.js';
+import { createMaintenanceWorkOrder as insertWorkspaceMaintenanceWorkOrder, listMaintenanceWorkOrders, normalizeMaintenanceWorkOrder as normalizeWorkspaceMaintenanceWorkOrder, updateMaintenanceWorkOrder as updateWorkspaceMaintenanceWorkOrder } from './maintenanceWorkOrders.js';
 import { getBillingStatus } from './billingStatus.js';
 import { WORKSPACE_FILES_BUCKET, getEntityContext, getWorkspaceFilePath, normalizeWorkspaceFileType, uploadWorkspaceFile as uploadPrivateWorkspaceFile, validateWorkspaceUploadFile } from './fileUploads.js';
 
@@ -1294,6 +1295,10 @@ export function AppProvider({ children }) {
     if (cleaningTasksResponse.error) warnings.push(`cleaning tasks: ${cleaningTasksResponse.error}`);
     nextData.cleaningTasks = asArray(cleaningTasksResponse.data).map((row) => normalizeCleaning(row, properties));
 
+    const maintenanceResponse = await listMaintenanceWorkOrders({ workspaceId });
+    if (maintenanceResponse.error) warnings.push(`maintenance work orders: ${maintenanceResponse.error}`);
+    nextData.maintenanceWorkOrders = asArray(maintenanceResponse.data).map((row) => normalizeMaintenance(row, properties));
+
     const workspaceQueries = [
       {
         label: 'workspace members',
@@ -1325,16 +1330,6 @@ export function AppProvider({ children }) {
           .eq('workspace_id', workspaceId)
           .order('updated_at', { ascending: false }),
         normalize: (rows) => rows.map(normalizeContact),
-      },
-      {
-        label: 'maintenance work orders',
-        key: 'maintenanceWorkOrders',
-        query: supabase
-          .from('maintenance_work_orders')
-          .select('*')
-          .eq('workspace_id', workspaceId)
-          .order('created_at', { ascending: false }),
-        normalize: (rows) => rows.map((row) => normalizeMaintenance(row, properties)),
       },
       {
         label: 'supplies',
@@ -3295,15 +3290,17 @@ export function AppProvider({ children }) {
       created_by: session.user.id,
     };
 
-    const { data: row, error: insertError } = await client
-      .from('maintenance_work_orders')
-      .insert(workOrderPayload)
-      .select('*')
-      .single();
+    const createResult = await insertWorkspaceMaintenanceWorkOrder({
+      workspaceId: currentWorkspace.id,
+      userId: session.user.id,
+      values: workOrderPayload,
+    });
 
-    if (insertError) {
-      throw new Error(formatSupabaseError(insertError, 'Maintenance work order could not be saved.'));
+    if (createResult.error) {
+      throw new Error(createResult.error);
     }
+
+    const row = createResult.data;
 
     await writeActivityLog('maintenance_work_order_created', { maintenance_work_order_id: row.id, property_id: row.property_id, assigned_maintenance_id: row.assigned_maintenance_id, title: row.title, priority: row.priority, status: row.status });
 
@@ -3411,17 +3408,17 @@ export function AppProvider({ children }) {
       updatePayload.completed_at = new Date().toISOString();
     }
 
-    const { data: row, error: updateError } = await client
-      .from('maintenance_work_orders')
-      .update(updatePayload)
-      .eq('id', workOrderId)
-      .eq('workspace_id', currentWorkspace.id)
-      .select('*')
-      .single();
+    const updateResult = await updateWorkspaceMaintenanceWorkOrder({
+      workspaceId: currentWorkspace.id,
+      workOrderId,
+      values: updatePayload,
+    });
 
-    if (updateError) {
-      throw new Error(formatSupabaseError(updateError, 'Maintenance work order could not be updated.'));
+    if (updateResult.error) {
+      throw new Error(updateResult.error);
     }
+
+    const row = updateResult.data;
 
     await writeActivityLog(row.status === 'completed' && currentWorkOrder.status !== 'completed' ? 'maintenance_work_order_completed' : 'maintenance_work_order_updated', {
       maintenance_work_order_id: row.id,
