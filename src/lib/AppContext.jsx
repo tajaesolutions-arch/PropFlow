@@ -10,6 +10,7 @@ import { createProperty as insertWorkspaceProperty, listProperties, normalizePro
 import { createBooking as insertWorkspaceBooking, listBookings, normalizeBooking as normalizeWorkspaceBooking, updateBooking as updateWorkspaceBooking } from './bookings.js';
 import { createCleaningTask as insertWorkspaceCleaningTask, listCleaningTasks, normalizeCleaningTask as normalizeWorkspaceCleaningTask, updateCleaningTask as updateWorkspaceCleaningTask } from './cleaningTasks.js';
 import { createMaintenanceWorkOrder as insertWorkspaceMaintenanceWorkOrder, listMaintenanceWorkOrders, normalizeMaintenanceWorkOrder as normalizeWorkspaceMaintenanceWorkOrder, updateMaintenanceWorkOrder as updateWorkspaceMaintenanceWorkOrder } from './maintenanceWorkOrders.js';
+import { createOwner as insertWorkspaceOwner } from './owners.js';
 import { getBillingStatus } from './billingStatus.js';
 import { WORKSPACE_FILES_BUCKET, getEntityContext, getWorkspaceFilePath, normalizeWorkspaceFileType, uploadWorkspaceFile as uploadPrivateWorkspaceFile, validateWorkspaceUploadFile } from './fileUploads.js';
 
@@ -1808,7 +1809,7 @@ export function AppProvider({ children }) {
   };
 
   const signIn = async (email, password) => {
-    const client = requireSupabase();
+    requireSupabase();
 
     const { data: authData, error: signInError } = await client.auth.signInWithPassword({
       email,
@@ -1826,7 +1827,7 @@ export function AppProvider({ children }) {
   };
 
   const signUp = async ({ fullName, email, password }) => {
-    const client = requireSupabase();
+    requireSupabase();
 
     const { data: authData, error: signUpError } = await client.auth.signUp({
       email,
@@ -1866,7 +1867,7 @@ export function AppProvider({ children }) {
   };
 
   const signOut = async () => {
-    const client = requireSupabase();
+    requireSupabase();
 
     await client.auth.signOut();
 
@@ -1880,7 +1881,7 @@ export function AppProvider({ children }) {
   };
 
   const createWorkspace = async (payload) => {
-    const client = requireSupabase();
+    requireSupabase();
 
     if (!session?.user?.id) {
       throw new Error('Your session expired. Sign in again before creating a workspace.');
@@ -1958,7 +1959,7 @@ export function AppProvider({ children }) {
   };
 
   const joinWorkspace = async ({ token, code }) => {
-    const client = requireSupabase();
+    requireSupabase();
 
     if (!session?.user?.id) {
       throw new Error('Log in before joining a workspace.');
@@ -2263,7 +2264,7 @@ export function AppProvider({ children }) {
     contact_type = 'other',
     notes,
   }) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
     if (!supportedContactTypes.includes(contact_type)) {
@@ -2355,11 +2356,35 @@ export function AppProvider({ children }) {
   };
 
   const createContact = (payload) => createOrUpdateContact(payload);
-  const createOwner = (payload) => createOrUpdateContact({ ...payload, contact_type: 'owner' });
+  const createOwner = async (payload) => {
+    requireSupabase();
+    requireWorkspaceSession(currentWorkspace, session);
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'ownerContact');
+
+    const ownerPayload = {
+      full_name: cleanText(payload.full_name || payload.name),
+      email: cleanEmail(payload.email),
+      phone: cleanPhone(payload.phone),
+      company_name: cleanText(payload.company_name),
+      payout_preference: cleanText(payload.payout_preference),
+      notes: cleanText(payload.notes),
+      assigned_property_ids: asArray(payload.assigned_property_ids).map((id) => cleanText(id)).filter(Boolean),
+      status: cleanText(payload.status) || 'active',
+    };
+
+    if (!ownerPayload.full_name) throw new Error('Owner name is required.');
+    if (ownerPayload.email && !isValidEmail(ownerPayload.email)) throw new Error('Owner email must be valid.');
+
+    const createResponse = await insertWorkspaceOwner({ workspaceId: currentWorkspace.id, userId: session.user.id, values: ownerPayload });
+    if (createResponse.error) throw new Error(createResponse.error);
+
+    await refreshWorkspaceData();
+    return normalizeContact(createResponse.data);
+  };
   const createGuest = (payload) => createOrUpdateContact({ ...payload, contact_type: 'guest' });
 
   const createBooking = async (payload) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'booking');
     const selectedProperty = requireWorkspaceProperty(data.properties, payload.property_id);
@@ -2437,7 +2462,7 @@ export function AppProvider({ children }) {
   };
 
   const updateBooking = async (bookingId, payload) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'booking');
 
@@ -2518,7 +2543,7 @@ export function AppProvider({ children }) {
 
 
   const createOrUpdateDirectBookingPage = async (payload) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'directBooking');
     // Database triggers enforce direct booking plan access; frontend gating remains UX guidance only.
@@ -2600,7 +2625,7 @@ export function AppProvider({ children }) {
   };
 
   const archiveDirectBookingPage = async (pageId, archived = true) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'directBooking');
 
@@ -2627,7 +2652,7 @@ export function AppProvider({ children }) {
   };
 
   const reviewDirectBookingRequest = async (requestId, status, options = {}) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'directBooking');
     requireAllowedValue(status, ['under_review', 'approved', 'declined', 'rejected', 'converted_to_booking', 'canceled'], 'direct booking request review status');
@@ -2871,7 +2896,7 @@ export function AppProvider({ children }) {
   };
 
   const createLease = async (payload) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'lease');
 
@@ -2916,7 +2941,7 @@ export function AppProvider({ children }) {
   };
 
   const updateLease = async (leaseId, payload) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'lease');
 
@@ -2947,7 +2972,7 @@ export function AppProvider({ children }) {
   };
 
   const archiveLease = async (leaseId, archived = true) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'lease');
 
@@ -2987,7 +3012,7 @@ export function AppProvider({ children }) {
   };
 
   const linkLeaseDocument = async (leaseId, fileUploadId) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'lease');
 
@@ -3027,7 +3052,7 @@ export function AppProvider({ children }) {
   };
 
   const createCleaningTask = async (payload) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'cleaning');
 
@@ -3102,7 +3127,7 @@ export function AppProvider({ children }) {
   };
 
   const updateCleaningTask = async (taskId, payload) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
     const currentTask = asArray(data.cleaningTasks).find((task) => task.id === taskId);
@@ -3240,7 +3265,7 @@ export function AppProvider({ children }) {
   };
 
   const createMaintenanceWorkOrder = async (payload) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'maintenance');
 
@@ -3340,7 +3365,7 @@ export function AppProvider({ children }) {
   };
 
   const updateMaintenanceWorkOrder = async (workOrderId, payload) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
     const currentWorkOrder = asArray(data.maintenanceWorkOrders).find((workOrder) => workOrder.id === workOrderId);
@@ -3451,7 +3476,7 @@ export function AppProvider({ children }) {
   };
 
   const createSupply = async (payload) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'inventory');
 
@@ -3499,7 +3524,7 @@ export function AppProvider({ children }) {
   };
 
   const updateSupply = async (supplyId, payload) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'inventory');
 
@@ -3603,7 +3628,7 @@ export function AppProvider({ children }) {
   };
 
   const createInvite = async (payload) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'invite');
     // Database triggers enforce team member and pending invite limits; frontend gating remains UX guidance only.
@@ -3710,7 +3735,7 @@ export function AppProvider({ children }) {
   const inviteTeamMember = createInvite;
 
   const updateWorkspaceMemberStatus = async (memberId, nextStatus) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'teamLifecycle');
     requireAllowedValue(nextStatus, ['active', 'suspended', 'revoked'], 'member status');
@@ -3768,7 +3793,7 @@ export function AppProvider({ children }) {
   };
 
   const revokeWorkspaceInvite = async (inviteId) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'invite');
 
@@ -3794,7 +3819,7 @@ export function AppProvider({ children }) {
   };
 
   const createPropertyAssignment = async (payload) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'propertyAssignment');
 
@@ -3843,7 +3868,7 @@ export function AppProvider({ children }) {
   };
 
   const removePropertyAssignment = async (assignmentId) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'propertyAssignment');
 
@@ -3865,7 +3890,7 @@ export function AppProvider({ children }) {
   };
 
   const createReport = async (payload) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'report');
 
@@ -4057,7 +4082,7 @@ export function AppProvider({ children }) {
   };
 
   const createExpense = async (payload) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'expense');
 
@@ -4079,7 +4104,7 @@ export function AppProvider({ children }) {
   };
 
   const updateExpense = async (expenseId, payload) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'expense');
 
@@ -4173,7 +4198,7 @@ export function AppProvider({ children }) {
   };
 
   const uploadWorkspaceFile = async (fileOrOptions, maybeContext = {}) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
     const options = fileOrOptions?.file ? fileOrOptions : { file: fileOrOptions, ...maybeContext };
@@ -4287,7 +4312,7 @@ export function AppProvider({ children }) {
   };
 
   const getFileSignedUrl = async (fileUploadOrId, expiresIn = 300) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
     const fileId = typeof fileUploadOrId === 'string' ? fileUploadOrId : fileUploadOrId?.id;
@@ -4327,7 +4352,7 @@ export function AppProvider({ children }) {
   };
 
   const archiveFileUpload = async (fileUploadId, archived = true) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
     if (!fileUploadId) throw new Error('Select a file to update.');
@@ -4479,7 +4504,7 @@ export function AppProvider({ children }) {
   };
 
   const createNotification = async (payload) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     requireNotificationManagerRole(payload);
 
@@ -4627,7 +4652,7 @@ export function AppProvider({ children }) {
   };
 
   const createCalendarImportFeed = async (payload = {}) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireCalendarImportManager();
     const selectedProperty = requireWorkspaceProperty(data.properties, payload.property_id || payload.propertyId);
     const providerType = payload.provider_type || payload.providerType || 'other_ical';
@@ -4666,7 +4691,7 @@ export function AppProvider({ children }) {
   };
 
   const updateCalendarImportFeed = async (feedId, payload = {}) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireCalendarImportManager();
     const existing = asArray(data.calendarImportFeeds).find((feed) => feed.id === feedId);
     if (!existing) throw new Error('Calendar import feed was not found in this workspace.');
@@ -4724,7 +4749,7 @@ export function AppProvider({ children }) {
   };
 
   const archiveCalendarImportFeed = async (feedId, archived = true) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireCalendarImportManager();
     const existing = asArray(data.calendarImportFeeds).find((feed) => feed.id === feedId);
     if (!existing) throw new Error('Calendar import feed was not found in this workspace.');
@@ -4814,7 +4839,7 @@ export function AppProvider({ children }) {
   };
 
   const acknowledgeCalendarImportConflict = async (conflictId, status = 'acknowledged') => {
-    const client = requireSupabase();
+    requireSupabase();
     requireCalendarImportManager();
     requireAllowedValue(status, ['acknowledged', 'resolved', 'ignored'], 'calendar import conflict status');
     const conflict = asArray(data.calendarImportConflicts).find((item) => item.id === conflictId);
@@ -4835,7 +4860,7 @@ export function AppProvider({ children }) {
   };
 
   const convertImportedEventToBooking = async (importedEventId) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireCalendarImportManager();
     const importedEvent = asArray(data.calendarImportEvents).find((item) => item.id === importedEventId);
     if (!importedEvent) throw new Error('Imported calendar event was not found in this workspace.');
@@ -4914,7 +4939,7 @@ export function AppProvider({ children }) {
   };
 
   const callPlatformRpc = async (rpcName, params = {}) => {
-    const client = requireSupabase();
+    requireSupabase();
 
     if (!canAccessPlatformAdmin(currentUser)) {
       throw new Error('Platform admin access denied.');
@@ -5032,7 +5057,7 @@ export function AppProvider({ children }) {
 
   const writeBillingEvent = async (eventType, message, metadata = {}) => {
     try {
-      const client = requireSupabase();
+      requireSupabase();
       requireWorkspaceSession(currentWorkspace, session);
       requireAllowedValue(eventType, billingEventTypes, 'billing event type');
       const safeMetadata = metadata && typeof metadata === 'object'
@@ -5070,7 +5095,7 @@ export function AppProvider({ children }) {
   };
 
   const ensureWorkspaceSubscription = async (preferredPlan = 'starter') => {
-    const client = requireSupabase();
+    requireSupabase();
     requireBillingRole(billingManageRoles, 'Only Workspace Owners can initialize workspace billing.');
 
     if (data.subscription?.id) return data.subscription;
@@ -5194,7 +5219,7 @@ export function AppProvider({ children }) {
   };
 
   const markNotificationRead = async (notificationId, read = true) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
     const status = read ? 'read' : 'unread';
@@ -5222,7 +5247,7 @@ export function AppProvider({ children }) {
   };
 
   const archiveNotification = async (notificationId, archived = true) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
     const { data: row, error: updateError } = await client
@@ -5252,7 +5277,7 @@ export function AppProvider({ children }) {
 
 
   const markAllNotificationsRead = async () => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
     const { error: updateError } = await client
@@ -5274,7 +5299,7 @@ export function AppProvider({ children }) {
   };
 
   const updateNotificationPreference = async (eventGroup, channels = {}) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
     requireAllowedValue(eventGroup, notificationPreferenceGroupValues, 'notification preference group');
@@ -5305,7 +5330,7 @@ export function AppProvider({ children }) {
   };
 
   const updateNotificationProviderSetting = async (payload) => {
-    const client = requireSupabase();
+    requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
     requireProviderManagerRole();
 

@@ -239,3 +239,6 @@ Do not promote production traffic until these are tested in Supabase with real A
 
 
 - Maintenance Work Orders workspace-scoped Supabase CRUD wiring is now prepared with `src/lib/maintenanceWorkOrders.js`, workspace-scoped queries, and RLS alignment migration support. Missing `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` remains non-crashing with safe empty states. Next recommended PR: Owners / Property Owners Supabase CRUD or Guest CRM Supabase CRUD.
+
+- Owners / Property Owners are now prepared for workspace-scoped Supabase CRUD through the shared `src/lib/owners.js` helper and workspace-scoped owner-contact policies. Missing `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` remains a safe non-crashing fallback state.
+- Recommended next PR: wire Guest CRM to workspace-scoped Supabase CRUD using the same helper + RLS alignment pattern.
