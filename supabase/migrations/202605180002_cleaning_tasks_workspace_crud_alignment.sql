@@ -24,7 +24,13 @@ for select using (public.cleaning_tasks_select_workspace_scoped(cleaning_tasks))
 
 drop policy if exists cleaning_insert_manager on public.cleaning_tasks;
 create policy cleaning_insert_manager on public.cleaning_tasks
-for insert with check (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager','host']));
+for insert with check (
+  public.has_workspace_role(workspace_id, array['workspace_owner','property_manager','host'])
+  and public.property_belongs_to_workspace(workspace_id, property_id)
+  and public.optional_booking_belongs_to_workspace_property(workspace_id, property_id, booking_id)
+  and public.optional_booking_belongs_to_workspace_property(workspace_id, property_id, related_booking_id)
+  and public.user_is_active_workspace_member_with_role(workspace_id, assigned_cleaner_id, 'cleaner')
+);
 
 drop policy if exists cleaning_update_authorized on public.cleaning_tasks;
 create policy cleaning_update_authorized on public.cleaning_tasks
@@ -34,6 +40,12 @@ using (
   or assigned_cleaner_id = auth.uid()
 )
 with check (
-  public.has_workspace_role(workspace_id, array['workspace_owner','property_manager','host'])
-  or assigned_cleaner_id = auth.uid()
+  (
+    public.has_workspace_role(workspace_id, array['workspace_owner','property_manager','host'])
+    or assigned_cleaner_id = auth.uid()
+  )
+  and public.property_belongs_to_workspace(workspace_id, property_id)
+  and public.optional_booking_belongs_to_workspace_property(workspace_id, property_id, booking_id)
+  and public.optional_booking_belongs_to_workspace_property(workspace_id, property_id, related_booking_id)
+  and public.user_is_active_workspace_member_with_role(workspace_id, assigned_cleaner_id, 'cleaner')
 );

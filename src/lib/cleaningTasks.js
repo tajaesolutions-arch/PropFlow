@@ -14,6 +14,7 @@ export function normalizeCleaningTask(row=null){ if(!row) return null; const rel
 
 export function buildCleaningTaskPayload(values={}){ const payload={}; for(const k of CLEANING_FIELDS){ if(Object.prototype.hasOwnProperty.call(values,k)) payload[k]=values[k]; }
  if('booking_id' in payload && !('related_booking_id' in payload)) payload.related_booking_id=payload.booking_id;
+ if('related_booking_id' in payload && !('booking_id' in payload)) payload.booking_id=payload.related_booking_id;
  ['property_id','related_booking_id','assigned_cleaner_id','created_by'].forEach((k)=>{ if(k in payload) payload[k]=asText(payload[k]); });
  ['cleaner_notes','supplies_used','scheduled_for','started_at','completed_at'].forEach((k)=>{ if(k in payload) payload[k]=asText(payload[k]); });
  if('status' in payload){ const s=String(payload.status||'').trim().toLowerCase(); payload.status=s||'scheduled'; if(!STATUS_VALUES.has(payload.status)) throw new Error('Select a valid cleaning status.'); }
@@ -21,7 +22,6 @@ export function buildCleaningTaskPayload(values={}){ const payload={}; for(const
  if('before_photos' in payload) payload.before_photos=cleanArray(payload.before_photos);
  if('after_photos' in payload) payload.after_photos=cleanArray(payload.after_photos);
  ['low_supplies_reported','issue_reported','guest_ready'].forEach((k)=>{ if(k in payload) payload[k]=Boolean(payload[k]); });
- if('booking_id' in payload) delete payload.booking_id;
  return payload; }
 
 export async function listCleaningTasks({workspaceId}={}){ const w=requireWorkspaceId(workspaceId); if(!w.ok) return w.result; if(!isSupabaseConfigured||!supabase) return notConfiguredResult([]); const {data,error}=await supabase.from('cleaning_tasks').select('*').eq('workspace_id',w.workspaceId).order('scheduled_for',{ascending:true}); if(error) return {data:[],error:userSafeError(error,'Cleaning tasks could not be loaded.'),code:error.code||'cleaning_tasks_load_failed'}; return {data:(data||[]).map(normalizeCleaningTask),error:null,code:'ok'}; }
