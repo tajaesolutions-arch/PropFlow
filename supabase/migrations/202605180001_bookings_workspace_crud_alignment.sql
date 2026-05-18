@@ -34,7 +34,8 @@ for insert
 to authenticated
 with check (
   public.has_workspace_role(workspace_id, array['workspace_owner','property_manager','host'])
-  and public.workspace_property_belongs_to_workspace(workspace_id, property_id)
+  and public.property_belongs_to_workspace(workspace_id, property_id)
+  and public.optional_contact_belongs_to_workspace(workspace_id, contact_id)
 );
 
 drop policy if exists bookings_update_authorized on public.bookings;
@@ -45,5 +46,6 @@ to authenticated
 using (public.has_workspace_role(workspace_id, array['workspace_owner','property_manager','host']))
 with check (
   public.has_workspace_role(workspace_id, array['workspace_owner','property_manager','host'])
-  and public.workspace_property_belongs_to_workspace(workspace_id, property_id)
+  and public.property_belongs_to_workspace(workspace_id, property_id)
+  and public.optional_contact_belongs_to_workspace(workspace_id, contact_id)
 );
