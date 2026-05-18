@@ -242,3 +242,8 @@ Do not promote production traffic until these are tested in Supabase with real A
 
 - Owners / Property Owners are now prepared for workspace-scoped Supabase CRUD through the shared `src/lib/owners.js` helper and workspace-scoped owner-contact policies. Missing `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` remains a safe non-crashing fallback state.
 - Recommended next PR: wire Guest CRM to workspace-scoped Supabase CRUD using the same helper + RLS alignment pattern.
+
+### 2026-05-18 guest crm workspace CRUD readiness
+- Guest CRM / Contacts are now prepared for workspace-scoped Supabase CRUD through `src/lib/guests.js`, AppContext guest-create wiring, and guest-contact RLS alignment migration support.
+- Required frontend Supabase env vars remain `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. Missing env vars stay non-crashing with safe empty-state fallbacks.
+- Recommended next PR: Reports / Owner Reports Supabase CRUD or Supplies / Inventory Supabase CRUD.
