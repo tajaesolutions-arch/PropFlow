@@ -16,11 +16,13 @@ create policy contacts_select_owner_workspace_scoped
 on public.contacts
 for select
 using (
-  contact_type <> 'owner'
-  or public.has_workspace_role(workspace_id, array['workspace_owner','property_manager','host','accountant'])
-  or (
-    public.has_workspace_role(workspace_id, array['property_owner'])
-    and lower(coalesce(email, '')) = lower(coalesce(auth.jwt()->>'email', ''))
+  contact_type = 'owner'
+  and (
+    public.has_workspace_role(workspace_id, array['workspace_owner','property_manager','host','accountant'])
+    or (
+      public.has_workspace_role(workspace_id, array['property_owner'])
+      and lower(coalesce(email, '')) = lower(coalesce(auth.jwt()->>'email', ''))
+    )
   )
 );
 
