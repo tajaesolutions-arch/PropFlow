@@ -11,6 +11,7 @@ import { createBooking as insertWorkspaceBooking, listBookings, normalizeBooking
 import { createCleaningTask as insertWorkspaceCleaningTask, listCleaningTasks, normalizeCleaningTask as normalizeWorkspaceCleaningTask, updateCleaningTask as updateWorkspaceCleaningTask } from './cleaningTasks.js';
 import { createMaintenanceWorkOrder as insertWorkspaceMaintenanceWorkOrder, listMaintenanceWorkOrders, normalizeMaintenanceWorkOrder as normalizeWorkspaceMaintenanceWorkOrder, updateMaintenanceWorkOrder as updateWorkspaceMaintenanceWorkOrder } from './maintenanceWorkOrders.js';
 import { createOwner as insertWorkspaceOwner } from './owners.js';
+import { createGuest as insertWorkspaceGuest } from './guests.js';
 import { getBillingStatus } from './billingStatus.js';
 import { WORKSPACE_FILES_BUCKET, getEntityContext, getWorkspaceFilePath, normalizeWorkspaceFileType, uploadWorkspaceFile as uploadPrivateWorkspaceFile, validateWorkspaceUploadFile } from './fileUploads.js';
 
@@ -2381,7 +2382,32 @@ export function AppProvider({ children }) {
     await refreshWorkspaceData();
     return normalizeContact(createResponse.data);
   };
-  const createGuest = (payload) => createOrUpdateContact({ ...payload, contact_type: 'guest' });
+  const createGuest = async (payload) => {
+    requireSupabase();
+    requireWorkspaceSession(currentWorkspace, session);
+    assertWorkspaceActionRole(currentUser, memberships, currentWorkspace, 'guestContact');
+
+    const guestPayload = {
+      full_name: cleanText(payload.full_name || payload.name),
+      email: cleanEmail(payload.email),
+      phone: cleanPhone(payload.phone),
+      country: cleanText(payload.country),
+      location: cleanText(payload.location),
+      notes: cleanText(payload.notes),
+      tags: asArray(payload.tags).map((item) => cleanText(item)).filter(Boolean),
+      status: cleanText(payload.status) || 'active',
+      contact_type: 'guest',
+    };
+
+    if (!guestPayload.full_name) throw new Error('Guest name is required.');
+    if (guestPayload.email && !isValidEmail(guestPayload.email)) throw new Error('Guest email must be valid.');
+
+    const createResponse = await insertWorkspaceGuest({ workspaceId: currentWorkspace.id, userId: session.user.id, values: guestPayload });
+    if (createResponse.error) throw new Error(createResponse.error);
+
+    await refreshWorkspaceData();
+    return normalizeContact(createResponse.data);
+  };
 
   const createBooking = async (payload) => {
     requireSupabase();
