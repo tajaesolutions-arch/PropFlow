@@ -8,6 +8,7 @@ import { getSafeWorkspaceDataFallback, normalizeWorkspaceSelection } from './saf
 import { isSupabaseConfigured, supabase } from './supabase.js';
 import { createProperty as insertWorkspaceProperty, listProperties, normalizeProperty, updateProperty as updateWorkspaceProperty } from './properties.js';
 import { createBooking as insertWorkspaceBooking, listBookings, normalizeBooking as normalizeWorkspaceBooking, updateBooking as updateWorkspaceBooking } from './bookings.js';
+import { createCleaningTask as insertWorkspaceCleaningTask, listCleaningTasks, normalizeCleaningTask as normalizeWorkspaceCleaningTask, updateCleaningTask as updateWorkspaceCleaningTask } from './cleaningTasks.js';
 import { getBillingStatus } from './billingStatus.js';
 import { WORKSPACE_FILES_BUCKET, getEntityContext, getWorkspaceFilePath, normalizeWorkspaceFileType, uploadWorkspaceFile as uploadPrivateWorkspaceFile, validateWorkspaceUploadFile } from './fileUploads.js';
 
@@ -1289,6 +1290,10 @@ export function AppProvider({ children }) {
     if (bookingsResponse.error) warnings.push(`bookings: ${bookingsResponse.error}`);
     nextData.bookings = asArray(bookingsResponse.data).map((row) => normalizeWorkspaceBooking(row));
 
+    const cleaningTasksResponse = await listCleaningTasks({ workspaceId });
+    if (cleaningTasksResponse.error) warnings.push(`cleaning tasks: ${cleaningTasksResponse.error}`);
+    nextData.cleaningTasks = asArray(cleaningTasksResponse.data).map((row) => normalizeCleaning(row, properties));
+
     const workspaceQueries = [
       {
         label: 'workspace members',
@@ -1320,16 +1325,6 @@ export function AppProvider({ children }) {
           .eq('workspace_id', workspaceId)
           .order('updated_at', { ascending: false }),
         normalize: (rows) => rows.map(normalizeContact),
-      },
-      {
-        label: 'cleaning tasks',
-        key: 'cleaningTasks',
-        query: supabase
-          .from('cleaning_tasks')
-          .select('*')
-          .eq('workspace_id', workspaceId)
-          .order('scheduled_for', { ascending: true }),
-        normalize: (rows) => rows.map((row) => normalizeCleaning(row, properties)),
       },
       {
         label: 'maintenance work orders',
@@ -3082,13 +3077,9 @@ export function AppProvider({ children }) {
       created_by: session.user.id,
     };
 
-    const { data: row, error: insertError } = await client
-      .from('cleaning_tasks')
-      .insert(cleaningPayload)
-      .select('*')
-      .single();
-
-    if (insertError) throw new Error(formatSupabaseError(insertError, 'Cleaning task could not be saved.'));
+    const createResult = await insertWorkspaceCleaningTask({ workspaceId: currentWorkspace.id, userId: session.user.id, values: cleaningPayload });
+    if (createResult.error) throw new Error(createResult.error);
+    const row = createResult.data;
 
     await writeActivityLog('cleaning_task_created', { cleaning_task_id: row.id, property_id: row.property_id, booking_id: row.booking_id, assigned_cleaner_id: row.assigned_cleaner_id, scheduled_for: row.scheduled_for, status: row.status });
 
@@ -3123,7 +3114,7 @@ export function AppProvider({ children }) {
     if (!currentTask) throw new Error('Cleaning task was not found in the current workspace.');
 
     const isManager = getActiveWorkspaceRoles(currentUser, memberships, currentWorkspace).some((role) => workspaceActionRoles.cleaning.includes(role));
-    const isAssignedCleaner = currentTask.assigned_cleaner_id === session.user.id;
+    const isAssignedCleaner = (currentTask.assigned_cleaner_id || currentTask.assignedCleanerId) === session.user.id;
     const closedTask = ['completed', 'guest_ready', 'cancelled'].includes(currentTask.status);
 
     if (!isManager && !isAssignedCleaner) {
@@ -3196,15 +3187,9 @@ export function AppProvider({ children }) {
       updatePayload.started_at = new Date().toISOString();
     }
 
-    const { data: row, error: updateError } = await client
-      .from('cleaning_tasks')
-      .update(updatePayload)
-      .eq('id', taskId)
-      .eq('workspace_id', currentWorkspace.id)
-      .select('*')
-      .single();
-
-    if (updateError) throw new Error(formatSupabaseError(updateError, 'Cleaning task could not be updated.'));
+    const updateResult = await updateWorkspaceCleaningTask({ workspaceId: currentWorkspace.id, taskId, values: updatePayload });
+    if (updateResult.error) throw new Error(updateResult.error);
+    const row = updateResult.data;
 
     const cleaningAction = row.issue_reported && !currentTask.issue_reported
       ? 'cleaning_issue_reported'

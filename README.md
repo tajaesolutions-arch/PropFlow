@@ -1142,3 +1142,6 @@ Webhook-triggered emails use idempotency keys based on Stripe event IDs and enti
 - Required client env vars remain `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`; no service-role key is used in frontend code.
 - Missing Supabase env vars keep safe non-crashing fallbacks (empty records and user-facing setup message).
 - Recommended next PR: workspace-scoped Supabase CRUD for Cleaning Tasks or Maintenance Work Orders.
+
+
+- Cleaning Tasks workspace-scoped Supabase CRUD wiring is now prepared with `src/lib/cleaningTasks.js`, workspace-scoped queries, and RLS alignment migration support. Missing `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` remains non-crashing with safe empty states. Next recommended PR: Maintenance Work Orders Supabase CRUD.

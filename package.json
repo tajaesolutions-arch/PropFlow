@@ -7,7 +7,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "node tests/safeAppState.test.mjs && node tests/optionalModuleFallback.test.mjs && node tests/appContextEmptyDataAlignment.test.mjs && node tests/runtimeUserFlowContracts.test.mjs && node tests/propertiesDataAccess.test.mjs && node tests/supabaseProductionReadiness.test.mjs && node tests/bookingsDataAccess.test.mjs"
+    "test": "node tests/safeAppState.test.mjs && node tests/optionalModuleFallback.test.mjs && node tests/appContextEmptyDataAlignment.test.mjs && node tests/runtimeUserFlowContracts.test.mjs && node tests/propertiesDataAccess.test.mjs && node tests/supabaseProductionReadiness.test.mjs && node tests/bookingsDataAccess.test.mjs && node tests/cleaningTasksDataAccess.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.43.4",
