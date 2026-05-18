@@ -17,17 +17,13 @@ import { StatCard } from '../components/StatCard.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
 import { useApp } from '../lib/AppContext.jsx';
 import { formatCurrency, formatDate, formatPercent } from '../lib/formatters.js';
+import { buildOwnerReportData } from '../lib/reports.js';
 import { roles } from '../data/constants.js';
 import { navigate } from '../routes/AppRouter.jsx';
 
 const closedStatuses = new Set(['completed', 'cancelled']);
 const cancelledStatuses = new Set(['cancelled', 'void', 'refunded']);
 const ownerVisibleReportStatuses = new Set(['released', 'published', 'sent', 'delivered', 'completed']);
-
-function toNumber(value) {
-  const numericValue = Number(value);
-  return Number.isFinite(numericValue) ? numericValue : 0;
-}
 
 function getPropertyId(record) {
   return record?.propertyId || record?.property_id;
@@ -40,34 +36,6 @@ function getPropertyName(record, properties = []) {
   return record?.property || property?.name || 'Assigned property';
 }
 
-function getBookingAmount(booking) {
-  return toNumber(booking.totalAmount || booking.total_amount || booking.amount);
-}
-
-function getOwnerPayout(booking) {
-  return toNumber(booking.ownerPayout || booking.owner_payout);
-}
-
-function getMaintenanceCost(workOrder) {
-  return toNumber(
-    workOrder.actualCost ||
-      workOrder.actual_cost ||
-      workOrder.estimatedCost ||
-      workOrder.estimated_cost,
-  );
-}
-
-function getCleaningCost(task) {
-  return toNumber(
-    task.actualCost ||
-      task.actual_cost ||
-      task.estimatedCost ||
-      task.estimated_cost ||
-      task.cleaningFee ||
-      task.cleaning_fee,
-  );
-}
-
 function getDateValue(value) {
   if (!value) return null;
 
@@ -78,21 +46,6 @@ function getDateValue(value) {
   }
 
   return date;
-}
-
-function daysBetween(start, end) {
-  const startDate = getDateValue(start);
-  const endDate = getDateValue(end);
-
-  if (!startDate || !endDate || endDate <= startDate) {
-    return 0;
-  }
-
-  return Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
-}
-
-function getBookingNights(booking) {
-  return daysBetween(booking.checkIn || booking.check_in, booking.checkOut || booking.check_out);
 }
 
 function getBookingCheckIn(booking) {
@@ -158,49 +111,6 @@ function statusTone(value) {
   if (['active', 'confirmed', 'completed', 'guest_ready', 'released', 'published', 'sent', 'delivered'].includes(status)) return 'success';
 
   return 'info';
-}
-
-function buildOwnerPropertyRows({ properties, bookings, maintenanceWorkOrders, cleaningTasks, expenses, currency }) {
-  return properties.map((property) => {
-    const propertyBookings = bookings.filter((booking) => getPropertyId(booking) === property.id);
-    const propertyMaintenance = maintenanceWorkOrders.filter(
-      (workOrder) => getPropertyId(workOrder) === property.id,
-    );
-    const propertyCleaning = cleaningTasks.filter((task) => getPropertyId(task) === property.id);
-    const propertyExpenses = expenses.filter((expense) => getPropertyId(expense) === property.id);
-
-    const revenue = propertyBookings.reduce((sum, booking) => sum + getBookingAmount(booking), 0);
-    const ownerPayout = propertyBookings.reduce((sum, booking) => sum + getOwnerPayout(booking), 0);
-    const maintenanceCost = propertyMaintenance.reduce(
-      (sum, workOrder) => sum + getMaintenanceCost(workOrder),
-      0,
-    );
-    const cleaningCost = propertyCleaning.reduce((sum, task) => sum + getCleaningCost(task), 0);
-    const manualExpenses = propertyExpenses.reduce((sum, expense) => sum + toNumber(expense.amount), 0);
-    const expenses = maintenanceCost + cleaningCost + manualExpenses;
-    const netProfit = revenue - expenses;
-    const openMaintenance = propertyMaintenance.filter(
-      (workOrder) => !closedStatuses.has(workOrder.status),
-    ).length;
-    const bookedNights = propertyBookings.reduce((sum, booking) => sum + getBookingNights(booking), 0);
-    const occupancy = Math.min((bookedNights / 30) * 100, 100);
-
-    return {
-      ...property,
-      currency: property.currency || currency,
-      revenue,
-      ownerPayout,
-      expenses,
-      netProfit,
-      maintenanceCost,
-      cleaningCost,
-      manualExpenses,
-      openMaintenance,
-      bookings: propertyBookings.length,
-      bookedNights,
-      occupancy,
-    };
-  });
 }
 
 function OwnerPropertyCard({ property }) {
@@ -284,23 +194,27 @@ export function OwnerDashboardPage() {
     canOwnerSeeReport(report, assignedPropertyIds, currentUser),
   );
 
-  const propertyRows = buildOwnerPropertyRows({
-    properties: assignedProperties,
-    bookings: assignedBookings,
-    maintenanceWorkOrders: assignedMaintenance,
-    cleaningTasks: assignedCleaningTasks,
-    expenses: assignedExpenses,
-    currency,
-  }).sort((a, b) => b.revenue - a.revenue);
+  const ownerReportResult = buildOwnerReportData({
+    ownerId: currentUser?.id,
+    records: {
+      properties: assignedProperties,
+      bookings: assignedBookings,
+      cleaningTasks: assignedCleaningTasks,
+      maintenanceWorkOrders: assignedMaintenance,
+      expenses: assignedExpenses,
+    },
+  });
+  const ownerReportData = ownerReportResult.data || { summary: {}, propertyPerformance: [] };
+  const ownerReportSummary = ownerReportData.summary || {};
+  const propertyRows = (ownerReportData.propertyPerformance || [])
+    .map((row) => ({ ...row, currency: row.currency || currency }))
+    .sort((a, b) => b.revenue - a.revenue);
 
-  const grossRevenue = propertyRows.reduce((sum, property) => sum + property.revenue, 0);
-  const totalExpenses = propertyRows.reduce((sum, property) => sum + property.expenses, 0);
-  const netProfit = grossRevenue - totalExpenses;
-  const ownerPayout = propertyRows.reduce((sum, property) => sum + property.ownerPayout, 0);
-
-  const bookedNights = assignedBookings.reduce((sum, booking) => sum + getBookingNights(booking), 0);
-  const availableNights = Math.max(assignedProperties.length * 30, 1);
-  const occupancyRate = Math.min((bookedNights / availableNights) * 100, 100);
+  const grossRevenue = ownerReportSummary.grossRevenue || 0;
+  const totalExpenses = ownerReportSummary.expenses || 0;
+  const netProfit = ownerReportSummary.netProfit || 0;
+  const ownerPayout = ownerReportSummary.ownerPayout || 0;
+  const occupancyRate = ownerReportSummary.occupancyEstimate || 0;
 
   const openMaintenance = assignedMaintenance.filter(
     (workOrder) => !closedStatuses.has(workOrder.status),
