@@ -1,0 +1,33 @@
+import { supabase, isSupabaseConfigured } from './supabase.js';
+
+const BOOKING_FIELDS = [
+  'property_id','contact_id','guest_name','guest_email','guest_phone','check_in','check_out','guest_count','source','status','payment_status','currency','total_amount','cleaning_fee','taxes_fees','owner_payout','notes','auto_create_cleaning','cancelled_at','created_by',
+];
+
+const NUMERIC_FIELDS = new Set(['guest_count','total_amount','cleaning_fee','taxes_fees','owner_payout']);
+const TEXT_FIELDS = new Set(['guest_name','guest_email','guest_phone','source','status','payment_status','currency','notes']);
+
+function asText(v){ const t=String(v ?? '').trim(); return t || null; }
+function cleanNumber(v,{integer=false,min=0}={}){ if(v===''||v===null||v===undefined) return null; const cleaned=String(v).replace(/,/g,'').trim(); if(!cleaned||cleaned==='-'||cleaned==='.'||cleaned==='-.') return null; const n=Number(cleaned); if(!Number.isFinite(n)) return null; if(integer && !Number.isInteger(n)) return null; if(n<min) throw new Error('Numeric booking values must be 0 or more.'); return n; }
+function requireWorkspaceId(workspaceId){ const w=asText(workspaceId); if(!w) return {ok:false,result:{data:[],error:'Select or create an active workspace before loading bookings.',code:'missing_workspace_id'}}; return {ok:true,workspaceId:w}; }
+function notConfiguredResult(data=[]){ return {data,error:null,code:'supabase_not_configured',notConfigured:true,message:'Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to load real bookings.'}; }
+function userSafeError(error,fallback){ const code=error?.code||''; const message=String(error?.message||error||'').toLowerCase(); if(code==='PGRST116') return 'Booking not found.'; if(code==='42501'||message.includes('row-level security')||message.includes('permission denied')) return 'Your current workspace role cannot save this booking.'; if(message.includes('violates check constraint')) return 'Booking contains an unsupported value.'; if(message.includes('violates not-null constraint')||message.includes('null value')) return 'Booking is missing required fields.'; if(message.includes('failed to fetch')||message.includes('network')) return 'Network issue while saving booking. Check your connection and try again.'; return fallback; }
+
+export function normalizeBooking(row=null){ if(!row) return null; return {...row, propertyId:row.property_id??null,contactId:row.contact_id??null,guestName:row.guest_name||'',guestEmail:row.guest_email||'',guestPhone:row.guest_phone||'',checkIn:row.check_in||'',checkOut:row.check_out||'',guestCount:row.guest_count??1,paymentStatus:row.payment_status||'unpaid',totalAmount:row.total_amount??null,cleaningFee:row.cleaning_fee??null,taxesFees:row.taxes_fees??null,ownerPayout:row.owner_payout??null,autoCreateCleaning:row.auto_create_cleaning??true,cancelledAt:row.cancelled_at??null,notes:row.notes||''}; }
+
+export function buildBookingPayload(values={}){ const payload={}; for(const key of BOOKING_FIELDS){ if(Object.prototype.hasOwnProperty.call(values,key)) payload[key]=values[key]; }
+  for(const key of Object.keys(payload)){ if(TEXT_FIELDS.has(key)) payload[key]=asText(payload[key]); }
+  if('guest_count' in payload) payload.guest_count=cleanNumber(payload.guest_count,{integer:true,min:1});
+  for(const key of ['total_amount','cleaning_fee','taxes_fees','owner_payout']) if(key in payload) payload[key]=cleanNumber(payload[key],{min:0});
+  for(const key of ['property_id','contact_id','created_by']) if(key in payload) payload[key]=asText(payload[key]);
+  if('guest_name' in payload && !payload.guest_name) throw new Error('Guest name is required.');
+  if('check_in' in payload) payload.check_in=asText(payload.check_in);
+  if('check_out' in payload) payload.check_out=asText(payload.check_out);
+  if(payload.check_in && payload.check_out && payload.check_out<=payload.check_in) throw new Error('Check-out must be after check-in.');
+  return payload;
+}
+
+export async function listBookings({workspaceId}={}){ const w=requireWorkspaceId(workspaceId); if(!w.ok) return w.result; if(!isSupabaseConfigured||!supabase) return notConfiguredResult([]); const {data,error}=await supabase.from('bookings').select('*').eq('workspace_id',w.workspaceId).order('check_in',{ascending:true}); if(error) return {data:[],error:userSafeError(error,'Bookings could not be loaded.'),code:error.code||'bookings_load_failed'}; return {data:(data||[]).map(normalizeBooking),error:null,code:'ok'}; }
+export async function getBookingById({workspaceId,bookingId}={}){ const w=requireWorkspaceId(workspaceId); if(!w.ok) return {...w.result,data:null}; const b=asText(bookingId); if(!b) return {data:null,error:'Select a booking before loading details.',code:'missing_booking_id'}; if(!isSupabaseConfigured||!supabase) return notConfiguredResult(null); const {data,error}=await supabase.from('bookings').select('*').eq('workspace_id',w.workspaceId).eq('id',b).single(); if(error) return {data:null,error:userSafeError(error,'Booking not found.'),code:error.code||'booking_load_failed'}; return {data:normalizeBooking(data),error:null,code:'ok'}; }
+export async function createBooking({workspaceId,userId,values}={}){ const w=requireWorkspaceId(workspaceId); if(!w.ok) return {...w.result,data:null}; if(!isSupabaseConfigured||!supabase) return notConfiguredResult(null); let payload; try{ payload=buildBookingPayload(values); }catch(e){ return {data:null,error:e.message,code:'invalid_booking_payload'}; } payload.workspace_id=w.workspaceId; payload.created_by=asText(userId)||payload.created_by||null; const {data,error}=await supabase.from('bookings').insert(payload).select('*').single(); if(error) return {data:null,error:userSafeError(error,'Booking could not be saved.'),code:error.code||'booking_insert_failed'}; return {data:normalizeBooking(data),error:null,code:'ok'}; }
+export async function updateBooking({workspaceId,bookingId,values}={}){ const w=requireWorkspaceId(workspaceId); if(!w.ok) return {...w.result,data:null}; const b=asText(bookingId); if(!b) return {data:null,error:'Select a booking before saving changes.',code:'missing_booking_id'}; if(!isSupabaseConfigured||!supabase) return notConfiguredResult(null); let payload; try{ payload=buildBookingPayload(values); }catch(e){ return {data:null,error:e.message,code:'invalid_booking_payload'}; } const {data,error}=await supabase.from('bookings').update(payload).eq('id',b).eq('workspace_id',w.workspaceId).select('*').single(); if(error) return {data:null,error:userSafeError(error,'Booking could not be updated.'),code:error.code||'booking_update_failed'}; return {data:normalizeBooking(data),error:null,code:'ok'}; }
