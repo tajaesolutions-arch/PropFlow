@@ -229,3 +229,10 @@ Do not promote production traffic until these are tested in Supabase with real A
 - [ ] The `workspace-files` bucket is private and storage policies are active.
 - [ ] Demo seed data has not been applied to production.
 - [ ] Founder/team platform admin access has been manually verified and is separate from customer workspace admin roles.
+
+
+### 2026-05-18 bookings workspace CRUD readiness
+- Bookings are now prepared for workspace-scoped Supabase CRUD through `src/lib/bookings.js` and AppContext wiring.
+- Required client env vars remain `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`; no service-role key is used in frontend code.
+- Missing Supabase env vars keep safe non-crashing fallbacks (empty records and user-facing setup message).
+- Recommended next PR: workspace-scoped Supabase CRUD for Cleaning Tasks or Maintenance Work Orders.

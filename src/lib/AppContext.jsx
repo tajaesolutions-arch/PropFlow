@@ -7,6 +7,7 @@ import { getAvailabilityConflictMessage, hasBookingConflict, normalizeDateRange 
 import { getSafeWorkspaceDataFallback, normalizeWorkspaceSelection } from './safeAppState.js';
 import { isSupabaseConfigured, supabase } from './supabase.js';
 import { createProperty as insertWorkspaceProperty, listProperties, normalizeProperty, updateProperty as updateWorkspaceProperty } from './properties.js';
+import { createBooking as insertWorkspaceBooking, listBookings, normalizeBooking as normalizeWorkspaceBooking, updateBooking as updateWorkspaceBooking } from './bookings.js';
 import { getBillingStatus } from './billingStatus.js';
 import { WORKSPACE_FILES_BUCKET, getEntityContext, getWorkspaceFilePath, normalizeWorkspaceFileType, uploadWorkspaceFile as uploadPrivateWorkspaceFile, validateWorkspaceUploadFile } from './fileUploads.js';
 
@@ -247,7 +248,7 @@ function normalizeMaintenance(row, properties = []) {
   };
 }
 
-function normalizeBooking(row, properties = []) {
+function normalizeBookingLegacy(row, properties = []) {
   if (!row) return row;
 
   const property = properties.find((item) => item.id === row.property_id);
@@ -1284,6 +1285,10 @@ export function AppProvider({ children }) {
     const properties = asArray(propertiesResponse.data).map(normalizeProperty);
     nextData.properties = properties;
 
+    const bookingsResponse = await listBookings({ workspaceId });
+    if (bookingsResponse.error) warnings.push(`bookings: ${bookingsResponse.error}`);
+    nextData.bookings = asArray(bookingsResponse.data).map((row) => normalizeWorkspaceBooking(row));
+
     const workspaceQueries = [
       {
         label: 'workspace members',
@@ -1294,16 +1299,6 @@ export function AppProvider({ children }) {
           .eq('workspace_id', workspaceId)
           .order('created_at', { ascending: true }),
         normalize: (rows) => rows.map(normalizeMember),
-      },
-      {
-        label: 'bookings',
-        key: 'bookings',
-        query: supabase
-          .from('bookings')
-          .select('*')
-          .eq('workspace_id', workspaceId)
-          .order('check_in', { ascending: true }),
-        normalize: (rows) => rows.map((row) => normalizeBooking(row, properties)),
       },
       {
         label: 'leases',
@@ -2409,7 +2404,6 @@ export function AppProvider({ children }) {
     }
 
     const bookingPayload = {
-      workspace_id: currentWorkspace.id,
       property_id: payload.property_id,
       contact_id: contact?.id || null,
       guest_name: cleanText(payload.guest_name),
@@ -2428,16 +2422,11 @@ export function AppProvider({ children }) {
       owner_payout: bookingNumbers.owner_payout,
       notes: cleanText(payload.notes),
       auto_create_cleaning: payload.auto_create_cleaning ?? true,
-      created_by: session.user.id,
     };
 
-    const { data: row, error: insertError } = await client
-      .from('bookings')
-      .insert(bookingPayload)
-      .select('*')
-      .single();
-
-    if (insertError) throw new Error(formatSupabaseError(insertError, 'Booking could not be saved.'));
+    const createResponse = await insertWorkspaceBooking({ workspaceId: currentWorkspace.id, userId: session.user.id, values: bookingPayload });
+    if (createResponse.error) throw new Error(createResponse.error);
+    const row = createResponse.data;
 
     await writeActivityLog('booking_created', { booking_id: row.id, property_id: row.property_id, guest_name: row.guest_name, check_in: row.check_in, check_out: row.check_out, status: row.status });
     await notifyWorkspaceManagers({
@@ -2454,7 +2443,7 @@ export function AppProvider({ children }) {
     });
     await refreshWorkspaceData();
 
-    return normalizeBooking(row, data.properties);
+    return normalizeWorkspaceBooking(row);
   };
 
   const updateBooking = async (bookingId, payload) => {
@@ -2521,15 +2510,9 @@ export function AppProvider({ children }) {
       updatePayload.cancelled_at = new Date().toISOString();
     }
 
-    const { data: row, error: updateError } = await client
-      .from('bookings')
-      .update(updatePayload)
-      .eq('id', bookingId)
-      .eq('workspace_id', currentWorkspace.id)
-      .select('*')
-      .single();
-
-    if (updateError) throw new Error(formatSupabaseError(updateError, 'Booking could not be updated.'));
+    const updateResponse = await updateWorkspaceBooking({ workspaceId: currentWorkspace.id, bookingId, values: updatePayload });
+    if (updateResponse.error) throw new Error(updateResponse.error);
+    const row = updateResponse.data;
 
     await writeActivityLog(row.status === 'cancelled' && existingBooking.status !== 'cancelled' ? 'booking_cancelled' : 'booking_updated', {
       booking_id: row.id,
@@ -2540,7 +2523,7 @@ export function AppProvider({ children }) {
     });
     await refreshWorkspaceData();
 
-    return normalizeBooking(row, data.properties);
+    return normalizeWorkspaceBooking(row);
   };
 
 
