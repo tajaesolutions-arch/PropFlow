@@ -553,7 +553,8 @@ export function InventoryPage() {
   const [message, setMessage] = React.useState('');
   const [submitError, setSubmitError] = React.useState('');
 
-  const canManageInventory = hasAnyRole(currentUser, inventoryManagerRoles);
+  const hasActiveWorkspace = Boolean(currentWorkspace?.id);
+  const canManageInventory = hasActiveWorkspace && hasAnyRole(currentUser, inventoryManagerRoles);
   const canSeeInventoryCosts = hasAnyRole(currentUser, inventoryCostRoles);
   const canSeeSupplierDetails = hasAnyRole(currentUser, supplierDetailRoles);
   const accountantView = Boolean(currentUser?.roles?.includes(roles.ACCOUNTANT));
@@ -589,6 +590,11 @@ export function InventoryPage() {
   const currency = getWorkspaceCurrency(currentWorkspace);
 
   const openNewSupply = () => {
+    if (!hasActiveWorkspace) {
+      setSubmitError('Select or create an active workspace before adding supplies.');
+      return;
+    }
+
     if (!canManageInventory) return;
 
     setMessage('');
@@ -679,6 +685,13 @@ export function InventoryPage() {
         </section>
       )}
 
+      {!hasActiveWorkspace && (
+        <section className="workspace-load-warning" role="alert">
+          <strong>No active workspace selected</strong>
+          <span>Select or create a workspace before adding or editing supplies.</span>
+        </section>
+      )}
+
       {accountantView && (
         <section className="card inventory-visibility-notice">
           <div className="card-header">
@@ -739,11 +752,13 @@ export function InventoryPage() {
         </div>
 
         <div className="inventory-toolbar-actions">
-          {canManageInventory && (
+          {hasAnyRole(currentUser, inventoryManagerRoles) && (
             <button
               type="button"
               className="primary"
               onClick={openNewSupply}
+              disabled={!hasActiveWorkspace}
+              title={!hasActiveWorkspace ? 'Select or create a workspace before adding supplies.' : undefined}
               data-skip-create-action="true"
             >
               <Plus size={16} />
@@ -840,11 +855,13 @@ export function InventoryPage() {
             ? 'Inventory records will appear here after authorized workspace users add supplies. Accountant users can review inventory but cannot create supply records.'
             : 'Add supplies such as linens, toiletries, cleaning products, maintenance parts, or guest-ready essentials.'}
           action={
-            canManageInventory ? (
+            hasAnyRole(currentUser, inventoryManagerRoles) ? (
               <button
                 type="button"
                 className="primary"
                 onClick={openNewSupply}
+                disabled={!hasActiveWorkspace}
+                title={!hasActiveWorkspace ? 'Select or create a workspace before adding supplies.' : undefined}
                 data-skip-create-action="true"
               >
                 <Plus size={16} />
