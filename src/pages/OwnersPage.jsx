@@ -420,7 +420,8 @@ export function OwnersPage() {
   });
 
   const currency = currentWorkspace?.defaultCurrency || currentWorkspace?.default_currency || 'USD';
-  const canManageOwners = hasAnyRole(currentUser, ownerManagerRoles);
+  const hasActiveWorkspace = Boolean(currentWorkspace?.id);
+  const canManageOwners = hasAnyRole(currentUser, ownerManagerRoles) && hasActiveWorkspace;
   const canInviteOwners = hasAnyRole(currentUser, ownerInviteRoles);
   const canSeeOwnerFinance = hasAnyRole(currentUser, ownerFinanceRoles);
 
@@ -576,7 +577,11 @@ export function OwnersPage() {
             </button>
           )}
 
-          {!canManageOwners && !canInviteOwners && (
+          {!hasActiveWorkspace && (
+            <span className="helper">Select or create an active workspace before adding owners.</span>
+          )}
+
+          {hasActiveWorkspace && !canManageOwners && !canInviteOwners && (
             <span className="helper">Owner management actions are restricted to workspace owners and property managers.</span>
           )}
 
