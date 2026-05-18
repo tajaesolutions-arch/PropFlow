@@ -247,3 +247,7 @@ Do not promote production traffic until these are tested in Supabase with real A
 - Guest CRM / Contacts are now prepared for workspace-scoped Supabase CRUD through `src/lib/guests.js`, AppContext guest-create wiring, and guest-contact RLS alignment migration support.
 - Required frontend Supabase env vars remain `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. Missing env vars stay non-crashing with safe empty-state fallbacks.
 - Recommended next PR: Reports / Owner Reports Supabase CRUD or Supplies / Inventory Supabase CRUD.
+
+- Reports / Owner Reports now use workspace-scoped Supabase-ready data helper (`src/lib/reports.js`) with safe fallback objects when `VITE_SUPABASE_URL` or `VITE_SUPABASE_ANON_KEY` are missing.
+- PDF/CSV export and scheduled reports remain follow-up items (current export remains local/manual-safe behavior).
+- Recommended next PR: wire Supplies / Inventory Supabase CRUD (or Calendar/iCal Supabase CRUD).
