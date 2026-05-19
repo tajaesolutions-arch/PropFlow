@@ -45,3 +45,5 @@ Search terms used:
 
 ## Recommended next PR
 - Continue replacing residual “local/demo/setup-mode” internal phrasing in user-facing helper copy with polished, role-specific readiness language while preserving safety constraints and disabled-state honesty.
+
+- Dashboard setup card and onboarding page now share one real-data setup-progress utility (`src/lib/setupProgress.js`).
