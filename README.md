@@ -1178,3 +1178,24 @@ See `docs/RLS_ROLE_MATRIX.md` for a founder-friendly access matrix.
 
 ### Notifications Supabase status (May 19, 2026)
 In-app notifications are now prepared for workspace-scoped Supabase data access with safe missing-env fallbacks (empty lists, unread count 0). SMS, WhatsApp, and email provider delivery remain future follow-up work. Recommended next PR: Transactional Email Provider Setup / Resend readiness or Billing/Stripe hardening.
+
+## Core MVP functionality readiness pass (May 19, 2026)
+
+This pass focuses on operational wiring for internal QA/investor demos without rebuilding architecture.
+
+- Core routes are maintained for public auth, role dashboards, operations modules, and both `/inventory` + `/supplies` alias handling through shared inventory page routing.
+- Shared create-action workflows remain the primary add/edit entry points for properties, bookings/leases, cleaning tasks, maintenance work orders, owners, guests, inventory items, and related records with workspace scoping in `AppContext`.
+- Dashboard setup checklist remains single-source via `getWorkspaceSetupProgress` with per-workspace collapse/hide persistence and restore action.
+- Notifications, reports, settings, account, and admin views remain safe when providers are not configured, with explicit setup statuses instead of fake live integrations.
+- Local/demo safety mode remains supported when Supabase env vars are absent; no fake production credentials are required.
+
+### Internal QA focus for this pass
+
+- Verify add/edit/create buttons open real forms and persist to workspace-scoped state sources.
+- Verify role-safety routing and suspended-user restrictions.
+- Verify clean empty states and non-crashing behavior with missing/empty data arrays.
+- Verify `npm test` and `npm run build` pass before PR merge.
+
+### Next recommended phase
+
+- Performance and bundle-size optimization (dashboard chunk split + route-level lazy refinement) while preserving current role/RLS safety contracts and workspace-scoped CRUD behavior.
