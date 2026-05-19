@@ -96,10 +96,23 @@ export function getWorkspaceSetupSteps({ currentWorkspace, currentUser, data, us
       title: 'Choose subscription plan',
       description: 'Pick a plan so your workspace can stay active after trial.',
       done: (() => {
-        const hasSubscriptionRecord = Boolean(data?.subscription || currentWorkspace?.subscription_plan || currentWorkspace?.subscription_status);
-        if (!hasSubscriptionRecord) return true;
+        const subscription = data?.subscription;
+        const hasWorkspaceSubscriptionFields = Boolean(currentWorkspace?.subscription_plan || currentWorkspace?.subscription_status);
+        const hasSubscriptionRecord = Boolean(
+          subscription && (
+            subscription.id
+            || subscription.workspace_id
+            || subscription.plan
+            || subscription.status
+            || subscription.current_period_end
+            || subscription.trial_end
+            || Object.keys(subscription).length > 0
+          ),
+        );
 
-        return Boolean(data?.subscription?.plan || data?.subscription?.status || currentWorkspace?.subscription_plan || currentWorkspace?.subscription_status);
+        if (!hasSubscriptionRecord && !hasWorkspaceSubscriptionFields) return true;
+
+        return Boolean(subscription?.plan || subscription?.status || currentWorkspace?.subscription_plan || currentWorkspace?.subscription_status);
       })(),
       cta: { type: 'route', value: '/billing', text: 'Open billing' },
       action: () => {},
