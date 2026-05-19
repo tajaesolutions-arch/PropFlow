@@ -84,6 +84,27 @@ assert.equal(
   'Completed setup should remain 100% when no subscription record exists',
 );
 
+
+const completeWithoutPersistedSubscription = getWorkspaceSetupProgress({
+  currentWorkspace: { id: 'ws_3', defaultCurrency: 'USD' },
+  data: {
+    properties: [{ id: 'p1' }],
+    contacts: [{ id: 'c_owner', type: 'owner' }],
+    members: [{ id: 'm1' }],
+    invites: [{ id: 'i1' }],
+    bookings: [{ id: 'b1' }],
+    cleaningTasks: [{ id: 'c1' }],
+    maintenanceWorkOrders: [{ id: 'w1' }],
+    subscription: { workspace_id: 'ws_3' },
+  },
+  userRole: 'owner_admin',
+});
+assert.equal(
+  completeWithoutPersistedSubscription.progress,
+  100,
+  'Completed setup should remain 100% when subscription payload only contains workspace_id',
+);
+
 const safe = getWorkspaceSetupProgress({
   currentWorkspace: {},
   data: {
