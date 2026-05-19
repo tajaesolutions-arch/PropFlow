@@ -467,7 +467,11 @@ export function DashboardPage() {
     data,
     userRole,
   });
+  const incompleteSetupSteps = setupChecklist.filter((step) => !step.done);
+  const setupCompletedCount = setupChecklist.length - incompleteSetupSteps.length;
   const showSetupCard = setupProgress < 100;
+  const workspaceDisplayName = String(currentWorkspace?.name || '').trim();
+  const hasMeaningfulWorkspaceName = workspaceDisplayName.length >= 3;
 
   const filteredResultCount =
     filteredProperties.length +
@@ -512,21 +516,21 @@ export function DashboardPage() {
       )}
 
       {showSetupCard && (
-        <section className={`card ${setupProgress >= 75 ? 'compact' : ''}`}>
+        <section className="card compact">
           <div className="card-header">
             <div>
-              <h3>Finish your PropFlow setup ({setupProgress}%)</h3>
-              <p>Complete your launch checklist now or continue working and finish setup later.</p>
+              <h3>Finish setting up your workspace</h3>
+              <p>{setupCompletedCount} of {setupChecklist.length} complete ({setupProgress}%). {hasMeaningfulWorkspaceName ? `Workspace: ${workspaceDisplayName}.` : 'You can complete the full checklist anytime.'}</p>
             </div>
-            <button type="button" onClick={() => navigate('/onboarding')} data-skip-create-action="true">Open onboarding</button>
+            <button type="button" onClick={() => navigate('/onboarding')} data-skip-create-action="true">View full setup checklist</button>
           </div>
           <div className="settings-checklist">
-            {setupChecklist.slice(0, setupProgress >= 75 ? 3 : setupChecklist.length).map((step) => (
+            {incompleteSetupSteps.slice(0, 3).map((step) => (
               <article key={step.key} className="settings-checklist-item">
                 <strong>{step.label}</strong>
-                <span>{step.done ? 'Completed' : 'Not started'}</span>
-                {!step.done && step.cta.type === 'action' ? <button type="button" data-create-action={step.cta.value}>{step.cta.text}</button> : null}
-                {!step.done && step.cta.type === 'route' ? <button type="button" onClick={() => navigate(step.cta.value)} data-skip-create-action="true">{step.cta.text}</button> : null}
+                <span>Next step</span>
+                {step.cta.type === 'action' ? <button type="button" data-create-action={step.cta.value}>{step.cta.text}</button> : null}
+                {step.cta.type === 'route' ? <button type="button" onClick={() => navigate(step.cta.value)} data-skip-create-action="true">{step.cta.text}</button> : null}
               </article>
             ))}
           </div>
