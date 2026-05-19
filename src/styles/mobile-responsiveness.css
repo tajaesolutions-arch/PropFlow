@@ -350,3 +350,85 @@ button[aria-disabled="true"] {
     min-width: 600px;
   }
 }
+
+
+@media (max-width: 768px) {
+  .dashboard-kpi-grid,
+  .dashboard-operations-grid,
+  .calendar-layout-grid,
+  .settings-grid,
+  .panel-grid.two {
+    grid-template-columns: 1fr !important;
+  }
+
+  .action-row,
+  .bookings-toolbar-actions,
+  .cleaning-toolbar-actions,
+  .maintenance-toolbar-actions,
+  .owners-toolbar-actions,
+  .guests-toolbar-actions,
+  .inventory-toolbar-actions,
+  .calendar-toolbar-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .action-row button,
+  .bookings-toolbar-actions button,
+  .cleaning-toolbar-actions button,
+  .maintenance-toolbar-actions button,
+  .owners-toolbar-actions button,
+  .guests-toolbar-actions button,
+  .inventory-toolbar-actions button,
+  .calendar-toolbar-actions button {
+    min-height: 44px;
+  }
+
+  .settings-checklist-item,
+  .notification-row,
+  .cleaning-task-card,
+  .maintenance-work-card,
+  .cleaner-dashboard-task-card,
+  .maintenance-dashboard-job-card,
+  .property-card,
+  .guest-card,
+  .owner-card,
+  .supply-card,
+  .calendar-event {
+    min-width: 0;
+  }
+
+  .settings-checklist-status,
+  .cleaning-card-actions,
+  .maintenance-card-actions,
+  .notification-row-status,
+  .property-card-actions,
+  .guest-card-actions,
+  .owner-card-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    justify-items: stretch;
+  }
+
+  .settings-checklist-status button,
+  .notification-row-status button,
+  .cleaning-card-actions button,
+  .maintenance-card-actions button {
+    width: 100%;
+  }
+
+  .calendar-filters,
+  .reports-filters,
+  .bookings-filters,
+  .maintenance-filters,
+  .cleaning-filters,
+  .owners-filters,
+  .guests-filters,
+  .inventory-filters,
+  .notifications-filters {
+    grid-template-columns: 1fr !important;
+  }
+}
