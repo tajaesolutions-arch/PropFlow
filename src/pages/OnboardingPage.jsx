@@ -19,8 +19,8 @@ export function OnboardingPage() {
       <section className="card compact">
         <div className="card-header">
           <div>
-            <h3>Workspace setup progress: {progress}%</h3>
-            <p>Complete the core setup steps now, or continue to dashboard and finish later.</p>
+            <h3>Workspace setup progress</h3>
+            <p>Track your progress and complete each workspace setup step.</p>
           </div>
           <button type="button" onClick={() => navigate('/dashboard')} data-skip-create-action="true">
             Continue to dashboard
@@ -28,7 +28,7 @@ export function OnboardingPage() {
           </button>
         </div>
 
-        <div className="helper">You can finish this later. PropFlow will keep showing setup reminders until the core steps are done.</div>
+        <div className="helper">{steps.filter((step) => step.done).length} of {steps.length} complete ({progress}%).</div>
 
         <div className="settings-checklist">
           {steps.map((step) => (

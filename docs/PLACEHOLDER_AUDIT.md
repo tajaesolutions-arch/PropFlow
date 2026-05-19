@@ -45,3 +45,10 @@ Search terms used:
 
 ## Recommended next PR
 - Continue replacing residual “local/demo/setup-mode” internal phrasing in user-facing helper copy with polished, role-specific readiness language while preserving safety constraints and disabled-state honesty.
+
+## 2026-05-19 Working UI replacement pass
+
+- Removed customer-facing readiness/safety panels from Inventory, Calendar, dashboard-level setup messaging, and top-of-page upload safety warnings on properties/cleaning/maintenance/reporting routes.
+- Dashboard setup card now remains compact and task-focused, while onboarding remains the full checklist using the same shared `setupProgress` helper.
+- Inventory and Calendar continue using real workspace-backed records with operational empty states and actionable create CTAs.
+- Intentionally retained as future-state (small/non-blocking messaging only where relevant): external iCal sync depth, provider integrations (Stripe, Resend, Twilio SMS/WhatsApp), OCR/media processing, live email/sms delivery, and report PDF export automation.

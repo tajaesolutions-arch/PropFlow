@@ -1074,16 +1074,12 @@ export function CalendarPage() {
           icon={CalendarDays}
           title="No calendar events yet"
           description="Real bookings, leases, imported iCal blocks, cleaning tasks, and maintenance work orders create calendar events. No demo events are added for empty workspaces."
-          action={canCreateBooking ? (
-            <button type="button" className="primary" data-create-action="booking">
-              <Plus size={16} />
-              Add Booking
-            </button>
-          ) : null}
-          secondaryAction={canCreateCleaning ? (
-            <button type="button" data-create-action="cleaning">
-              Add Cleaning Task
-            </button>
+          action={(canCreateBooking || canCreateCleaning || canCreateMaintenance) ? (
+            <div className="action-row">
+              {canCreateBooking ? <button type="button" className="primary" data-create-action="booking"><Plus size={16} />Add Booking</button> : null}
+              {canCreateCleaning ? <button type="button" data-create-action="cleaning">Add Cleaning Task</button> : null}
+              {canCreateMaintenance ? <button type="button" data-create-action="maintenance">Add Maintenance Work Order</button> : null}
+            </div>
           ) : null}
         />
       ) : (
