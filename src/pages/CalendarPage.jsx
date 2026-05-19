@@ -14,6 +14,7 @@ import { EmptyState } from '../components/EmptyState.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
 import { useApp } from '../lib/AppContext.jsx';
 import { getCalendarEventTone } from '../lib/calendarImports.js';
+import { buildWorkspaceCalendarEvents } from '../lib/calendar.js';
 import { currencies, roles } from '../data/constants.js';
 import { navigate } from '../routes/AppRouter.jsx';
 
@@ -423,14 +424,26 @@ function buildImportedCalendarEvents(importedEvents = [], feeds = [], properties
     .filter(Boolean);
 }
 
-function makeEvents(data, properties, members) {
-  return [
-    ...buildBookingEvents(data.bookings || [], properties),
-    ...buildLeaseEvents(data.leases || [], properties),
-    ...buildCleaningEvents(data.cleaningTasks || [], properties, members),
-    ...buildMaintenanceEvents(data.maintenanceWorkOrders || [], properties, members),
-    ...buildImportedCalendarEvents(data.calendarImportEvents || [], data.calendarImportFeeds || [], properties),
-  ];
+function makeEvents(data, properties, members, workspaceId) {
+  const unified = buildWorkspaceCalendarEvents({
+    workspaceId,
+    properties: properties || [],
+    bookings: data.bookings || [],
+    cleaningTasks: data.cleaningTasks || [],
+    maintenanceWorkOrders: data.maintenanceWorkOrders || [],
+    importedEvents: data.calendarImportEvents || [],
+  });
+
+  const mapped = unified.map((event) => ({
+    ...event,
+    property: event.propertyName,
+    sourceId: event.relatedRecordId,
+    sourcePath: event.type === 'cleaning' ? '/cleaning' : event.type === 'maintenance' ? '/maintenance' : event.type === 'imported' ? '/calendar-imports' : '/bookings',
+    priority: event.metadata?.priority || null,
+    assignedId: null,
+  }));
+
+  return [...mapped, ...buildLeaseEvents(data.leases || [], properties)];
 }
 
 function getMemberId(member) {
@@ -682,7 +695,7 @@ export function CalendarPage() {
     }));
   };
 
-  const allEvents = React.useMemo(() => makeEvents(data, properties, workspaceMembers), [data, properties, workspaceMembers]);
+  const allEvents = React.useMemo(() => makeEvents(data, properties, workspaceMembers, currentWorkspace?.id), [data, properties, workspaceMembers, currentWorkspace?.id]);
   const hasSourceData = Boolean(
     (data.bookings || []).length ||
       (data.leases || []).length ||

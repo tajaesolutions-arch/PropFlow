@@ -260,3 +260,8 @@ Do not promote production traffic until these are tested in Supabase with real A
 - Reports / Owner Reports now use workspace-scoped Supabase-ready data helper (`src/lib/reports.js`) with safe fallback objects when `VITE_SUPABASE_URL` or `VITE_SUPABASE_ANON_KEY` are missing.
 - PDF/CSV export and scheduled reports remain follow-up items (current export remains local/manual-safe behavior).
 - Recommended next PR: wire Supplies / Inventory Supabase CRUD (or Calendar/iCal Supabase CRUD).
+
+- Calendar/iCal imports are now prepared for workspace-scoped Supabase data access (feeds/events are workspace-filtered; calendar UI can unify bookings, cleaning, maintenance, and imported records).
+- Missing Supabase env vars (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) should return safe empty calendar/import arrays without crashing.
+- Live external iCal fetching, background sync, conflict resolution workflows, and full Airbnb/Vrbo/Booking.com API integrations remain future follow-up items.
+- Recommended next PR: File Uploads/Private Storage integration or Notifications Supabase wiring.
