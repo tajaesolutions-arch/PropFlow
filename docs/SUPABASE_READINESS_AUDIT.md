@@ -272,3 +272,10 @@ Do not promote production traffic until these are tested in Supabase with real A
 - Missing Supabase env vars should fail safely (no crash) for file list/read helpers and surface user-friendly upload errors when upload is attempted without config.
 - OCR, media compression, video processing pipelines, public share links, and external storage providers remain future follow-up items.
 - Recommended next PR: Notifications Supabase data wiring.
+
+
+### 2026-05-19 notifications workspace CRUD readiness
+- Notifications are wired for workspace-scoped Supabase reads/writes in-app with helper-based normalization and safe not-configured fallbacks.
+- In-app notifications are MVP-ready. Provider sends (Resend/Twilio email/SMS/WhatsApp), background jobs, and scheduled delivery remain future scope.
+- Missing Supabase env vars should not crash notification UI/data paths.
+- Recommended next PR: Transactional Email Provider Setup / Resend readiness (or Billing/Stripe hardening).

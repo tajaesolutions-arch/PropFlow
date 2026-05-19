@@ -1174,3 +1174,7 @@ See `docs/RLS_ROLE_MATRIX.md` for a founder-friendly access matrix.
 - Missing Supabase env vars should fail safely (no crash) for file list/read helpers and surface user-friendly upload errors when upload is attempted without config.
 - OCR, media compression, video processing pipelines, public share links, and external storage providers remain future follow-up items.
 - Recommended next PR: Notifications Supabase data wiring.
+
+
+### Notifications Supabase status (May 19, 2026)
+In-app notifications are now prepared for workspace-scoped Supabase data access with safe missing-env fallbacks (empty lists, unread count 0). SMS, WhatsApp, and email provider delivery remain future follow-up work. Recommended next PR: Transactional Email Provider Setup / Resend readiness or Billing/Stripe hardening.
