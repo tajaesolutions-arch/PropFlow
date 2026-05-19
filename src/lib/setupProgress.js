@@ -97,21 +97,17 @@ export function getWorkspaceSetupSteps({ currentWorkspace, currentUser, data, us
       description: 'Pick a plan so your workspace can stay active after trial.',
       done: (() => {
         const subscription = data?.subscription;
-        const hasWorkspaceSubscriptionFields = Boolean(currentWorkspace?.subscription_plan || currentWorkspace?.subscription_status);
-        const hasSubscriptionPlanOrStatus = Boolean(subscription?.plan || subscription?.status);
-        const hasPersistedSubscriptionRecord = Boolean(
-          subscription && (
-            subscription.id
-            || subscription.plan
-            || subscription.status
-            || subscription.current_period_end
-            || subscription.trial_end
-          ),
+        const hasWorkspaceSubscriptionFields = Boolean(
+          currentWorkspace?.subscription_plan || currentWorkspace?.subscription_status,
         );
+        const hasSubscriptionPlanOrStatus = Boolean(subscription?.plan || subscription?.status);
 
-        if (!hasPersistedSubscriptionRecord && !hasWorkspaceSubscriptionFields) return true;
+        // Some workspaces can be fully configured even when billing row creation fails
+        // and no plan/status is persisted yet. Treat those as complete rather than
+        // blocking setup completion on an optional billing record.
+        if (!hasSubscriptionPlanOrStatus && !hasWorkspaceSubscriptionFields) return true;
 
-        return Boolean(hasSubscriptionPlanOrStatus || hasWorkspaceSubscriptionFields);
+        return hasSubscriptionPlanOrStatus || hasWorkspaceSubscriptionFields;
       })(),
       cta: { type: 'route', value: '/billing', text: 'Open billing' },
       action: () => {},
