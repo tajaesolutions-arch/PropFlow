@@ -1,26 +1,47 @@
-# Dashboard Placeholder Audit (May 19, 2026)
+# Core Page Placeholder Audit (May 19, 2026)
 
 ## Scope searched
-- Dashboard and role dashboards
-- Reports, calendar, inventory, notifications pages
-- Create-action wiring and app context helpers
+Focused core app pages/components plus routing/context surfaces:
+- `src/pages/PropertiesPage.jsx`
+- `src/pages/PropertyDetailPage.jsx`
+- `src/pages/BookingsPage.jsx`
+- `src/pages/CleaningPage.jsx`
+- `src/pages/CleanerDashboardPage.jsx`
+- `src/pages/MaintenancePage.jsx`
+- `src/pages/MaintenanceDashboardPage.jsx`
+- `src/pages/OwnersPage.jsx`
+- `src/pages/OwnerDashboardPage.jsx`
+- `src/pages/GuestsPage.jsx`
+- `src/pages/ReportsPage.jsx`
+- `src/pages/InventoryPage.jsx`
+- `src/pages/CalendarPage.jsx`
+- `src/pages/NotificationsPage.jsx`
+- `src/pages/SettingsPage.jsx`
+- `src/pages/AccountSettingsPage.jsx`
+- `src/components/CreateActionProvider.jsx`
+- `src/lib/AppContext.jsx`
+- `src/data/sampleData.js`
+- `src/routes/AppRouter.jsx`
+- `README.md`
 
-## Placeholders found
-- Intentional app-level coming-soon routes (`/smart-tools`, `/help`) still use `ComingSoonPage` and remain intentionally preserved.
-- Dashboard had low-interaction patterns (non-clickable KPI cards, no quick-action coverage for owner/guest/supply, and no dashboard schedule snapshot).
-- Dashboard did not surface notification-driven operations context in KPI cards.
+Search terms used:
+`placeholder`, `coming soon`, `demo`, `sample`, `lorem`, `fake`, `static`, `TODO`, `not implemented`, `export coming soon`, `sync coming soon`, `connect later`, `mock`.
 
-## Fixed in this PR
-- Dashboard KPI cards are now actionable links to live routes (`/reports`, `/bookings`, `/maintenance`, `/inventory`, `/notifications`).
-- Dashboard quick actions now include owner/guest creation and supply pathing using existing create-action/modal flows and existing inventory route.
-- Dashboard now includes a real upcoming schedule snapshot (next check-in, check-out, cleaning, maintenance).
-- Added dashboard contract test to prevent re-introducing obvious placeholder/demo wording and to enforce route/action contract safety.
+## Placeholders fixed in this PR
+- Added a dedicated core-page placeholder contract test to block obvious customer-facing fake/demo/mock/lorem wording regressions in core pages.
+- Added contract assertions that core pages do not directly import `sampleData`.
+- Added route/action contract checks so clickable CTA and route assumptions stay aligned with `AppRouter` and `CreateActionProvider`.
+- Added static secret-safety checks across core frontend surfaces to catch accidental `service-role` references.
 
-## Intentionally kept
-- Smart Tools / AI Tools and Help routes remain intentional coming-soon pages.
-- Sample-data fallback module remains for safe backwards compatibility when environment is not configured; dashboard does not directly import sample data.
+## Placeholders intentionally kept
+- Intentional future-state messaging such as `Coming soon` and provider `Not configured yet` states where features are explicitly out-of-scope for this PR.
+- Reports local export notices and disabled-provider copy that accurately communicates current behavior without fake export generation.
+- Smart Tools / AI Tools coming-soon surfaces remain intentionally preserved outside this core-page polish scope.
 
-## Recommended next PRs
-- Expand operational alerts with checkout-needs-cleaning linkage using stronger booking→cleaning relation heuristics.
-- Add richer notification-derived recent activity timeline card with grouped event types.
-- Add a small dashboard-empty-state CTA component set reused across dashboard cards for stricter UX consistency.
+## Placeholders deferred to later PRs
+- Provider integrations (Stripe backend completion, Resend/Twilio delivery wiring) remain setup-gated.
+- Calendar external sync automation and full provider/channel integrations remain future work.
+- PDF generation pipelines and scheduled report delivery remain deferred while frontend messaging stays honest and disabled where required.
+
+## Recommended next PR
+- Continue replacing residual “local/demo/setup-mode” internal phrasing in user-facing helper copy with polished, role-specific readiness language while preserving safety constraints and disabled-state honesty.
