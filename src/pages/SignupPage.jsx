@@ -73,7 +73,7 @@ export function SignupPage() {
     }
 
     if (!isSupabaseConfigured) {
-      setMessage('Account creation is not available in this deployment yet. Ask PropFlow support for help.');
+      setMessage('Account creation is not available in this environment right now. Ask PropFlow support for help.');
       return;
     }
 
@@ -124,7 +124,7 @@ export function SignupPage() {
         {!isSupabaseConfigured && (
           <div className="helper error-helper">
             <Lock size={16} />
-            Account creation is not available in this deployment yet. Ask PropFlow support for help.
+            Account creation is not available in this environment right now. Ask PropFlow support for help.
           </div>
         )}
 

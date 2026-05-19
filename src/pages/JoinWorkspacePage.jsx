@@ -173,7 +173,7 @@ export function JoinWorkspacePage() {
     }
 
     if (!isSupabaseConfigured) {
-      setMessage('Workspace setup is not connected for this deployment yet. Ask PropFlow support to finish setup.');
+      setMessage('Workspace setup is still being prepared in this environment. Ask PropFlow support to finish setup.');
       return;
     }
 
@@ -231,7 +231,7 @@ export function JoinWorkspacePage() {
 
   const runJoin = async (rawCode) => {
     if (!isSupabaseConfigured) {
-      setMessage('Invite validation is not connected for this deployment yet. Ask PropFlow support to finish setup.');
+      setMessage('Invite validation is still being prepared in this environment. Ask PropFlow support to finish setup.');
       return;
     }
 
@@ -332,7 +332,7 @@ export function JoinWorkspacePage() {
         {!isSupabaseConfigured && (
           <div className="helper error-helper">
             <AlertTriangle size={16} />
-            Workspace setup is not connected for this deployment yet. Ask PropFlow support to finish setup.
+            Workspace setup is still being prepared in this environment. Ask PropFlow support to finish setup.
           </div>
         )}
 

@@ -37,6 +37,7 @@ const SignupPage = lazyPage(() => import('../pages/SignupPage.jsx'), 'SignupPage
 const JoinWorkspacePage = lazyPage(() => import('../pages/JoinWorkspacePage.jsx'), 'JoinWorkspacePage');
 const SuspendedPage = lazyPage(() => import('../pages/SuspendedPage.jsx'), 'SuspendedPage');
 const DashboardPage = lazyPage(() => import('../pages/DashboardPage.jsx'), 'DashboardPage');
+const OnboardingPage = lazyPage(() => import('../pages/OnboardingPage.jsx'), 'OnboardingPage');
 const PropertiesPage = lazyPage(() => import('../pages/PropertiesPage.jsx'), 'PropertiesPage');
 const PropertyDetailPage = lazyPage(() => import('../pages/PropertyDetailPage.jsx'), 'PropertyDetailPage');
 const BookingsPage = lazyPage(() => import('../pages/BookingsPage.jsx'), 'BookingsPage');
@@ -132,6 +133,7 @@ const roleDashboardPaths = new Set([
 
 const protectedRoutes = {
   '/workspace-setup': { Page: JoinWorkspacePage },
+  '/onboarding': { Page: OnboardingPage, access: allWorkspaceRoles },
   '/dashboard': { Page: DashboardPage, access: operationalRoles },
   '/properties': { Page: PropertiesPage, access: ownerVisibleRoles },
   '/bookings': {
