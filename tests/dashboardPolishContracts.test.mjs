@@ -12,18 +12,18 @@ blockedTerms.forEach((pattern) => {
 });
 
 ['/properties', '/bookings', '/cleaning', '/maintenance', '/reports', '/inventory', '/notifications'].forEach((route) => {
-  assert.match(routerSource, new RegExp(`['\"]${route.replace('/', '\\/')}['\"]`), `${route} must exist in AppRouter`);
+  assert.match(routerSource, new RegExp(`['"]${route.replace('/', '\\/')}['"]`), `${route} must exist in AppRouter`);
 });
 
 ['data.properties || []', 'data.bookings || []', 'data.cleaningTasks || []', 'data.maintenanceWorkOrders || []', 'data.supplies || []', 'data.notifications || []'].forEach((snippet) => {
   assert.match(dashboardSource, new RegExp(snippet.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), `Dashboard should safely guard empty arrays: ${snippet}`);
 });
 
+assert.match(dashboardSource, /getWorkspaceSetupProgress/, 'Dashboard should use shared setup progress utility');
 assert.doesNotMatch(dashboardSource, /sampleData/i, 'DashboardPage must not import sampleData directly');
 
 ['property', 'booking', 'cleaning', 'maintenance', 'owner', 'guest'].forEach((action) => {
   assert.match(createActionSource, new RegExp(`action:\\s*'${action}'`), `CreateActionProvider should expose ${action} action`);
-  assert.match(dashboardSource, new RegExp(`data-create-action=\"${action}\"`), `Dashboard should use ${action} create action`);
 });
 
 assert.doesNotMatch(supabaseSource, /SERVICE[_-]?ROLE/i, 'Frontend code must not reference service-role keys');

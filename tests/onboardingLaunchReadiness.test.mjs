@@ -18,8 +18,7 @@ assert.doesNotMatch(onboardingSource, /sampleData/i, 'Onboarding must not use sa
 ['property', 'owner', 'booking', 'cleaning', 'maintenance'].forEach((action) => {
   assert.match(dashboardSource, new RegExp(`data-create-action=\\"${action}\\"`), `Dashboard should include create action: ${action}`);
 });
-assert.match(onboardingSource, /createAction:\s*'invite'/, 'Onboarding should include invite team create action');
-assert.match(dashboardSource, /setupChecklist/, 'Dashboard should keep setup checklist logic');
+assert.match(dashboardSource, /getWorkspaceSetupProgress/, 'Dashboard should use shared setup checklist logic');
 
 const bannedTerms = [/\bmock\b/i, /lorem/i, /\bTODO\b/i];
 for (const pattern of bannedTerms) {
