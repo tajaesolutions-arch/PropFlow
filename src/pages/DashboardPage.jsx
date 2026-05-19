@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   Banknote,
+  Bell,
   Building2,
   CalendarCheck,
   ClipboardList,
@@ -9,6 +10,8 @@ import {
   LineChart as LineChartIcon,
   Percent,
   TrendingUp,
+  UserPlus,
+  Users,
   Wrench,
 } from 'lucide-react';
 import {
@@ -367,6 +370,7 @@ export function DashboardPage() {
   const cleaningTasks = data.cleaningTasks || [];
   const maintenanceWorkOrders = data.maintenanceWorkOrders || [];
   const supplies = data.supplies || [];
+  const notifications = data.notifications || [];
 
   const activeProperties = properties.filter((property) => property.status !== 'archived');
   const filteredProperties = filters.propertyId === 'all'
@@ -396,6 +400,7 @@ export function DashboardPage() {
 
   const filteredSupplies = supplies.filter((item) => filters.propertyId === 'all' || !getPropertyId(item) || getPropertyId(item) === filters.propertyId);
   const lowSupplyAlerts = filteredSupplies.filter((item) => ['low_stock', 'out_of_stock'].includes(getSupplyStatus(item)));
+  const unreadNotifications = notifications.filter((item) => !item.read_at && !item.readAt && item.status !== 'archived');
 
   const urgentMaintenance = filteredMaintenanceWorkOrders.filter(
     (workOrder) => workOrder.priority === 'urgent' && !completedStatuses.has(workOrder.status),
@@ -451,7 +456,9 @@ export function DashboardPage() {
     activeProperties.length ||
     bookings.length ||
     cleaningTasks.length ||
-    maintenanceWorkOrders.length;
+    maintenanceWorkOrders.length ||
+    supplies.length ||
+    notifications.length;
 
   const filteredResultCount =
     filteredProperties.length +
@@ -460,6 +467,18 @@ export function DashboardPage() {
     filteredMaintenanceWorkOrders.length;
 
   const selectedRangeLabel = dateRangeOptions.find((option) => option.value === filters.dateRange)?.label || 'Selected range';
+
+
+  const nextCheckIn = upcomingBookings[0] || null;
+  const nextCheckOut = activeBookings
+    .filter((booking) => isUpcomingDate(booking.checkOut || booking.check_out))
+    .sort((a, b) => getDateValue(a.checkOut || a.check_out) - getDateValue(b.checkOut || b.check_out))[0] || null;
+  const nextCleaningTask = dueCleaningTasks
+    .filter((task) => isUpcomingDate(task.scheduledFor || task.scheduled_for))
+    .sort((a, b) => getDateValue(getCleaningDate(a)) - getDateValue(getCleaningDate(b)))[0] || null;
+  const nextMaintenanceItem = openMaintenance
+    .filter((workOrder) => isUpcomingDate(getMaintenanceDate(workOrder)))
+    .sort((a, b) => getDateValue(getMaintenanceDate(a)) - getDateValue(getMaintenanceDate(b)))[0] || null;
 
   const updateFilter = (key) => (event) => {
     setFilters((current) => ({
@@ -568,36 +587,53 @@ export function DashboardPage() {
         </div>
       </section>
 
+      <section className="card compact">
+        <div className="card-header">
+          <div><h3>Quick actions</h3><p>Create operational records without leaving the dashboard.</p></div>
+        </div>
+        <div className="action-row">
+          <button type="button" data-create-action="property">Add Property</button>
+          <button type="button" data-create-action="booking">Add Booking</button>
+          <button type="button" data-create-action="cleaning">Add Cleaning Task</button>
+          <button type="button" data-create-action="maintenance">Add Maintenance Work Order</button>
+          <button type="button" data-create-action="owner"><UserPlus size={16} />Add Owner</button>
+          <button type="button" data-create-action="guest"><Users size={16} />Add Guest</button>
+          <button type="button" onClick={() => navigate('/inventory')} data-skip-create-action="true">Add Supply</button>
+        </div>
+      </section>
+
       <div className="stat-grid dense dashboard-kpi-grid">
-        <StatCard
+        <button type="button" className="card-as-action" onClick={() => navigate('/reports')} data-skip-create-action="true"><StatCard
           label="Gross revenue"
           value={formatCurrency(grossRevenue, displayCurrency)}
           icon={DollarSign}
           trend={`${activeBookings.length} matching bookings`}
-        />
+        /></button>
 
-        <StatCard
+        <button type="button" className="card-as-action" onClick={() => navigate('/reports')} data-skip-create-action="true"><StatCard
           label="Net profit"
           value={formatCurrency(netProfit, displayCurrency)}
           icon={TrendingUp}
           trend={`${formatCurrency(cleaningCost + maintenanceCost, displayCurrency)} tracked expenses`}
           tone={netProfit >= 0 ? 'accent' : 'warning'}
-        />
+        /></button>
 
-        <StatCard
+        <button type="button" className="card-as-action" onClick={() => navigate('/bookings')} data-skip-create-action="true"><StatCard
           label="Occupancy rate"
           value={formatPercent(occupancyRate)}
           icon={Percent}
           trend={`${bookedNights} booked nights`}
-        />
+        /></button>
 
-        <StatCard
+        <button type="button" className="card-as-action" onClick={() => navigate('/maintenance')} data-skip-create-action="true"><StatCard
           label="Operations health"
           value={formatPercent(operationsHealth)}
           icon={ClipboardList}
           trend={lowSupplyAlerts.length ? `${lowSupplyAlerts.length} supply alerts` : urgentMaintenance.length ? `${urgentMaintenance.length} urgent alerts` : 'No urgent alerts'}
           tone={urgentMaintenance.length || lowSupplyAlerts.length ? 'warning' : 'accent'}
-        />
+        /></button>
+        <button type="button" className="card-as-action" onClick={() => navigate('/inventory')} data-skip-create-action="true"><StatCard label="Supply alerts" value={String(lowSupplyAlerts.length)} icon={Building2} trend={lowSupplyAlerts.length ? 'Items need restock' : 'Inventory is healthy'} tone={lowSupplyAlerts.length ? 'warning' : 'accent'} /></button>
+        <button type="button" className="card-as-action" onClick={() => navigate('/notifications')} data-skip-create-action="true"><StatCard label="Unread notifications" value={String(unreadNotifications.length)} icon={Bell} trend={unreadNotifications.length ? 'Needs review' : 'No unread notifications'} tone={unreadNotifications.length ? 'warning' : 'accent'} /></button>
       </div>
 
       {!filteredResultCount && hasWorkspaceData && (
@@ -741,6 +777,16 @@ export function DashboardPage() {
           </div>
         </section>
       </div>
+
+      <section className="card">
+        <div className="card-header"><div><h3>Upcoming schedule</h3><p>Next operational milestones from live workspace records.</p></div></div>
+        <div className="stack-list">
+          <div className="stack-item"><div><strong>Next check-in</strong><small>{nextCheckIn ? getPropertyName(nextCheckIn, properties) : 'No upcoming check-ins'}</small></div><span>{nextCheckIn ? formatDate(nextCheckIn.checkIn || nextCheckIn.check_in) : '—'}</span></div>
+          <div className="stack-item"><div><strong>Next check-out</strong><small>{nextCheckOut ? getPropertyName(nextCheckOut, properties) : 'No upcoming check-outs'}</small></div><span>{nextCheckOut ? formatDate(nextCheckOut.checkOut || nextCheckOut.check_out) : '—'}</span></div>
+          <div className="stack-item"><div><strong>Next cleaning</strong><small>{nextCleaningTask ? getPropertyName(nextCleaningTask, properties) : 'No upcoming cleaning tasks'}</small></div><span>{nextCleaningTask ? formatDate(getCleaningDate(nextCleaningTask)) : '—'}</span></div>
+          <div className="stack-item"><div><strong>Next maintenance due</strong><small>{nextMaintenanceItem ? getPropertyName(nextMaintenanceItem, properties) : 'No upcoming maintenance items'}</small></div><span>{nextMaintenanceItem ? formatDate(getMaintenanceDate(nextMaintenanceItem)) : '—'}</span></div>
+        </div>
+      </section>
 
       <section className="card dashboard-table-card">
         <div className="card-header">
