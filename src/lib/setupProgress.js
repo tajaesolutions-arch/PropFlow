@@ -13,12 +13,12 @@ function getWorkspaceOwners(data) {
   return toArray(data?.contacts).filter((record) => record?.type === 'owner');
 }
 
-export function getWorkspaceSetupSteps({ currentWorkspace, data, userRole } = {}) {
+export function getWorkspaceSetupSteps({ currentWorkspace, currentUser, data, userRole } = {}) {
   const properties = toArray(data?.properties);
   const bookings = toArray(data?.bookings);
+  const leases = toArray(data?.leases);
   const cleaningTasks = toArray(data?.cleaningTasks);
   const maintenanceWorkOrders = toArray(data?.maintenanceWorkOrders);
-  const supplies = toArray(data?.supplies);
   const owners = getWorkspaceOwners(data);
   const members = toArray(data?.members);
   const invites = toArray(data?.invites);
@@ -47,7 +47,7 @@ export function getWorkspaceSetupSteps({ currentWorkspace, data, userRole } = {}
       label: 'Invite team member',
       title: 'Invite team member',
       description: 'Invite staff with the correct workspace role.',
-      done: members.length > 0 || invites.length > 0,
+      done: members.some((member) => member?.user_id !== currentUser?.id && member?.id !== currentUser?.id) || invites.length > 0,
       cta: { type: 'action', value: 'invite', text: 'Invite team member' },
       createAction: 'invite',
     },
@@ -62,10 +62,10 @@ export function getWorkspaceSetupSteps({ currentWorkspace, data, userRole } = {}
     },
     {
       key: 'booking',
-      label: 'Add booking',
-      title: 'Add booking',
-      description: 'Start tracking reservations in your workspace.',
-      done: bookings.length > 0,
+      label: 'Add booking or lease',
+      title: 'Add booking or lease',
+      description: 'Track your first reservation or lease in the workspace.',
+      done: bookings.length > 0 || leases.length > 0,
       cta: { type: 'action', value: 'booking', text: 'Add booking' },
       createAction: 'booking',
     },
@@ -88,14 +88,15 @@ export function getWorkspaceSetupSteps({ currentWorkspace, data, userRole } = {}
       createAction: 'maintenance',
     },
     {
-      key: 'supply',
-      label: 'Add supply item',
-      title: 'Add supply/inventory item',
-      description: 'Track stock levels for operations.',
-      done: supplies.length > 0,
-      cta: { type: 'route', value: '/inventory', text: 'Add supply' },
+      key: 'subscription',
+      label: 'Choose subscription plan',
+      title: 'Choose subscription plan',
+      description: 'Pick a plan so your workspace can stay active after trial.',
+      done: Boolean(data?.subscription?.plan || data?.subscription?.status || currentWorkspace?.subscription_plan || currentWorkspace?.subscription_status),
+      cta: { type: 'route', value: '/billing', text: 'Open billing' },
       action: () => {},
     },
+
   ].filter((step) => (step.key === 'invite' ? userRole !== 'cleaner' : true));
 }
 
