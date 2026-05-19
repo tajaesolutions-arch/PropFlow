@@ -24,6 +24,7 @@ import { useApp } from '../lib/AppContext.jsx';
 import { hasAnyRole } from '../lib/auth.js';
 import { currencies, roles } from '../data/constants.js';
 import { formatCurrency } from '../lib/formatters.js';
+import { validateSupplyForm } from '../lib/formValidation.js';
 
 const inventoryManagerRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST];
 const inventoryCostRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
@@ -133,37 +134,6 @@ function toForm(item, fallbackCurrency) {
   };
 }
 
-function validate(form, properties = []) {
-  const errors = [];
-
-  if (!form.item_name.trim()) errors.push('Item name is required.');
-
-  if (form.property_id && !properties.some((property) => property.id === form.property_id)) {
-    errors.push('Selected property must belong to this workspace.');
-  }
-
-  if (numberValue(form.current_quantity) === null || numberValue(form.current_quantity) < 0) {
-    errors.push('Current quantity must be 0 or more.');
-  }
-
-  if (numberValue(form.low_stock_threshold) === null || numberValue(form.low_stock_threshold) < 0) {
-    errors.push('Low-stock threshold must be 0 or more.');
-  }
-
-  if (
-    form.estimated_unit_cost !== '' &&
-    (numberValue(form.estimated_unit_cost) === null || numberValue(form.estimated_unit_cost) < 0)
-  ) {
-    errors.push('Estimated unit cost must be 0 or more when provided.');
-  }
-
-  if (!form.currency.trim()) errors.push('Currency is required.');
-  else if (!inventoryCurrencies.includes(form.currency.trim().toUpperCase())) {
-    errors.push('Currency must be USD, JMD, CAD, GBP, or EUR.');
-  }
-
-  return errors;
-}
 
 function matchesSearch(item, properties, query, canSeeSupplierDetails) {
   const term = String(query || '').toLowerCase().trim();
@@ -216,7 +186,7 @@ function SupplyForm({ initial, properties, workspace, onSubmit, onCancel, submit
   const submit = (event) => {
     event.preventDefault();
 
-    const nextErrors = validate(form, properties);
+    const nextErrors = validateSupplyForm(form, properties).errors;
     setErrors(nextErrors);
 
     if (nextErrors.length) return;
