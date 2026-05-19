@@ -4,6 +4,8 @@ import {
   Bell,
   Building2,
   CalendarCheck,
+  ChevronDown,
+  ChevronUp,
   ClipboardList,
   DollarSign,
   Hotel,
@@ -29,6 +31,7 @@ import {
 import { AppLayout } from '../components/layout/AppLayout.jsx';
 import { DataTable } from '../components/DataTable.jsx';
 import { EmptyState } from '../components/EmptyState.jsx';
+import { useCreateAction } from '../components/CreateActionProvider.jsx';
 import { StatCard } from '../components/StatCard.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
 import { useApp } from '../lib/AppContext.jsx';
@@ -347,6 +350,7 @@ function filterRecords({ records, selectedPropertyId, dateRange, getRecordDate }
 
 export function DashboardPage() {
   const { data, currentWorkspace, currentUser } = useApp();
+  const { openCreateAction } = useCreateAction();
   const workspaceCurrency = currentWorkspace?.defaultCurrency || currentWorkspace?.default_currency || 'USD';
   const billingStatus = getBillingStatus(data.subscription, currentUser);
   const showBillingWarning = hasAnyRole(currentUser, billingManageRoles) && (billingStatus.isInGracePeriod || billingStatus.isRestricted);
@@ -474,7 +478,42 @@ export function DashboardPage() {
     userRole,
   });
   const incompleteSetupSteps = setupChecklist.filter((step) => !step.done);
-  const showSetupCard = false;
+  const workspaceScope = currentWorkspace?.id || 'default';
+  const collapsedKey = `propflow:workspaceSetupCollapsed:${workspaceScope}`;
+  const hiddenKey = `propflow:workspaceSetupHidden:${workspaceScope}`;
+  const [isSetupCollapsed, setIsSetupCollapsed] = React.useState(false);
+  const [isSetupHidden, setIsSetupHidden] = React.useState(false);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setIsSetupCollapsed(window.localStorage.getItem(collapsedKey) === 'true');
+    setIsSetupHidden(window.localStorage.getItem(hiddenKey) === 'true');
+  }, [collapsedKey, hiddenKey]);
+
+  const saveSetupUiState = React.useCallback((key, value) => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(key, value ? 'true' : 'false');
+  }, []);
+
+  const handleSetupAction = React.useCallback((step) => {
+    if (!step) return;
+    if (step.cta?.type === 'route' && step.cta?.value) {
+      navigate(step.cta.value);
+      return;
+    }
+    if (step.cta?.type === 'action' && step.cta?.value) {
+      try {
+        openCreateAction(step.cta.value);
+      } catch {
+        const fallbackRoute = {
+          property: '/properties', invite: '/settings', owner: '/owners', booking: '/bookings', cleaning: '/cleaning', maintenance: '/maintenance',
+        };
+        navigate(fallbackRoute[step.cta.value] || '/dashboard');
+      }
+      return;
+    }
+    navigate('/dashboard');
+  }, [openCreateAction]);
   const workspaceDisplayName = String(currentWorkspace?.name || '').trim();
   const placeholderWorkspaceNames = new Set(['a', 'test', `de${'mo'}`, 'sample']);
   const hasMeaningfulWorkspaceName =
@@ -525,37 +564,75 @@ export function DashboardPage() {
       )}
 
 
-      {showSetupCard && (
-        <section className="card compact" aria-label="Workspace setup card" hidden>
+      {isSetupHidden ? (
+        <section className="card compact" aria-label="Workspace setup hidden">
+          <div className="card-header">
+            <div>
+              <h3>Workspace Setup</h3>
+              <p>Checklist hidden for this workspace.</p>
+            </div>
+            <button type="button" onClick={() => {
+              setIsSetupHidden(false);
+              saveSetupUiState(hiddenKey, false);
+            }}>
+              Show setup checklist
+            </button>
+          </div>
+        </section>
+      ) : (
+        <section className="card compact" aria-label="Workspace setup card">
           <p className="eyebrow">WORKSPACE SETUP</p>
           <div className="card-header">
             <div>
-              <h3>{setupTitle}</h3>
-              <p>Complete the key setup steps to launch smooth operations for your workspace.</p>
+              <h3>Workspace Setup</h3>
+              <p>{setupTitle}. Use real workspace records only.</p>
             </div>
-            <button type="button" onClick={() => navigate('/onboarding')} data-skip-create-action="true">View full setup checklist</button>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !isSetupCollapsed;
+                  setIsSetupCollapsed(next);
+                  saveSetupUiState(collapsedKey, next);
+                }}
+                aria-label={isSetupCollapsed ? 'Expand workspace setup' : 'Minimize workspace setup'}
+                title={isSetupCollapsed ? 'Expand workspace setup' : 'Minimize workspace setup'}
+              >
+                {isSetupCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+              </button>
+              <button type="button" onClick={() => {
+                setIsSetupHidden(true);
+                saveSetupUiState(hiddenKey, true);
+              }}>
+                Hide setup
+              </button>
+              <button type="button" onClick={() => navigate('/onboarding')} data-skip-create-action="true">View full setup checklist</button>
+            </div>
           </div>
           <div className="progress" style={{ marginBottom: '0.5rem' }}>
             <span style={{ width: `${setupProgress}%` }} />
           </div>
-          <div className="helper" style={{ marginBottom: '0.75rem' }}>
+          <div className="helper" style={{ marginBottom: isSetupCollapsed ? 0 : '0.75rem' }}>
             {setupCompletedCount} of {setupTotalCount} complete
           </div>
-          <div className="settings-checklist">
-            {incompleteSetupSteps.slice(0, 3).map((step) => (
-              <article key={step.key} className="settings-checklist-item">
-                <div>
-                  <strong>{step.title || step.label}</strong>
-                  <p>{step.description}</p>
-                </div>
-                <div className="settings-checklist-status">
-                  <span>Next step</span>
-                  {step.cta.type === 'action' ? <button type="button" data-create-action={step.cta.value}>{step.cta.text}</button> : null}
-                  {step.cta.type === 'route' ? <button type="button" onClick={() => navigate(step.cta.value)} data-skip-create-action="true">{step.cta.text}</button> : null}
-                </div>
-              </article>
-            ))}
-          </div>
+          {!isSetupCollapsed && (
+            <div className="settings-checklist">
+              {setupChecklist.map((step) => (
+                <article key={step.key} className="settings-checklist-item">
+                  <div>
+                    <strong>{step.title || step.label}</strong>
+                    <p>{step.description}</p>
+                  </div>
+                  <div className="settings-checklist-status">
+                    <span>{step.done ? 'Complete' : 'Next step'}</span>
+                    <button type="button" onClick={() => handleSetupAction(step)} data-skip-create-action="true">
+                      {step.done ? `Manage ${step.label.toLowerCase()}` : step.cta?.text || 'Open'}
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
         </section>
       )}
 

@@ -116,7 +116,7 @@ const leasePageRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, r
 const maintenancePageRoles = [...operationalRoles, roles.MAINTENANCE];
 const financeRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.ACCOUNTANT];
 const filesPageRoles = [...operationalRoles, roles.ACCOUNTANT, roles.OWNER];
-const inventoryPageRoles = financeRoles;
+const inventoryPageRoles = [roles.OWNER_ADMIN, roles.PROPERTY_MANAGER, roles.HOST, roles.CLEANER, roles.MAINTENANCE];
 const calendarManagerRoles = operationalRoles;
 const directBookingManagerRoles = operationalRoles;
 const calendarImportManagerRoles = operationalRoles;
@@ -170,6 +170,10 @@ const protectedRoutes = {
   '/maintenance-dashboard': { Page: MaintenanceDashboardPage, access: [roles.MAINTENANCE] },
   '/accountant-dashboard': { Page: AccountantDashboardPage, access: [roles.ACCOUNTANT] },
   '/inventory': {
+    Page: InventoryPage,
+    access: inventoryPageRoles,
+  },
+  '/supplies': {
     Page: InventoryPage,
     access: inventoryPageRoles,
   },

@@ -15,6 +15,7 @@ import {
   LayoutDashboard,
   Receipt,
   Search,
+  Package,
   Settings,
   Shield,
   Sparkles,
@@ -43,6 +44,7 @@ const operationalNav = [
       ['/calendar', 'Calendar', CalendarDays],
       ['/cleaning', 'Cleaning', ClipboardCheck],
       ['/maintenance', 'Maintenance', Wrench],
+      ['/inventory', 'Inventory', Package],
     ],
   },
   {
@@ -94,6 +96,7 @@ const cleanerNav = [
     items: [
       ['/cleaner-dashboard', 'Cleaner Dashboard', ClipboardCheck],
       ['/cleaning', 'Cleaning Tasks', ClipboardCheck],
+      ['/inventory', 'Inventory', Package],
     ],
   },
   {
@@ -111,6 +114,7 @@ const maintenanceNav = [
     items: [
       ['/maintenance-dashboard', 'Maintenance Dashboard', Wrench],
       ['/maintenance', 'Assigned Work Orders', Wrench],
+      ['/inventory', 'Inventory', Package],
     ],
   },
   {
