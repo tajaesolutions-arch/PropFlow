@@ -100,13 +100,12 @@ export function getWorkspaceSetupSteps({ currentWorkspace, currentUser, data, us
         const hasWorkspaceSubscriptionFields = Boolean(currentWorkspace?.subscription_plan || currentWorkspace?.subscription_status);
         const hasSubscriptionRecord = Boolean(
           subscription && (
-            subscription.id
-            || subscription.workspace_id
-            || subscription.plan
-            || subscription.status
-            || subscription.current_period_end
-            || subscription.trial_end
-            || Object.keys(subscription).length > 0
+            subscription.id != null
+            || subscription.workspace_id != null
+            || (typeof subscription.plan === 'string' ? subscription.plan.trim().length > 0 : Boolean(subscription.plan))
+            || (typeof subscription.status === 'string' ? subscription.status.trim().length > 0 : Boolean(subscription.status))
+            || subscription.current_period_end != null
+            || subscription.trial_end != null
           ),
         );
 
