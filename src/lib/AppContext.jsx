@@ -13,6 +13,7 @@ import { createSupply as insertWorkspaceSupply, listSupplies, normalizeSupply as
 import { createMaintenanceWorkOrder as insertWorkspaceMaintenanceWorkOrder, listMaintenanceWorkOrders, normalizeMaintenanceWorkOrder as normalizeWorkspaceMaintenanceWorkOrder, updateMaintenanceWorkOrder as updateWorkspaceMaintenanceWorkOrder } from './maintenanceWorkOrders.js';
 import { createOwner as insertWorkspaceOwner } from './owners.js';
 import { createGuest as insertWorkspaceGuest } from './guests.js';
+import { archiveNotification as archiveWorkspaceNotification, createNotification as createWorkspaceNotification, listNotificationDeliveryLogs as listWorkspaceNotificationDeliveryLogs, listNotificationPreferences as listWorkspaceNotificationPreferences, listNotifications as listWorkspaceNotifications, markAllNotificationsRead as markAllWorkspaceNotificationsRead, markNotificationRead as markWorkspaceNotificationRead, normalizeNotification as normalizeWorkspaceNotification, normalizeNotificationDeliveryLog as normalizeWorkspaceNotificationDeliveryLog, normalizeNotificationPreference as normalizeWorkspaceNotificationPreference, updateNotificationPreferences as updateWorkspaceNotificationPreferences } from './notifications.js';
 import { getBillingStatus } from './billingStatus.js';
 import { WORKSPACE_FILES_BUCKET, getEntityContext, getWorkspaceFilePath, normalizeWorkspaceFileType, uploadWorkspaceFile as uploadPrivateWorkspaceFile, validateWorkspaceUploadFile } from './fileUploads.js';
 
@@ -1436,7 +1437,7 @@ export function AppProvider({ children }) {
           .eq('workspace_id', workspaceId)
           .order('created_at', { ascending: false })
           .limit(100),
-        normalize: (rows) => rows.map(normalizeNotification),
+        normalize: (rows) => rows.map(normalizeWorkspaceNotification),
       },
       {
         label: 'notification preferences',
@@ -1447,7 +1448,7 @@ export function AppProvider({ children }) {
           .eq('workspace_id', workspaceId)
           .eq('user_id', activeSession.user.id)
           .order('event_group', { ascending: true }),
-        normalize: (rows) => rows.map(normalizeNotificationPreference),
+        normalize: (rows) => rows.map(normalizeWorkspaceNotificationPreference),
       },
       {
         label: 'notification provider settings',
@@ -1468,7 +1469,7 @@ export function AppProvider({ children }) {
           .eq('workspace_id', workspaceId)
           .order('created_at', { ascending: false })
           .limit(50),
-        normalize: (rows) => rows.map(normalizeNotificationDeliveryLog),
+        normalize: (rows) => rows.map(normalizeWorkspaceNotificationDeliveryLog),
       },
       {
         label: 'activity logs',
@@ -5167,24 +5168,14 @@ export function AppProvider({ children }) {
   };
 
   const markNotificationRead = async (notificationId, read = true) => {
-    const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
-    const status = read ? 'read' : 'unread';
-    requireAllowedValue(status, notificationStatusValues, 'notification status');
+    const result = read
+      ? await markWorkspaceNotificationRead({ workspaceId: currentWorkspace.id, notificationId, userId: session.user.id })
+      : await createWorkspaceNotification({ workspaceId: currentWorkspace.id, userId: session.user.id, values: { id: notificationId, status: 'unread', read_at: null } });
 
-    const { data: row, error: updateError } = await client
-      .from('notifications')
-      .update({ status, read_at: read ? new Date().toISOString() : null })
-      .eq('id', notificationId)
-      .eq('workspace_id', currentWorkspace.id)
-      .eq('recipient_user_id', session.user.id)
-      .select('*')
-      .single();
-
-    if (updateError) {
-      throw new Error(formatSupabaseError(updateError, 'Notification could not be updated.'));
-    }
+    if (result.error) throw new Error(result.error);
+    const row = result.data;
 
     if (read) {
       await writeActivityLog('notification_marked_read', { notification_id: row.id, event_type: row.event_type || row.type, status: row.status });
@@ -5195,25 +5186,14 @@ export function AppProvider({ children }) {
   };
 
   const archiveNotification = async (notificationId, archived = true) => {
-    const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
-    const { data: row, error: updateError } = await client
-      .from('notifications')
-      .update({
-        status: archived ? 'archived' : 'unread',
-        archived_at: archived ? new Date().toISOString() : null,
-        read_at: archived ? new Date().toISOString() : null,
-      })
-      .eq('id', notificationId)
-      .eq('workspace_id', currentWorkspace.id)
-      .eq('recipient_user_id', session.user.id)
-      .select('*')
-      .single();
+    const result = archived
+      ? await archiveWorkspaceNotification({ workspaceId: currentWorkspace.id, notificationId, userId: session.user.id })
+      : await markWorkspaceNotificationRead({ workspaceId: currentWorkspace.id, notificationId, userId: session.user.id });
 
-    if (updateError) {
-      throw new Error(formatSupabaseError(updateError, 'Notification archive status could not be updated.'));
-    }
+    if (result.error) throw new Error(result.error);
+    const row = result.data;
 
     if (archived) {
       await writeActivityLog('notification_archived', { notification_id: row.id, event_type: row.event_type || row.type, status: row.status });
@@ -5225,20 +5205,9 @@ export function AppProvider({ children }) {
 
 
   const markAllNotificationsRead = async () => {
-    const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
-
-    const { error: updateError } = await client
-      .from('notifications')
-      .update({ status: 'read', read_at: new Date().toISOString() })
-      .eq('workspace_id', currentWorkspace.id)
-      .eq('recipient_user_id', session.user.id)
-      .eq('status', 'unread')
-      .is('archived_at', null);
-
-    if (updateError) {
-      throw new Error(formatSupabaseError(updateError, 'Notifications could not be marked as read.'));
-    }
+    const result = await markAllWorkspaceNotificationsRead({ workspaceId: currentWorkspace.id, userId: session.user.id });
+    if (result.error) throw new Error(result.error);
 
     await writeActivityLog('notification_marked_read', { bulk: true });
     await refreshWorkspaceData();
@@ -5247,30 +5216,13 @@ export function AppProvider({ children }) {
   };
 
   const updateNotificationPreference = async (eventGroup, channels = {}) => {
-    const client = requireSupabase();
     requireWorkspaceSession(currentWorkspace, session);
 
     requireAllowedValue(eventGroup, notificationPreferenceGroupValues, 'notification preference group');
 
-    const preferencePayload = {
-      workspace_id: currentWorkspace.id,
-      user_id: session.user.id,
-      event_group: eventGroup,
-      in_app_enabled: channels.in_app_enabled ?? channels.inAppEnabled ?? channels.in_app ?? channels.inApp ?? true,
-      email_enabled: Boolean(channels.email_enabled ?? channels.emailEnabled ?? channels.email),
-      sms_enabled: Boolean(channels.sms_enabled ?? channels.smsEnabled ?? channels.sms),
-      whatsapp_enabled: Boolean(channels.whatsapp_enabled ?? channels.whatsappEnabled ?? channels.whatsapp),
-    };
-
-    const { data: row, error: upsertError } = await client
-      .from('notification_preferences')
-      .upsert(preferencePayload, { onConflict: 'workspace_id,user_id,event_group' })
-      .select('*')
-      .single();
-
-    if (upsertError) {
-      throw new Error(formatSupabaseError(upsertError, 'Notification preference could not be saved.'));
-    }
+    const result = await updateWorkspaceNotificationPreferences({ workspaceId: currentWorkspace.id, userId: session.user.id, values: { event_group: eventGroup, ...channels } });
+    if (result.error) throw new Error(result.error);
+    const row = result.data;
 
     await refreshWorkspaceData();
 
