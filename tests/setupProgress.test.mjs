@@ -64,6 +64,26 @@ assert.equal(isWorkspaceSetupComplete({
 }), true, 'Completed setup should be marked complete');
 assert.equal(isWorkspaceSetupComplete({ currentWorkspace: {}, data: {}, userRole: 'owner_admin' }), false, 'Incomplete setup should not be marked complete');
 
+
+const completeWithoutSubscription = getWorkspaceSetupProgress({
+  currentWorkspace: { id: 'ws_2', defaultCurrency: 'USD' },
+  data: {
+    properties: [{ id: 'p1' }],
+    contacts: [{ id: 'c_owner', type: 'owner' }],
+    members: [{ id: 'm1' }],
+    invites: [{ id: 'i1' }],
+    bookings: [{ id: 'b1' }],
+    cleaningTasks: [{ id: 'c1' }],
+    maintenanceWorkOrders: [{ id: 'w1' }],
+  },
+  userRole: 'owner_admin',
+});
+assert.equal(
+  completeWithoutSubscription.progress,
+  100,
+  'Completed setup should remain 100% when no subscription record exists',
+);
+
 const safe = getWorkspaceSetupProgress({
   currentWorkspace: {},
   data: {
