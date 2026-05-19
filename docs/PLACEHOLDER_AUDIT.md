@@ -59,3 +59,10 @@ Search terms used:
 - Removed the duplicate lower dashboard setup card so the dashboard now shows one setup checklist card only.
 - Kept the original top `WORKSPACE SETUP` card and wired it to shared real-data `getWorkspaceSetupProgress` logic.
 - Onboarding remains the full checklist and continues to use the same shared setup progress helper.
+
+## 2026-05-19 Core form validation and submit-state polish
+
+- Added reusable `src/lib/formValidation.js` validators for property, booking, cleaning, maintenance, owner, guest, and supply form payloads.
+- Wired inventory supply create/edit modal to shared validation so numeric + workspace property checks are consistent before submit.
+- Added `tests/coreFormFunctionality.test.mjs` contract coverage for create-action key support, validation helper presence, submit-state checks, sample-data exclusion, workspace-scoped helper usage, and service-role safety.
+- Deferred broader modal-by-modal refactors where forms already have inline validation and submit locking; those can be consolidated into shared validators in a follow-up PR.
