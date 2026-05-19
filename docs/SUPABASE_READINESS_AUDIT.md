@@ -265,3 +265,10 @@ Do not promote production traffic until these are tested in Supabase with real A
 - Missing Supabase env vars (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) should return safe empty calendar/import arrays without crashing.
 - Live external iCal fetching, background sync, conflict resolution workflows, and full Airbnb/Vrbo/Booking.com API integrations remain future follow-up items.
 - Recommended next PR: File Uploads/Private Storage integration or Notifications Supabase wiring.
+
+
+- File Uploads / Private Storage are prepared for workspace-scoped Supabase Storage via `src/lib/fileUploads.js` helper methods and workspace-scoped metadata access.
+- Operational/customer files remain private by default in the `workspace-files` bucket; do not use public buckets for customer operational files.
+- Missing Supabase env vars should fail safely (no crash) for file list/read helpers and surface user-friendly upload errors when upload is attempted without config.
+- OCR, media compression, video processing pipelines, public share links, and external storage providers remain future follow-up items.
+- Recommended next PR: Notifications Supabase data wiring.

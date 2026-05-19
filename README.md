@@ -1167,3 +1167,10 @@ npm test
 ```
 
 See `docs/RLS_ROLE_MATRIX.md` for a founder-friendly access matrix.
+
+
+- File Uploads / Private Storage are prepared for workspace-scoped Supabase Storage via `src/lib/fileUploads.js` helper methods and workspace-scoped metadata access.
+- Operational/customer files remain private by default in the `workspace-files` bucket; do not use public buckets for customer operational files.
+- Missing Supabase env vars should fail safely (no crash) for file list/read helpers and surface user-friendly upload errors when upload is attempted without config.
+- OCR, media compression, video processing pipelines, public share links, and external storage providers remain future follow-up items.
+- Recommended next PR: Notifications Supabase data wiring.
