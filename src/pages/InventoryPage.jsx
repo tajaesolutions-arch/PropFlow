@@ -640,8 +640,8 @@ export function InventoryPage() {
 
   return (
     <AppLayout
-      title="Supplies / Inventory"
-      subtitle="Track workspace supplies, property stock levels, low-stock alerts, vendors, and inventory visibility."
+      title="Inventory"
+      subtitle="Track supplies, stock levels, reorder needs, and property-specific items."
     >
       {message && (
         <section className="helper" role="status">
