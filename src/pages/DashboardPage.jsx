@@ -462,13 +462,18 @@ export function DashboardPage() {
     supplies.length ||
     notifications.length;
 
-  const { steps: setupChecklist, progress: setupProgress } = getWorkspaceSetupProgress({
+  const {
+    steps: setupChecklist,
+    progress: setupProgress,
+    complete: setupCompletedCount,
+    total: setupTotalCount,
+  } = getWorkspaceSetupProgress({
     currentWorkspace,
+    currentUser,
     data,
     userRole,
   });
   const incompleteSetupSteps = setupChecklist.filter((step) => !step.done);
-  const setupCompletedCount = setupChecklist.length - incompleteSetupSteps.length;
   const showSetupCard = setupProgress < 100;
   const workspaceDisplayName = String(currentWorkspace?.name || '').trim();
   const placeholderWorkspaceNames = new Set(['a', 'test', `de${'mo'}`, 'sample']);
@@ -534,7 +539,7 @@ export function DashboardPage() {
             <span style={{ width: `${setupProgress}%` }} />
           </div>
           <div className="helper" style={{ marginBottom: '0.75rem' }}>
-            {setupCompletedCount} of {setupChecklist.length} complete
+            {setupCompletedCount} of {setupTotalCount} complete
           </div>
           <div className="settings-checklist">
             {incompleteSetupSteps.slice(0, 3).map((step) => (
