@@ -52,3 +52,10 @@ Search terms used:
 - Dashboard setup card now remains compact and task-focused, while onboarding remains the full checklist using the same shared `setupProgress` helper.
 - Inventory and Calendar continue using real workspace-backed records with operational empty states and actionable create CTAs.
 - Intentionally retained as future-state (small/non-blocking messaging only where relevant): external iCal sync depth, provider integrations (Stripe, Resend, Twilio SMS/WhatsApp), OCR/media processing, live email/sms delivery, and report PDF export automation.
+
+
+## 2026-05-19 Dashboard setup card cleanup
+
+- Removed the duplicate lower dashboard setup card so the dashboard now shows one setup checklist card only.
+- Kept the original top `WORKSPACE SETUP` card and wired it to shared real-data `getWorkspaceSetupProgress` logic.
+- Onboarding remains the full checklist and continues to use the same shared setup progress helper.

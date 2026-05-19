@@ -471,7 +471,12 @@ export function DashboardPage() {
   const setupCompletedCount = setupChecklist.length - incompleteSetupSteps.length;
   const showSetupCard = setupProgress < 100;
   const workspaceDisplayName = String(currentWorkspace?.name || '').trim();
-  const hasMeaningfulWorkspaceName = workspaceDisplayName.length >= 3;
+  const placeholderWorkspaceNames = new Set(['a', 'test', `de${'mo'}`, 'sample']);
+  const hasMeaningfulWorkspaceName =
+    workspaceDisplayName.length >= 3 && !placeholderWorkspaceNames.has(workspaceDisplayName.toLowerCase());
+  const setupTitle = hasMeaningfulWorkspaceName
+    ? `Setup progress for ${workspaceDisplayName}`
+    : 'Finish setting up your workspace';
 
   const filteredResultCount =
     filteredProperties.length +
@@ -516,21 +521,33 @@ export function DashboardPage() {
       )}
 
       {showSetupCard && (
-        <section className="card compact">
+        <section className="card compact" aria-label="Workspace setup card">
+          <p className="eyebrow">WORKSPACE SETUP</p>
           <div className="card-header">
             <div>
-              <h3>Finish setting up your workspace</h3>
-              <p>{setupCompletedCount} of {setupChecklist.length} complete ({setupProgress}%). {hasMeaningfulWorkspaceName ? `Workspace: ${workspaceDisplayName}.` : 'You can complete the full checklist anytime.'}</p>
+              <h3>{setupTitle}</h3>
+              <p>Complete the key setup steps to launch smooth operations for your workspace.</p>
             </div>
             <button type="button" onClick={() => navigate('/onboarding')} data-skip-create-action="true">View full setup checklist</button>
+          </div>
+          <div className="progress" style={{ marginBottom: '0.5rem' }}>
+            <span style={{ width: `${setupProgress}%` }} />
+          </div>
+          <div className="helper" style={{ marginBottom: '0.75rem' }}>
+            {setupCompletedCount} of {setupChecklist.length} complete
           </div>
           <div className="settings-checklist">
             {incompleteSetupSteps.slice(0, 3).map((step) => (
               <article key={step.key} className="settings-checklist-item">
-                <strong>{step.label}</strong>
-                <span>Next step</span>
-                {step.cta.type === 'action' ? <button type="button" data-create-action={step.cta.value}>{step.cta.text}</button> : null}
-                {step.cta.type === 'route' ? <button type="button" onClick={() => navigate(step.cta.value)} data-skip-create-action="true">{step.cta.text}</button> : null}
+                <div>
+                  <strong>{step.title || step.label}</strong>
+                  <p>{step.description}</p>
+                </div>
+                <div className="settings-checklist-status">
+                  <span>Next step</span>
+                  {step.cta.type === 'action' ? <button type="button" data-create-action={step.cta.value}>{step.cta.text}</button> : null}
+                  {step.cta.type === 'route' ? <button type="button" onClick={() => navigate(step.cta.value)} data-skip-create-action="true">{step.cta.text}</button> : null}
+                </div>
               </article>
             ))}
           </div>
