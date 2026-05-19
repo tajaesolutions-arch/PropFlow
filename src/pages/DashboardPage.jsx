@@ -35,6 +35,7 @@ import { useApp } from '../lib/AppContext.jsx';
 import { billingManageRoles } from '../data/constants.js';
 import { hasAnyRole } from '../lib/auth.js';
 import { getBillingStatus } from '../lib/billingStatus.js';
+import { getWorkspaceSetupProgress } from '../lib/setupProgress.js';
 import { navigate } from '../routes/AppRouter.jsx';
 
 const completedStatuses = new Set(['completed', 'cancelled']);
@@ -349,6 +350,7 @@ export function DashboardPage() {
   const workspaceCurrency = currentWorkspace?.defaultCurrency || currentWorkspace?.default_currency || 'USD';
   const billingStatus = getBillingStatus(data.subscription, currentUser);
   const showBillingWarning = hasAnyRole(currentUser, billingManageRoles) && (billingStatus.isInGracePeriod || billingStatus.isRestricted);
+  const userRole = currentUser?.role;
   const [filters, setFilters] = React.useState({
     propertyId: 'all',
     dateRange: 'last_30_days',
@@ -460,21 +462,11 @@ export function DashboardPage() {
     supplies.length ||
     notifications.length;
 
-  const owners = (data.contacts || []).filter((record) => record.type === 'owner');
-  const members = data.members || [];
-  const invites = data.invites || [];
-  const setupChecklist = [
-    { key: 'currency', label: 'Set workspace currency', done: Boolean(currentWorkspace?.defaultCurrency || currentWorkspace?.default_currency), cta: { type: 'route', value: '/settings', text: 'Set currency' } },
-    { key: 'property', label: 'Add first property', done: activeProperties.length > 0, cta: { type: 'action', value: 'property', text: 'Add property' } },
-    { key: 'invite', label: 'Invite team member', done: members.length > 0 || invites.length > 0, cta: { type: 'action', value: 'invite', text: 'Invite team' } },
-    { key: 'owner', label: 'Add owner', done: owners.length > 0, cta: { type: 'action', value: 'owner', text: 'Add owner' } },
-    { key: 'booking', label: 'Add booking', done: bookings.length > 0, cta: { type: 'action', value: 'booking', text: 'Add booking' } },
-    { key: 'cleaning', label: 'Add cleaning task', done: cleaningTasks.length > 0, cta: { type: 'action', value: 'cleaning', text: 'Add cleaning' } },
-    { key: 'maintenance', label: 'Add maintenance work order', done: maintenanceWorkOrders.length > 0, cta: { type: 'action', value: 'maintenance', text: 'Add work order' } },
-    { key: 'supply', label: 'Add supply item', done: supplies.length > 0, cta: { type: 'route', value: '/inventory', text: 'Add supply' } },
-  ];
-  const setupComplete = setupChecklist.filter((step) => step.done).length;
-  const setupProgress = Math.round((setupComplete / setupChecklist.length) * 100);
+  const { steps: setupChecklist, progress: setupProgress } = getWorkspaceSetupProgress({
+    currentWorkspace,
+    data,
+    userRole,
+  });
   const showSetupCard = setupProgress < 100;
 
   const filteredResultCount =
