@@ -474,7 +474,7 @@ export function DashboardPage() {
     userRole,
   });
   const incompleteSetupSteps = setupChecklist.filter((step) => !step.done);
-  const showSetupCard = setupProgress < 100;
+  const showSetupCard = false;
   const workspaceDisplayName = String(currentWorkspace?.name || '').trim();
   const placeholderWorkspaceNames = new Set(['a', 'test', `de${'mo'}`, 'sample']);
   const hasMeaningfulWorkspaceName =
@@ -482,7 +482,6 @@ export function DashboardPage() {
   const setupTitle = hasMeaningfulWorkspaceName
     ? `Setup progress for ${workspaceDisplayName}`
     : 'Finish setting up your workspace';
-
   const filteredResultCount =
     filteredProperties.length +
     activeBookings.length +
@@ -525,8 +524,9 @@ export function DashboardPage() {
         </section>
       )}
 
+
       {showSetupCard && (
-        <section className="card compact" aria-label="Workspace setup card">
+        <section className="card compact" aria-label="Workspace setup card" hidden>
           <p className="eyebrow">WORKSPACE SETUP</p>
           <div className="card-header">
             <div>
